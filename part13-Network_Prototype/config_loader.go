@@ -72,4 +72,100 @@ func overrideInt(field *int, envVar string) {
 			*field = intVal
 		}
 	}
+}package config
+
+import (
+	"encoding/json"
+	"os"
+	"strings"
+)
+
+type DatabaseConfig struct {
+	Host     string `json:"host" env:"DB_HOST" required:"true"`
+	Port     int    `json:"port" env:"DB_PORT" default:"5432"`
+	Username string `json:"username" env:"DB_USER"`
+	Password string `json:"password" env:"DB_PASS"`
+	SSLMode  string `json:"ssl_mode" env:"DB_SSL_MODE" default:"disable"`
+}
+
+type ServerConfig struct {
+	Port         int    `json:"port" env:"SERVER_PORT" default:"8080"`
+	ReadTimeout  int    `json:"read_timeout" env:"READ_TIMEOUT" default:"30"`
+	WriteTimeout int    `json:"write_timeout" env:"WRITE_TIMEOUT" default:"30"`
+	DebugMode    bool   `json:"debug_mode" env:"DEBUG_MODE" default:"false"`
+	LogLevel     string `json:"log_level" env:"LOG_LEVEL" default:"info"`
+}
+
+type AppConfig struct {
+	Database DatabaseConfig `json:"database"`
+	Server   ServerConfig   `json:"server"`
+	Features []string       `json:"features" env:"ENABLED_FEATURES"`
+}
+
+func LoadConfig(configPath string) (*AppConfig, error) {
+	config := &AppConfig{}
+
+	if configPath != "" {
+		file, err := os.Open(configPath)
+		if err != nil {
+			return nil, err
+		}
+		defer file.Close()
+
+		decoder := json.NewDecoder(file)
+		if err := decoder.Decode(config); err != nil {
+			return nil, err
+		}
+	}
+
+	loadFromEnv(config)
+	
+	if err := validateConfig(config); err != nil {
+		return nil, err
+	}
+
+	return config, nil
+}
+
+func loadFromEnv(config *AppConfig) {
+	loadStruct(&config.Database)
+	loadStruct(&config.Server)
+	
+	if features := os.Getenv("ENABLED_FEATURES"); features != "" {
+		config.Features = strings.Split(features, ",")
+	}
+}
+
+func loadStruct(target interface{}) {
+	// Implementation would use reflection to read struct tags
+	// and populate values from environment variables
+	// This is a simplified placeholder
+}
+
+func validateConfig(config *AppConfig) error {
+	if config.Database.Host == "" {
+		return ConfigError{Field: "database.host", Reason: "required field is empty"}
+	}
+	
+	if config.Server.Port < 1 || config.Server.Port > 65535 {
+		return ConfigError{Field: "server.port", Reason: "port must be between 1 and 65535"}
+	}
+	
+	validLogLevels := map[string]bool{
+		"debug": true, "info": true, "warn": true, "error": true,
+	}
+	if !validLogLevels[config.Server.LogLevel] {
+		return ConfigError{Field: "server.log_level", Reason: "invalid log level"}
+	}
+	
+	return nil
+}
+
+type ConfigError struct {
+	Field  string
+	Reason string
+}
+
+func (e ConfigError) Error() string {
+	return "config error: " + e.Field + " - " + e.Reason
 }

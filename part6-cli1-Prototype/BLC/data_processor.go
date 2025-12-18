@@ -86,3 +86,44 @@ func GenerateSummary(records []DataRecord) {
 	fmt.Printf("Valid records: %d\n", validCount)
 	fmt.Printf("Invalid records: %d\n", len(records)-validCount)
 }
+package main
+
+import (
+	"errors"
+	"strings"
+)
+
+type UserData struct {
+	ID    int
+	Name  string
+	Email string
+	Age   int
+}
+
+func ValidateUserData(data UserData) error {
+	if data.ID <= 0 {
+		return errors.New("invalid user ID")
+	}
+	if strings.TrimSpace(data.Name) == "" {
+		return errors.New("name cannot be empty")
+	}
+	if !strings.Contains(data.Email, "@") {
+		return errors.New("invalid email format")
+	}
+	if data.Age < 18 || data.Age > 120 {
+		return errors.New("age must be between 18 and 120")
+	}
+	return nil
+}
+
+func TransformUserName(data UserData) UserData {
+	data.Name = strings.ToUpper(strings.TrimSpace(data.Name))
+	return data
+}
+
+func ProcessUserInput(data UserData) (UserData, error) {
+	if err := ValidateUserData(data); err != nil {
+		return UserData{}, err
+	}
+	return TransformUserName(data), nil
+}

@@ -47,4 +47,66 @@ type responseRecorder struct {
 func (rr *responseRecorder) WriteHeader(code int) {
 	rr.statusCode = code
 	rr.ResponseWriter.WriteHeader(code)
+}package middleware
+
+import (
+	"net/http"
+	"sync"
+	"time"
+)
+
+type ActivityLogger struct {
+	mu          sync.RWMutex
+	activities  map[string][]time.Time
+	rateLimit   int
+	window      time.Duration
+}
+
+func NewActivityLogger(limit int, window time.Duration) *ActivityLogger {
+	return &ActivityLogger{
+		activities: make(map[string][]time.Time),
+		rateLimit:  limit,
+		window:     window,
+	}
+}
+
+func (al *ActivityLogger) LogActivity(userID string, activity string) bool {
+	al.mu.Lock()
+	defer al.mu.Unlock()
+
+	key := userID + ":" + activity
+	now := time.Now()
+
+	// Clean old entries
+	var validTimes []time.Time
+	for _, t := range al.activities[key] {
+		if now.Sub(t) <= al.window {
+			validTimes = append(validTimes, t)
+		}
+	}
+
+	if len(validTimes) >= al.rateLimit {
+		return false
+	}
+
+	validTimes = append(validTimes, now)
+	al.activities[key] = validTimes
+	return true
+}
+
+func (al *ActivityLogger) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userID := r.Header.Get("X-User-ID")
+		if userID == "" {
+			userID = "anonymous"
+		}
+
+		activity := r.Method + ":" + r.URL.Path
+		if !al.LogActivity(userID, activity) {
+			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }

@@ -79,4 +79,81 @@ func setField(field reflect.Value, value string) error {
 func (c *Config) String() string {
 	data, _ := json.MarshalIndent(c, "", "  ")
 	return string(data)
+}package config
+
+import (
+    "os"
+    "strconv"
+    "strings"
+)
+
+type Config struct {
+    ServerPort    int
+    DatabaseURL   string
+    LogLevel      string
+    CacheEnabled  bool
+    MaxWorkers    int
+}
+
+func LoadConfig() (*Config, error) {
+    cfg := &Config{
+        ServerPort:    getEnvAsInt("SERVER_PORT", 8080),
+        DatabaseURL:   getEnv("DATABASE_URL", "postgres://localhost:5432/app"),
+        LogLevel:      getEnv("LOG_LEVEL", "info"),
+        CacheEnabled:  getEnvAsBool("CACHE_ENABLED", true),
+        MaxWorkers:    getEnvAsInt("MAX_WORKERS", 10),
+    }
+
+    if err := validateConfig(cfg); err != nil {
+        return nil, err
+    }
+
+    return cfg, nil
+}
+
+func getEnv(key, defaultValue string) string {
+    if value, exists := os.LookupEnv(key); exists {
+        return value
+    }
+    return defaultValue
+}
+
+func getEnvAsInt(key string, defaultValue int) int {
+    valueStr := getEnv(key, "")
+    if value, err := strconv.Atoi(valueStr); err == nil {
+        return value
+    }
+    return defaultValue
+}
+
+func getEnvAsBool(key string, defaultValue bool) bool {
+    valueStr := strings.ToLower(getEnv(key, ""))
+    if valueStr == "true" || valueStr == "1" {
+        return true
+    } else if valueStr == "false" || valueStr == "0" {
+        return false
+    }
+    return defaultValue
+}
+
+func validateConfig(cfg *Config) error {
+    if cfg.ServerPort < 1 || cfg.ServerPort > 65535 {
+        return &ConfigError{Field: "ServerPort", Message: "port must be between 1 and 65535"}
+    }
+    if cfg.DatabaseURL == "" {
+        return &ConfigError{Field: "DatabaseURL", Message: "database URL cannot be empty"}
+    }
+    if cfg.MaxWorkers < 1 {
+        return &ConfigError{Field: "MaxWorkers", Message: "must have at least 1 worker"}
+    }
+    return nil
+}
+
+type ConfigError struct {
+    Field   string
+    Message string
+}
+
+func (e *ConfigError) Error() string {
+    return "config error: " + e.Field + " - " + e.Message
 }

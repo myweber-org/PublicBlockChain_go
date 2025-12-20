@@ -66,4 +66,54 @@ func main() {
     }
 
     fmt.Printf("Token validated. User: %s, Role: %s\n", claims.Username, claims.Role)
+}package middleware
+
+import (
+	"fmt"
+	"net/http"
+	"strings"
+
+	"github.com/golang-jwt/jwt/v5"
+)
+
+type Claims struct {
+	UserID string `json:"user_id"`
+	Role   string `json:"role"`
+	jwt.RegisteredClaims
+}
+
+func Authenticate(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			http.Error(w, "Authorization header required", http.StatusUnauthorized)
+			return
+		}
+
+		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		if tokenString == authHeader {
+			http.Error(w, "Bearer token required", http.StatusUnauthorized)
+			return
+		}
+
+		token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			}
+			return []byte("your-secret-key"), nil
+		})
+
+		if err != nil {
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			return
+		}
+
+		if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+			r.Header.Set("X-User-ID", claims.UserID)
+			r.Header.Set("X-User-Role", claims.Role)
+			next.ServeHTTP(w, r)
+		} else {
+			http.Error(w, "Invalid token claims", http.StatusUnauthorized)
+		}
+	})
 }

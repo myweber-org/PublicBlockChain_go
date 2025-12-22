@@ -48,4 +48,71 @@ func (c *AppConfig) Validate() error {
         return fmt.Errorf("database host cannot be empty")
     }
     return nil
+}package config
+
+import (
+    "os"
+    "strconv"
+    "strings"
+)
+
+type Config struct {
+    ServerPort int
+    DatabaseURL string
+    DebugMode bool
+    AllowedHosts []string
+}
+
+func LoadConfig() (*Config, error) {
+    cfg := &Config{}
+    
+    portStr := getEnv("SERVER_PORT", "8080")
+    port, err := strconv.Atoi(portStr)
+    if err != nil {
+        return nil, err
+    }
+    cfg.ServerPort = port
+    
+    cfg.DatabaseURL = getEnv("DATABASE_URL", "postgres://localhost:5432/app")
+    
+    debugStr := getEnv("DEBUG_MODE", "false")
+    cfg.DebugMode = strings.ToLower(debugStr) == "true"
+    
+    hostsStr := getEnv("ALLOWED_HOSTS", "localhost,127.0.0.1")
+    cfg.AllowedHosts = strings.Split(hostsStr, ",")
+    
+    if err := validateConfig(cfg); err != nil {
+        return nil, err
+    }
+    
+    return cfg, nil
+}
+
+func getEnv(key, defaultValue string) string {
+    value := os.Getenv(key)
+    if value == "" {
+        return defaultValue
+    }
+    return value
+}
+
+func validateConfig(cfg *Config) error {
+    if cfg.ServerPort < 1 || cfg.ServerPort > 65535 {
+        return &ConfigError{Field: "ServerPort", Message: "port must be between 1 and 65535"}
+    }
+    
+    if cfg.DatabaseURL == "" {
+        return &ConfigError{Field: "DatabaseURL", Message: "database URL cannot be empty"}
+    }
+    
+    return nil
+}
+
+type ConfigError struct {
+    Field string
+    Message string
+}
+
+func (e *ConfigError) Error() string {
+    return "config error: " + e.Field + " - " + e.Message
 }

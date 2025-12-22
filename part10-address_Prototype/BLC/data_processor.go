@@ -43,3 +43,41 @@ func ProcessUserInput(rawName, rawEmail string, id int) (UserData, error) {
 	user = TransformUserName(user)
 	return user, nil
 }
+package main
+
+import (
+	"regexp"
+	"strings"
+)
+
+type DataProcessor struct {
+	allowedPattern *regexp.Regexp
+}
+
+func NewDataProcessor(allowedPattern string) (*DataProcessor, error) {
+	compiled, err := regexp.Compile(allowedPattern)
+	if err != nil {
+		return nil, err
+	}
+	return &DataProcessor{allowedPattern: compiled}, nil
+}
+
+func (dp *DataProcessor) CleanInput(input string) string {
+	trimmed := strings.TrimSpace(input)
+	return dp.allowedPattern.FindString(trimmed)
+}
+
+func (dp *DataProcessor) ValidateInput(input string) bool {
+	return dp.allowedPattern.MatchString(strings.TrimSpace(input))
+}
+
+func (dp *DataProcessor) ProcessBatch(inputs []string) []string {
+	var results []string
+	for _, input := range inputs {
+		cleaned := dp.CleanInput(input)
+		if cleaned != "" {
+			results = append(results, cleaned)
+		}
+	}
+	return results
+}

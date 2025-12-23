@@ -38,3 +38,101 @@ func main() {
 	fmt.Printf("Data: %v\n", data)
 	fmt.Printf("Moving Averages (window=%d): %v\n", window, averages)
 }
+package main
+
+import (
+	"encoding/csv"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+)
+
+type DataRecord struct {
+	ID    int
+	Name  string
+	Value float64
+}
+
+func ParseCSVFile(filePath string) ([]DataRecord, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	records := make([]DataRecord, 0)
+
+	// Skip header
+	if _, err := reader.Read(); err != nil {
+		return nil, fmt.Errorf("failed to read header: %w", err)
+	}
+
+	for {
+		row, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to read row: %w", err)
+		}
+
+		if len(row) < 3 {
+			return nil, fmt.Errorf("invalid row format: %v", row)
+		}
+
+		id, err := strconv.Atoi(row[0])
+		if err != nil {
+			return nil, fmt.Errorf("invalid ID format: %w", err)
+		}
+
+		name := row[1]
+
+		value, err := strconv.ParseFloat(row[2], 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid value format: %w", err)
+		}
+
+		records = append(records, DataRecord{
+			ID:    id,
+			Name:  name,
+			Value: value,
+		})
+	}
+
+	return records, nil
+}
+
+func ValidateRecords(records []DataRecord) error {
+	seenIDs := make(map[int]bool)
+
+	for _, record := range records {
+		if record.ID <= 0 {
+			return fmt.Errorf("invalid ID: %d", record.ID)
+		}
+
+		if record.Name == "" {
+			return fmt.Errorf("empty name for ID: %d", record.ID)
+		}
+
+		if record.Value < 0 {
+			return fmt.Errorf("negative value for ID: %d", record.ID)
+		}
+
+		if seenIDs[record.ID] {
+			return fmt.Errorf("duplicate ID: %d", record.ID)
+		}
+		seenIDs[record.ID] = true
+	}
+
+	return nil
+}
+
+func CalculateTotalValue(records []DataRecord) float64 {
+	var total float64
+	for _, record := range records {
+		total += record.Value
+	}
+	return total
+}

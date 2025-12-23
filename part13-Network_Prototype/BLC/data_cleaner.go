@@ -1,48 +1,63 @@
 
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
-func removeDuplicates(input []int) []int {
-	seen := make(map[int]bool)
-	result := []int{}
+type DataCleaner struct {
+	seen map[string]bool
+}
 
-	for _, value := range input {
-		if !seen[value] {
-			seen[value] = true
-			result = append(result, value)
+func NewDataCleaner() *DataCleaner {
+	return &DataCleaner{
+		seen: make(map[string]bool),
+	}
+}
+
+func (dc *DataCleaner) Deduplicate(items []string) []string {
+	var unique []string
+	for _, item := range items {
+		normalized := strings.ToLower(strings.TrimSpace(item))
+		if !dc.seen[normalized] && dc.isValid(item) {
+			dc.seen[normalized] = true
+			unique = append(unique, item)
 		}
 	}
-	return result
+	return unique
+}
+
+func (dc *DataCleaner) isValid(item string) bool {
+	trimmed := strings.TrimSpace(item)
+	return len(trimmed) > 0 && len(trimmed) <= 100
+}
+
+func (dc *DataCleaner) Reset() {
+	dc.seen = make(map[string]bool)
 }
 
 func main() {
-	data := []int{4, 2, 8, 2, 4, 9, 8, 1}
-	cleaned := removeDuplicates(data)
-	fmt.Println("Original:", data)
-	fmt.Println("Cleaned:", cleaned)
-}
-package main
-
-import "fmt"
-
-func RemoveDuplicates(nums []int) []int {
-    seen := make(map[int]bool)
-    result := []int{}
-    
-    for _, num := range nums {
-        if !seen[num] {
-            seen[num] = true
-            result = append(result, num)
-        }
-    }
-    
-    return result
-}
-
-func main() {
-    data := []int{1, 2, 2, 3, 4, 4, 5, 1, 6}
-    cleaned := RemoveDuplicates(data)
-    fmt.Printf("Original: %v\n", data)
-    fmt.Printf("Cleaned: %v\n", cleaned)
+	cleaner := NewDataCleaner()
+	
+	data := []string{
+		"apple",
+		"  Apple ",
+		"banana",
+		"",
+		"banana",
+		"cherry",
+		strings.Repeat("x", 150),
+		"cherry",
+	}
+	
+	cleaned := cleaner.Deduplicate(data)
+	fmt.Printf("Original: %v\n", data)
+	fmt.Printf("Cleaned: %v\n", cleaned)
+	fmt.Printf("Count: %d -> %d\n", len(data), len(cleaned))
+	
+	cleaner.Reset()
+	secondBatch := []string{"apple", "date"}
+	result := cleaner.Deduplicate(secondBatch)
+	fmt.Printf("Second batch: %v\n", result)
 }

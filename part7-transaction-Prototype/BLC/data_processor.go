@@ -46,3 +46,48 @@ func ProcessUserInput(username, email string, age int) (UserData, error) {
 	}
 	return userData, nil
 }
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "strings"
+)
+
+func ValidateJSONStructure(rawData string) (bool, error) {
+    var data map[string]interface{}
+    decoder := json.NewDecoder(strings.NewReader(rawData))
+    decoder.DisallowUnknownFields()
+
+    if err := decoder.Decode(&data); err != nil {
+        return false, fmt.Errorf("invalid JSON structure: %w", err)
+    }
+
+    if len(data) == 0 {
+        return false, fmt.Errorf("JSON data is empty")
+    }
+
+    for key, value := range data {
+        if strings.TrimSpace(key) == "" {
+            return false, fmt.Errorf("JSON contains empty key")
+        }
+        if value == nil {
+            return false, fmt.Errorf("JSON key '%s' has nil value", key)
+        }
+    }
+
+    return true, nil
+}
+
+func ExtractJSONKeys(rawData string) ([]string, error) {
+    var data map[string]interface{}
+    if err := json.Unmarshal([]byte(rawData), &data); err != nil {
+        return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
+    }
+
+    keys := make([]string, 0, len(data))
+    for key := range data {
+        keys = append(keys, key)
+    }
+    return keys, nil
+}

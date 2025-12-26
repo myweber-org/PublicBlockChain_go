@@ -281,4 +281,126 @@ func main() {
     }
 
     fmt.Println("Log rotation test completed")
+}package main
+
+import (
+    "fmt"
+    "io"
+    "os"
+    "path/filepath"
+    "strconv"
+    "strings"
+    "sync"
+    "time"
+)
+
+type RotatingFile struct {
+    mu          sync.Mutex
+    filePath    string
+    maxSize     int64
+    currentSize int64
+    file        *os.File
+}
+
+func NewRotatingFile(filePath string, maxSize int64) (*RotatingFile, error) {
+    rf := &RotatingFile{
+        filePath: filePath,
+        maxSize:  maxSize,
+    }
+
+    if err := rf.openOrCreate(); err != nil {
+        return nil, err
+    }
+
+    return rf, nil
+}
+
+func (rf *RotatingFile) openOrCreate() error {
+    info, err := os.Stat(rf.filePath)
+    if os.IsNotExist(err) {
+        dir := filepath.Dir(rf.filePath)
+        if err := os.MkdirAll(dir, 0755); err != nil {
+            return err
+        }
+        file, err := os.Create(rf.filePath)
+        if err != nil {
+            return err
+        }
+        rf.file = file
+        rf.currentSize = 0
+        return nil
+    } else if err != nil {
+        return err
+    }
+
+    file, err := os.OpenFile(rf.filePath, os.O_APPEND|os.O_WRONLY, 0644)
+    if err != nil {
+        return err
+    }
+    rf.file = file
+    rf.currentSize = info.Size()
+    return nil
+}
+
+func (rf *RotatingFile) rotate() error {
+    if err := rf.file.Close(); err != nil {
+        return err
+    }
+
+    timestamp := time.Now().Format("20060102_150405")
+    baseName := strings.TrimSuffix(rf.filePath, filepath.Ext(rf.filePath))
+    ext := filepath.Ext(rf.filePath)
+    rotatedPath := fmt.Sprintf("%s_%s%s", baseName, timestamp, ext)
+
+    if err := os.Rename(rf.filePath, rotatedPath); err != nil {
+        return err
+    }
+
+    return rf.openOrCreate()
+}
+
+func (rf *RotatingFile) Write(p []byte) (int, error) {
+    rf.mu.Lock()
+    defer rf.mu.Unlock()
+
+    if rf.currentSize+int64(len(p)) > rf.maxSize {
+        if err := rf.rotate(); err != nil {
+            return 0, err
+        }
+    }
+
+    n, err := rf.file.Write(p)
+    if err == nil {
+        rf.currentSize += int64(n)
+    }
+    return n, err
+}
+
+func (rf *RotatingFile) Close() error {
+    rf.mu.Lock()
+    defer rf.mu.Unlock()
+    if rf.file != nil {
+        return rf.file.Close()
+    }
+    return nil
+}
+
+func main() {
+    rf, err := NewRotatingFile("./logs/app.log", 1024*1024)
+    if err != nil {
+        fmt.Printf("Failed to create rotating file: %v\n", err)
+        return
+    }
+    defer rf.Close()
+
+    for i := 0; i < 100; i++ {
+        logEntry := fmt.Sprintf("[%s] Log entry number %d\n", 
+            time.Now().Format(time.RFC3339), i)
+        if _, err := rf.Write([]byte(logEntry)); err != nil {
+            fmt.Printf("Write error: %v\n", err)
+        }
+        time.Sleep(10 * time.Millisecond)
+    }
+
+    fmt.Println("Log rotation test completed")
 }

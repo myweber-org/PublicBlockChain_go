@@ -140,4 +140,88 @@ func overrideBool(field *bool, envVar string) {
     if val := os.Getenv(envVar); val != "" {
         *field = val == "true" || val == "1" || val == "yes"
     }
+}package config
+
+import (
+	"io/ioutil"
+	"os"
+
+	"gopkg.in/yaml.v2"
+)
+
+type Config struct {
+	Server struct {
+		Host string `yaml:"host"`
+		Port int    `yaml:"port"`
+	} `yaml:"server"`
+	Database struct {
+		Host     string `yaml:"host"`
+		Port     int    `yaml:"port"`
+		Username string `yaml:"username"`
+		Password string `yaml:"password"`
+		Name     string `yaml:"name"`
+	} `yaml:"database"`
+	Logging struct {
+		Level  string `yaml:"level"`
+		Format string `yaml:"format"`
+	} `yaml:"logging"`
+}
+
+func LoadConfig(configPath string) (*Config, error) {
+	config := &Config{}
+
+	file, err := ioutil.ReadFile(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	err = yaml.Unmarshal(file, config)
+	if err != nil {
+		return nil, err
+	}
+
+	overrideFromEnv(config)
+
+	return config, nil
+}
+
+func overrideFromEnv(c *Config) {
+	if host := os.Getenv("SERVER_HOST"); host != "" {
+		c.Server.Host = host
+	}
+	if port := os.Getenv("SERVER_PORT"); port != "" {
+		c.Server.Port = atoi(port)
+	}
+	if host := os.Getenv("DB_HOST"); host != "" {
+		c.Database.Host = host
+	}
+	if port := os.Getenv("DB_PORT"); port != "" {
+		c.Database.Port = atoi(port)
+	}
+	if user := os.Getenv("DB_USER"); user != "" {
+		c.Database.Username = user
+	}
+	if pass := os.Getenv("DB_PASS"); pass != "" {
+		c.Database.Password = pass
+	}
+	if name := os.Getenv("DB_NAME"); name != "" {
+		c.Database.Name = name
+	}
+	if level := os.Getenv("LOG_LEVEL"); level != "" {
+		c.Logging.Level = level
+	}
+	if format := os.Getenv("LOG_FORMAT"); format != "" {
+		c.Logging.Format = format
+	}
+}
+
+func atoi(s string) int {
+	var result int
+	for _, ch := range s {
+		if ch < '0' || ch > '9' {
+			break
+		}
+		result = result*10 + int(ch-'0')
+	}
+	return result
 }

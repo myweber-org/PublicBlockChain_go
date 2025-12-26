@@ -1,16 +1,22 @@
+
 package main
 
-import (
-	"strings"
-)
+import "fmt"
 
-func TrimWhitespaceFromSlice(input []string) []string {
-	output := make([]string, 0, len(input))
-	for _, s := range input {
-		trimmed := strings.TrimSpace(s)
-		if trimmed != "" {
-			output = append(output, trimmed)
+func RemoveDuplicates(nums []int) []int {
+	seen := make(map[int]bool)
+	result := []int{}
+	for _, num := range nums {
+		if !seen[num] {
+			seen[num] = true
+			result = append(result, num)
 		}
 	}
-	return output
+	return result
+}
+
+func main() {
+	input := []int{1, 2, 2, 3, 4, 4, 5}
+	output := RemoveDuplicates(input)
+	fmt.Println(output)
 }

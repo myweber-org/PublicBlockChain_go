@@ -152,3 +152,115 @@ func validateConfig(c *Config) error {
     }
     return nil
 }
+package config
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+type DatabaseConfig struct {
+	Host     string `json:"host" env:"DB_HOST"`
+	Port     int    `json:"port" env:"DB_PORT"`
+	Username string `json:"username" env:"DB_USER"`
+	Password string `json:"password" env:"DB_PASS"`
+	SSLMode  string `json:"ssl_mode" env:"DB_SSL_MODE"`
+}
+
+type ServerConfig struct {
+	Port         int    `json:"port" env:"SERVER_PORT"`
+	ReadTimeout  int    `json:"read_timeout" env:"READ_TIMEOUT"`
+	WriteTimeout int    `json:"write_timeout" env:"WRITE_TIMEOUT"`
+	DebugMode    bool   `json:"debug_mode" env:"DEBUG_MODE"`
+	LogLevel     string `json:"log_level" env:"LOG_LEVEL"`
+}
+
+type AppConfig struct {
+	Database DatabaseConfig `json:"database"`
+	Server   ServerConfig   `json:"server"`
+	Version  string         `json:"version"`
+}
+
+func LoadConfig(configPath string) (*AppConfig, error) {
+	var config AppConfig
+
+	if configPath != "" {
+		absPath, err := filepath.Abs(configPath)
+		if err != nil {
+			return nil, fmt.Errorf("invalid config path: %w", err)
+		}
+
+		data, err := os.ReadFile(absPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read config file: %w", err)
+		}
+
+		if err := json.Unmarshal(data, &config); err != nil {
+			return nil, fmt.Errorf("failed to parse config JSON: %w", err)
+		}
+	}
+
+	if err := loadEnvVars(&config); err != nil {
+		return nil, err
+	}
+
+	if err := validateConfig(&config); err != nil {
+		return nil, err
+	}
+
+	return &config, nil
+}
+
+func loadEnvVars(config *AppConfig) error {
+	loadStruct(config, "")
+	return nil
+}
+
+func loadStruct(s interface{}, prefix string) {
+	// Implementation would use reflection to read struct tags
+	// and populate fields from environment variables
+	// This is a simplified placeholder
+}
+
+func validateConfig(config *AppConfig) error {
+	if config.Database.Host == "" {
+		return fmt.Errorf("database host is required")
+	}
+	if config.Database.Port < 1 || config.Database.Port > 65535 {
+		return fmt.Errorf("database port must be between 1 and 65535")
+	}
+	if config.Server.Port < 1024 || config.Server.Port > 65535 {
+		return fmt.Errorf("server port must be between 1024 and 65535")
+	}
+	if config.Server.ReadTimeout < 0 {
+		return fmt.Errorf("read timeout cannot be negative")
+	}
+	if config.Server.WriteTimeout < 0 {
+		return fmt.Errorf("write timeout cannot be negative")
+	}
+
+	validLogLevels := map[string]bool{
+		"debug": true,
+		"info":  true,
+		"warn":  true,
+		"error": true,
+	}
+	if !validLogLevels[strings.ToLower(config.Server.LogLevel)] {
+		return fmt.Errorf("invalid log level: %s", config.Server.LogLevel)
+	}
+
+	return nil
+}
+
+func (c *AppConfig) GetDSN() string {
+	return fmt.Sprintf("host=%s port=%d user=%s password=%s sslmode=%s",
+		c.Database.Host,
+		c.Database.Port,
+		c.Database.Username,
+		c.Database.Password,
+		c.Database.SSLMode,
+	)
+}

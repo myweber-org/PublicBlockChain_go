@@ -269,4 +269,11 @@ func main() {
     cleaned := RemoveDuplicates(data)
     fmt.Println("Original:", data)
     fmt.Println("Cleaned:", cleaned)
+}package utils
+
+import "strings"
+
+func SanitizeString(input string) string {
+    trimmed := strings.TrimSpace(input)
+    return strings.Join(strings.Fields(trimmed), " ")
 }

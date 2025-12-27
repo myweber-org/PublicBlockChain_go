@@ -83,3 +83,131 @@ func overrideFromEnv(config *AppConfig) {
         config.LogLevel = val
     }
 }
+package config
+
+import (
+    "fmt"
+    "os"
+    "strconv"
+    "strings"
+)
+
+type DatabaseConfig struct {
+    Host     string
+    Port     int
+    Username string
+    Password string
+    Database string
+    SSLMode  string
+}
+
+type ServerConfig struct {
+    Port         int
+    ReadTimeout  int
+    WriteTimeout int
+    DebugMode    bool
+}
+
+type AppConfig struct {
+    Database DatabaseConfig
+    Server   ServerConfig
+    LogLevel string
+}
+
+func LoadConfig() (*AppConfig, error) {
+    dbConfig, err := loadDatabaseConfig()
+    if err != nil {
+        return nil, fmt.Errorf("failed to load database config: %w", err)
+    }
+
+    serverConfig, err := loadServerConfig()
+    if err != nil {
+        return nil, fmt.Errorf("failed to load server config: %w", err)
+    }
+
+    logLevel := getEnvWithDefault("LOG_LEVEL", "info")
+
+    return &AppConfig{
+        Database: *dbConfig,
+        Server:   *serverConfig,
+        LogLevel: logLevel,
+    }, nil
+}
+
+func loadDatabaseConfig() (*DatabaseConfig, error) {
+    host := getEnvRequired("DB_HOST")
+    portStr := getEnvRequired("DB_PORT")
+    username := getEnvRequired("DB_USERNAME")
+    password := getEnvRequired("DB_PASSWORD")
+    database := getEnvRequired("DB_NAME")
+    sslMode := getEnvWithDefault("DB_SSL_MODE", "require")
+
+    port, err := strconv.Atoi(portStr)
+    if err != nil {
+        return nil, fmt.Errorf("invalid DB_PORT value: %s", portStr)
+    }
+
+    if port < 1 || port > 65535 {
+        return nil, fmt.Errorf("DB_PORT must be between 1 and 65535")
+    }
+
+    return &DatabaseConfig{
+        Host:     host,
+        Port:     port,
+        Username: username,
+        Password: password,
+        Database: database,
+        SSLMode:  sslMode,
+    }, nil
+}
+
+func loadServerConfig() (*ServerConfig, error) {
+    portStr := getEnvWithDefault("SERVER_PORT", "8080")
+    readTimeoutStr := getEnvWithDefault("READ_TIMEOUT", "30")
+    writeTimeoutStr := getEnvWithDefault("WRITE_TIMEOUT", "30")
+    debugModeStr := getEnvWithDefault("DEBUG_MODE", "false")
+
+    port, err := strconv.Atoi(portStr)
+    if err != nil {
+        return nil, fmt.Errorf("invalid SERVER_PORT value: %s", portStr)
+    }
+
+    readTimeout, err := strconv.Atoi(readTimeoutStr)
+    if err != nil {
+        return nil, fmt.Errorf("invalid READ_TIMEOUT value: %s", readTimeoutStr)
+    }
+
+    writeTimeout, err := strconv.Atoi(writeTimeoutStr)
+    if err != nil {
+        return nil, fmt.Errorf("invalid WRITE_TIMEOUT value: %s", writeTimeoutStr)
+    }
+
+    debugMode := strings.ToLower(debugModeStr) == "true"
+
+    if port < 1 || port > 65535 {
+        return nil, fmt.Errorf("SERVER_PORT must be between 1 and 65535")
+    }
+
+    return &ServerConfig{
+        Port:         port,
+        ReadTimeout:  readTimeout,
+        WriteTimeout: writeTimeout,
+        DebugMode:    debugMode,
+    }, nil
+}
+
+func getEnvRequired(key string) string {
+    value := os.Getenv(key)
+    if value == "" {
+        panic(fmt.Sprintf("required environment variable %s is not set", key))
+    }
+    return value
+}
+
+func getEnvWithDefault(key, defaultValue string) string {
+    value := os.Getenv(key)
+    if value == "" {
+        return defaultValue
+    }
+    return value
+}

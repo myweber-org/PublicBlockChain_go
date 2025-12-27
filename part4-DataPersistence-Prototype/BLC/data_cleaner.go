@@ -3,7 +3,7 @@ package main
 
 import "fmt"
 
-func removeDuplicates(input []int) []int {
+func RemoveDuplicates(input []int) []int {
 	seen := make(map[int]bool)
 	result := []int{}
 
@@ -17,8 +17,8 @@ func removeDuplicates(input []int) []int {
 }
 
 func main() {
-	data := []int{1, 2, 2, 3, 4, 4, 5, 6, 6, 7}
-	cleanedData := removeDuplicates(data)
-	fmt.Println("Original data:", data)
-	fmt.Println("Cleaned data:", cleanedData)
+	data := []int{1, 2, 2, 3, 4, 4, 5, 1, 6}
+	cleaned := RemoveDuplicates(data)
+	fmt.Printf("Original: %v\n", data)
+	fmt.Printf("Cleaned: %v\n", cleaned)
 }

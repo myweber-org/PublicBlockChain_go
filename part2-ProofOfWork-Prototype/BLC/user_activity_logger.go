@@ -1,3 +1,4 @@
+
 package middleware
 
 import (
@@ -7,40 +8,33 @@ import (
 )
 
 type ActivityLog struct {
-	UserID    string
-	IPAddress string
+	Timestamp time.Time
 	Method    string
 	Path      string
-	Timestamp time.Time
+	UserAgent string
+	IP        string
 }
 
 func ActivityLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		
-		userID := "anonymous"
-		if authHeader := r.Header.Get("Authorization"); authHeader != "" {
-			userID = extractUserID(authHeader)
-		}
 
 		activity := ActivityLog{
-			UserID:    userID,
-			IPAddress: r.RemoteAddr,
+			Timestamp: start,
 			Method:    r.Method,
 			Path:      r.URL.Path,
-			Timestamp: start,
+			UserAgent: r.UserAgent(),
+			IP:        r.RemoteAddr,
 		}
 
-		log.Printf("Activity: %s %s by %s from %s", 
-			activity.Method, 
-			activity.Path, 
-			activity.UserID, 
-			activity.IPAddress)
+		log.Printf("Activity: %s %s from %s (%s) at %s",
+			activity.Method,
+			activity.Path,
+			activity.IP,
+			activity.UserAgent,
+			activity.Timestamp.Format(time.RFC3339),
+		)
 
 		next.ServeHTTP(w, r)
 	})
-}
-
-func extractUserID(token string) string {
-	return "user_" + token[:8]
 }

@@ -69,4 +69,93 @@ func main() {
 	}
 
 	fmt.Printf("%.2f %s = %.2f %s\n", amount, fromCurrency, result, toCurrency)
+}package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
+)
+
+type ExchangeRates struct {
+	Base  string             `json:"base"`
+	Rates map[string]float64 `json:"rates"`
+	Date  string             `json:"date"`
+}
+
+type CurrencyConverter struct {
+	rates     map[string]float64
+	lastFetch time.Time
+	cacheTTL  time.Duration
+}
+
+func NewCurrencyConverter() *CurrencyConverter {
+	return &CurrencyConverter{
+		rates:    make(map[string]float64),
+		cacheTTL: 30 * time.Minute,
+	}
+}
+
+func (c *CurrencyConverter) fetchRates() error {
+	if time.Since(c.lastFetch) < c.cacheTTL && len(c.rates) > 0 {
+		return nil
+	}
+
+	resp, err := http.Get("https://api.exchangerate-api.com/v4/latest/USD")
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	var rates ExchangeRates
+	if err := json.Unmarshal(body, &rates); err != nil {
+		return err
+	}
+
+	c.rates = rates.Rates
+	c.lastFetch = time.Now()
+	return nil
+}
+
+func (c *CurrencyConverter) Convert(amount float64, from, to string) (float64, error) {
+	if err := c.fetchRates(); err != nil {
+		return 0, err
+	}
+
+	fromRate, fromExists := c.rates[from]
+	toRate, toExists := c.rates[to]
+
+	if !fromExists || !toExists {
+		return 0, fmt.Errorf("unsupported currency code")
+	}
+
+	if from == "USD" {
+		return amount * toRate, nil
+	}
+
+	usdAmount := amount / fromRate
+	return usdAmount * toRate, nil
+}
+
+func main() {
+	converter := NewCurrencyConverter()
+
+	amount := 100.0
+	from := "EUR"
+	to := "JPY"
+
+	result, err := converter.Convert(amount, from, to)
+	if err != nil {
+		fmt.Printf("Conversion error: %v\n", err)
+		return
+	}
+
+	fmt.Printf("%.2f %s = %.2f %s\n", amount, from, result, to)
 }

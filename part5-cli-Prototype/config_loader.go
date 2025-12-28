@@ -91,4 +91,47 @@ func validateConfig(config *AppConfig) error {
 	}
 
 	return nil
+}package config
+
+import (
+    "encoding/json"
+    "os"
+    "strings"
+)
+
+type Config struct {
+    DatabaseURL  string `json:"database_url"`
+    APIPort      int    `json:"api_port"`
+    LogLevel     string `json:"log_level"`
+    CacheTimeout int    `json:"cache_timeout"`
+}
+
+func LoadConfig(filePath string) (*Config, error) {
+    file, err := os.Open(filePath)
+    if err != nil {
+        return nil, err
+    }
+    defer file.Close()
+
+    var config Config
+    decoder := json.NewDecoder(file)
+    if err := decoder.Decode(&config); err != nil {
+        return nil, err
+    }
+
+    config.DatabaseURL = replaceEnvVars(config.DatabaseURL)
+    config.LogLevel = replaceEnvVars(config.LogLevel)
+
+    return &config, nil
+}
+
+func replaceEnvVars(value string) string {
+    return os.ExpandEnv(value)
+}
+
+func GetEnv(key, defaultValue string) string {
+    if value := os.Getenv(key); value != "" {
+        return value
+    }
+    return defaultValue
 }

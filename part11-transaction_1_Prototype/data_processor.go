@@ -88,4 +88,33 @@ func ProcessCSVData(filePath string) ([]DataRecord, error) {
 	}
 
 	return data, nil
+}package data
+
+import (
+	"regexp"
+	"strings"
+)
+
+var (
+	emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	alphaRegex = regexp.MustCompile(`^[a-zA-Z\s]+$`)
+)
+
+func SanitizeInput(input string) string {
+	return strings.TrimSpace(input)
+}
+
+func ValidateEmail(email string) bool {
+	return emailRegex.MatchString(email)
+}
+
+func ValidateAlpha(input string) bool {
+	return alphaRegex.MatchString(input)
+}
+
+func TruncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }

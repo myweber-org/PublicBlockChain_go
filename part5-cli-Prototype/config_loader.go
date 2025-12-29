@@ -1,82 +1,75 @@
 package config
 
 import (
-	"errors"
-	"io/ioutil"
+	"encoding/json"
+	"fmt"
 	"os"
-	"path/filepath"
-
-	"gopkg.in/yaml.v3"
+	"reflect"
+	"strconv"
+	"strings"
 )
 
-type DatabaseConfig struct {
-	Host     string `yaml:"host"`
-	Port     int    `yaml:"port"`
-	Username string `yaml:"username"`
-	Password string `yaml:"password"`
-	Database string `yaml:"database"`
-	SSLMode  string `yaml:"ssl_mode"`
+type Config struct {
+	ServerPort int    `env:"SERVER_PORT" default:"8080"`
+	LogLevel   string `env:"LOG_LEVEL" default:"info"`
+	DBHost     string `env:"DB_HOST" default:"localhost"`
+	DBPort     int    `env:"DB_PORT" default:"5432"`
+	DBName     string `env:"DB_NAME" default:"appdb"`
+	EnableSSL  bool   `env:"ENABLE_SSL" default:"false"`
 }
 
-type ServerConfig struct {
-	Port         int    `yaml:"port"`
-	ReadTimeout  int    `yaml:"read_timeout"`
-	WriteTimeout int    `yaml:"write_timeout"`
-	DebugMode    bool   `yaml:"debug_mode"`
-	LogLevel     string `yaml:"log_level"`
+func Load() (*Config, error) {
+	cfg := &Config{}
+	v := reflect.ValueOf(cfg).Elem()
+	t := v.Type()
+
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		envTag := field.Tag.Get("env")
+		defaultVal := field.Tag.Get("default")
+
+		envValue := os.Getenv(envTag)
+		if envValue == "" {
+			envValue = defaultVal
+		}
+
+		if err := setFieldValue(v.Field(i), envValue); err != nil {
+			return nil, fmt.Errorf("failed to set field %s: %w", field.Name, err)
+		}
+	}
+
+	if err := validateConfig(cfg); err != nil {
+		return nil, fmt.Errorf("config validation failed: %w", err)
+	}
+
+	return cfg, nil
 }
 
-type AppConfig struct {
-	Server   ServerConfig   `yaml:"server"`
-	Database DatabaseConfig `yaml:"database"`
+func setFieldValue(field reflect.Value, value string) error {
+	switch field.Kind() {
+	case reflect.String:
+		field.SetString(value)
+	case reflect.Int:
+		intVal, err := strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+		field.SetInt(int64(intVal))
+	case reflect.Bool:
+		boolVal, err := strconv.ParseBool(strings.ToLower(value))
+		if err != nil {
+			return err
+		}
+		field.SetBool(boolVal)
+	default:
+		return fmt.Errorf("unsupported field type: %s", field.Kind())
+	}
+	return nil
 }
 
-func LoadConfig(configPath string) (*AppConfig, error) {
-	if configPath == "" {
-		return nil, errors.New("config path cannot be empty")
-	}
-
-	absPath, err := filepath.Abs(configPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if _, err := os.Stat(absPath); os.IsNotExist(err) {
-		return nil, errors.New("config file does not exist")
-	}
-
-	data, err := ioutil.ReadFile(absPath)
-	if err != nil {
-		return nil, err
-	}
-
-	var config AppConfig
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return nil, err
-	}
-
-	if err := validateConfig(&config); err != nil {
-		return nil, err
-	}
-
-	return &config, nil
-}
-
-func validateConfig(config *AppConfig) error {
-	if config.Server.Port <= 0 || config.Server.Port > 65535 {
-		return errors.New("server port must be between 1 and 65535")
-	}
-
-	if config.Database.Port <= 0 || config.Database.Port > 65535 {
-		return errors.New("database port must be between 1 and 65535")
-	}
-
-	if config.Database.Host == "" {
-		return errors.New("database host cannot be empty")
-	}
-
-	if config.Database.Database == "" {
-		return errors.New("database name cannot be empty")
+func validateConfig(cfg *Config) error {
+	if cfg.ServerPort < 1 || cfg.ServerPort > 65535 {
+		return fmt.Errorf("invalid server port: %d", cfg.ServerPort)
 	}
 
 	validLogLevels := map[string]bool{
@@ -85,53 +78,14 @@ func validateConfig(config *AppConfig) error {
 		"warn":  true,
 		"error": true,
 	}
-
-	if !validLogLevels[config.Server.LogLevel] {
-		return errors.New("invalid log level specified")
+	if !validLogLevels[strings.ToLower(cfg.LogLevel)] {
+		return fmt.Errorf("invalid log level: %s", cfg.LogLevel)
 	}
 
 	return nil
-}package config
-
-import (
-    "encoding/json"
-    "os"
-    "strings"
-)
-
-type Config struct {
-    DatabaseURL  string `json:"database_url"`
-    APIPort      int    `json:"api_port"`
-    LogLevel     string `json:"log_level"`
-    CacheTimeout int    `json:"cache_timeout"`
 }
 
-func LoadConfig(filePath string) (*Config, error) {
-    file, err := os.Open(filePath)
-    if err != nil {
-        return nil, err
-    }
-    defer file.Close()
-
-    var config Config
-    decoder := json.NewDecoder(file)
-    if err := decoder.Decode(&config); err != nil {
-        return nil, err
-    }
-
-    config.DatabaseURL = replaceEnvVars(config.DatabaseURL)
-    config.LogLevel = replaceEnvVars(config.LogLevel)
-
-    return &config, nil
-}
-
-func replaceEnvVars(value string) string {
-    return os.ExpandEnv(value)
-}
-
-func GetEnv(key, defaultValue string) string {
-    if value := os.Getenv(key); value != "" {
-        return value
-    }
-    return defaultValue
+func (c *Config) String() string {
+	data, _ := json.MarshalIndent(c, "", "  ")
+	return string(data)
 }

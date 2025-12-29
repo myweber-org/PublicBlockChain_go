@@ -147,3 +147,25 @@ func calculateStatistics(records []Record) (float64, float64, int) {
 	average := sum / float64(count)
 	return average, max, count
 }
+package data_processor
+
+import (
+	"regexp"
+	"strings"
+)
+
+func SanitizeUsername(input string) string {
+	re := regexp.MustCompile(`[^a-zA-Z0-9_-]`)
+	sanitized := re.ReplaceAllString(input, "")
+	return strings.TrimSpace(sanitized)
+}
+
+func ValidateEmail(email string) bool {
+	pattern := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
+	matched, _ := regexp.MatchString(pattern, email)
+	return matched
+}
+
+func TrimAndLower(input string) string {
+	return strings.ToLower(strings.TrimSpace(input))
+}

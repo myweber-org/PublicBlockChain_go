@@ -142,3 +142,30 @@ func (dp *DataProcessor) ExtractDomain(email string) (string, bool) {
 func (dp *DataProcessor) NormalizeWhitespace(input string) string {
 	return dp.whitespaceRegex.ReplaceAllString(input, " ")
 }
+package utils
+
+import (
+	"regexp"
+	"strings"
+)
+
+// SanitizeInput removes potentially harmful characters and trims whitespace.
+// It returns an empty string if the input contains disallowed patterns.
+func SanitizeInput(input string) string {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		return ""
+	}
+
+	// Reject input containing script tags or SQL comment patterns
+	maliciousPattern := regexp.MustCompile(`(?i)<script|--|/\*|\*/`)
+	if maliciousPattern.MatchString(trimmed) {
+		return ""
+	}
+
+	// Allow only alphanumeric, spaces, and basic punctuation
+	safePattern := regexp.MustCompile(`[^a-zA-Z0-9\s.,!?-]`)
+	sanitized := safePattern.ReplaceAllString(trimmed, "")
+
+	return strings.TrimSpace(sanitized)
+}

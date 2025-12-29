@@ -1,112 +1,55 @@
 package middleware
 
 import (
-    "net/http"
-    "strings"
-    "github.com/golang-jwt/jwt/v5"
-)
-
-type Claims struct {
-    Username string `json:"username"`
-    Role     string `json:"role"`
-    jwt.RegisteredClaims
-}
-
-func AuthMiddleware(secretKey []byte) func(http.Handler) http.Handler {
-    return func(next http.Handler) http.Handler {
-        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-            authHeader := r.Header.Get("Authorization")
-            if authHeader == "" {
-                http.Error(w, "Authorization header required", http.StatusUnauthorized)
-                return
-            }
-
-            parts := strings.Split(authHeader, " ")
-            if len(parts) != 2 || parts[0] != "Bearer" {
-                http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
-                return
-            }
-
-            tokenStr := parts[1]
-            claims := &Claims{}
-
-            token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
-                return secretKey, nil
-            })
-
-            if err != nil || !token.Valid {
-                http.Error(w, "Invalid token", http.StatusUnauthorized)
-                return
-            }
-
-            r.Header.Set("X-Username", claims.Username)
-            r.Header.Set("X-Role", claims.Role)
-            
-            next.ServeHTTP(w, r)
-        })
-    }
-}package middleware
-
-import (
+	"context"
 	"net/http"
 	"strings"
 )
 
-type Authenticator struct {
-	secretKey string
-}
+type contextKey string
 
-func NewAuthenticator(secretKey string) *Authenticator {
-	return &Authenticator{secretKey: secretKey}
-}
+const userIDKey contextKey = "userID"
 
-func (a *Authenticator) ValidateToken(token string) bool {
-	if token == "" {
-		return false
-	}
-	
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 {
-		return false
-	}
-	
-	return validateSignature(parts, a.secretKey)
-}
-
-func validateSignature(parts []string, secret string) bool {
-	header := parts[0]
-	payload := parts[1]
-	signature := parts[2]
-	
-	expectedSig := computeHMAC(header+"."+payload, secret)
-	return signature == expectedSig
-}
-
-func computeHMAC(data string, secret string) string {
-	hash := hmac.New(sha256.New, []byte(secret))
-	hash.Write([]byte(data))
-	return base64.RawURLEncoding.EncodeToString(hash.Sum(nil))
-}
-
-func (a *Authenticator) Middleware(next http.Handler) http.Handler {
+func Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
-			http.Error(w, "Missing authorization header", http.StatusUnauthorized)
+			http.Error(w, "Authorization header required", http.StatusUnauthorized)
 			return
 		}
-		
-		token := strings.TrimPrefix(authHeader, "Bearer ")
-		if token == authHeader {
+
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
 			http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
 			return
 		}
-		
-		if !a.ValidateToken(token) {
+
+		tokenString := parts[1]
+		userID, err := validateToken(tokenString)
+		if err != nil {
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
 		}
-		
-		next.ServeHTTP(w, r)
+
+		ctx := context.WithValue(r.Context(), userIDKey, userID)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func GetUserID(ctx context.Context) (string, bool) {
+	userID, ok := ctx.Value(userIDKey).(string)
+	return userID, ok
+}
+
+func validateToken(tokenString string) (string, error) {
+	// This is a placeholder for actual JWT validation logic
+	// In production, use a proper JWT library like github.com/golang-jwt/jwt
+	// For this example, we'll assume a simple mock validation
+	if tokenString == "" || len(tokenString) < 10 {
+		return "", http.ErrAbortHandler
+	}
+	
+	// Mock extraction of user ID from token
+	// In real implementation, parse JWT claims
+	return "user_" + tokenString[:8], nil
 }

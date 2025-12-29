@@ -109,4 +109,66 @@ type ConfigError struct {
 
 func (e *ConfigError) Error() string {
     return "config validation error: " + e.Field + " - " + e.Message
+}package config
+
+import (
+	"io/ioutil"
+	"log"
+
+	"gopkg.in/yaml.v2"
+)
+
+type Config struct {
+	Server struct {
+		Host string `yaml:"host"`
+		Port int    `yaml:"port"`
+	} `yaml:"server"`
+	Database struct {
+		Username string `yaml:"username"`
+		Password string `yaml:"password"`
+		Host     string `yaml:"host"`
+		Port     int    `yaml:"port"`
+		Name     string `yaml:"name"`
+	} `yaml:"database"`
+	Logging struct {
+		Level  string `yaml:"level"`
+		Output string `yaml:"output"`
+	} `yaml:"logging"`
+}
+
+func LoadConfig(path string) (*Config, error) {
+	config := &Config{}
+
+	file, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	err = yaml.Unmarshal(file, config)
+	if err != nil {
+		return nil, err
+	}
+
+	return config, nil
+}
+
+func DefaultConfig() *Config {
+	config := &Config{}
+	config.Server.Host = "localhost"
+	config.Server.Port = 8080
+	config.Database.Host = "localhost"
+	config.Database.Port = 5432
+	config.Logging.Level = "info"
+	config.Logging.Output = "stdout"
+	return config
+}
+
+func ValidateConfig(config *Config) error {
+	if config.Server.Port < 1 || config.Server.Port > 65535 {
+		log.Fatal("Invalid server port configuration")
+	}
+	if config.Database.Port < 1 || config.Database.Port > 65535 {
+		log.Fatal("Invalid database port configuration")
+	}
+	return nil
 }

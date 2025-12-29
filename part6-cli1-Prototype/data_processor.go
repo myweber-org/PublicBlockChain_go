@@ -2,42 +2,108 @@
 package main
 
 import (
-    "fmt"
-    "strings"
+	"encoding/csv"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
 )
 
-type UserData struct {
-    Username string
-    Email    string
+type DataRecord struct {
+	ID    int
+	Name  string
+	Value float64
 }
 
-func normalizeUsername(username string) string {
-    return strings.ToLower(strings.TrimSpace(username))
+func ProcessCSVFile(filename string) ([]DataRecord, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	records := make([]DataRecord, 0)
+
+	// Skip header
+	_, err = reader.Read()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read header: %w", err)
+	}
+
+	for {
+		row, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to read row: %w", err)
+		}
+
+		if len(row) < 3 {
+			continue
+		}
+
+		id, err := strconv.Atoi(row[0])
+		if err != nil {
+			continue
+		}
+
+		name := row[1]
+
+		value, err := strconv.ParseFloat(row[2], 64)
+		if err != nil {
+			continue
+		}
+
+		records = append(records, DataRecord{
+			ID:    id,
+			Name:  name,
+			Value: value,
+		})
+	}
+
+	return records, nil
 }
 
-func validateEmail(email string) bool {
-    return strings.Contains(email, "@") && strings.Contains(email, ".")
+func ValidateRecords(records []DataRecord) []DataRecord {
+	validRecords := make([]DataRecord, 0)
+	for _, record := range records {
+		if record.ID > 0 && record.Name != "" && record.Value >= 0 {
+			validRecords = append(validRecords, record)
+		}
+	}
+	return validRecords
 }
 
-func processUserData(username, email string) (*UserData, error) {
-    normalizedUsername := normalizeUsername(username)
-    
-    if !validateEmail(email) {
-        return nil, fmt.Errorf("invalid email format")
-    }
-    
-    return &UserData{
-        Username: normalizedUsername,
-        Email:    strings.ToLower(strings.TrimSpace(email)),
-    }, nil
+func CalculateAverage(records []DataRecord) float64 {
+	if len(records) == 0 {
+		return 0
+	}
+
+	total := 0.0
+	for _, record := range records {
+		total += record.Value
+	}
+	return total / float64(len(records))
 }
 
 func main() {
-    user, err := processUserData("  JohnDoe  ", "john@example.com")
-    if err != nil {
-        fmt.Println("Error:", err)
-        return
-    }
-    
-    fmt.Printf("Processed user: %+v\n", user)
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: data_processor <csv_file>")
+		return
+	}
+
+	records, err := ProcessCSVFile(os.Args[1])
+	if err != nil {
+		fmt.Printf("Error processing file: %v\n", err)
+		return
+	}
+
+	validRecords := ValidateRecords(records)
+	average := CalculateAverage(validRecords)
+
+	fmt.Printf("Total records: %d\n", len(records))
+	fmt.Printf("Valid records: %d\n", len(validRecords))
+	fmt.Printf("Average value: %.2f\n", average)
 }

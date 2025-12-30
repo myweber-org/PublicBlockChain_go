@@ -29,54 +29,38 @@ func (dc *DataCleaner) IsDuplicate(value string) bool {
 	return false
 }
 
-func (dc *DataCleaner) Deduplicate(values []string) []string {
-	dc.seen = make(map[string]bool)
-	var result []string
-	for _, v := range values {
-		if !dc.IsDuplicate(v) {
-			result = append(result, v)
-		}
+func (dc *DataCleaner) AddItem(value string) bool {
+	normalized := dc.Normalize(value)
+	if dc.seen[normalized] {
+		return false
 	}
-	return result
+	dc.seen[normalized] = true
+	return true
+}
+
+func (dc *DataCleaner) UniqueCount() int {
+	return len(dc.seen)
+}
+
+func (dc *DataCleaner) Reset() {
+	dc.seen = make(map[string]bool)
 }
 
 func main() {
 	cleaner := NewDataCleaner()
 	
-	data := []string{"Apple", " apple ", "BANANA", "banana", "Cherry", "cherry "}
+	samples := []string{"  Apple  ", "apple", "BANANA", "banana ", "Cherry"}
 	
-	fmt.Println("Original data:", data)
-	
-	deduped := cleaner.Deduplicate(data)
-	fmt.Println("Deduplicated data:", deduped)
-	
-	testValue := "  APPLE  "
-	fmt.Printf("Is '%s' duplicate? %v\n", testValue, cleaner.IsDuplicate(testValue))
-}package main
-
-import "fmt"
-
-func RemoveDuplicates[T comparable](slice []T) []T {
-	seen := make(map[T]bool)
-	result := []T{}
-
-	for _, item := range slice {
-		if !seen[item] {
-			seen[item] = true
-			result = append(result, item)
-		}
+	fmt.Println("Processing items:")
+	for _, item := range samples {
+		normalized := cleaner.Normalize(item)
+		isDup := cleaner.IsDuplicate(item)
+		fmt.Printf("Original: '%s' -> Normalized: '%s' -> Duplicate: %v\n", 
+			item, normalized, isDup)
 	}
-	return result
-}
-
-func main() {
-	numbers := []int{1, 2, 2, 3, 4, 4, 5}
-	uniqueNumbers := RemoveDuplicates(numbers)
-	fmt.Println("Original:", numbers)
-	fmt.Println("Unique:", uniqueNumbers)
-
-	strings := []string{"apple", "banana", "apple", "orange"}
-	uniqueStrings := RemoveDuplicates(strings)
-	fmt.Println("Original:", strings)
-	fmt.Println("Unique:", uniqueStrings)
+	
+	fmt.Printf("\nTotal unique items: %d\n", cleaner.UniqueCount())
+	
+	cleaner.Reset()
+	fmt.Printf("After reset, unique items: %d\n", cleaner.UniqueCount())
 }

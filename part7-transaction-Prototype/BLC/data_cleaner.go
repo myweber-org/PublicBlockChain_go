@@ -1,23 +1,42 @@
+package csvutil
 
-package main
+import (
+	"encoding/csv"
+	"io"
+	"strings"
+)
 
-import "fmt"
+func CleanCSVData(input io.Reader, output io.Writer) error {
+	reader := csv.NewReader(input)
+	writer := csv.NewWriter(output)
+	defer writer.Flush()
 
-func RemoveDuplicates(input []int) []int {
-	seen := make(map[int]bool)
-	result := []int{}
-	for _, value := range input {
-		if !seen[value] {
-			seen[value] = true
-			result = append(result, value)
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		cleaned := make([]string, 0, len(record))
+		hasData := false
+
+		for _, field := range record {
+			trimmed := strings.TrimSpace(field)
+			cleaned = append(cleaned, trimmed)
+			if trimmed != "" {
+				hasData = true
+			}
+		}
+
+		if hasData {
+			if err := writer.Write(cleaned); err != nil {
+				return err
+			}
 		}
 	}
-	return result
-}
 
-func main() {
-	data := []int{1, 2, 2, 3, 4, 4, 5}
-	cleaned := RemoveDuplicates(data)
-	fmt.Println("Original:", data)
-	fmt.Println("Cleaned:", cleaned)
+	return nil
 }

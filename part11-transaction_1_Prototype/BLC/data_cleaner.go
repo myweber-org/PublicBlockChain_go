@@ -1,79 +1,21 @@
-package main
+package datautils
 
-import "fmt"
+import "sort"
 
-func RemoveDuplicates[T comparable](slice []T) []T {
-	seen := make(map[T]bool)
-	result := []T{}
+func RemoveDuplicates(input []string) []string {
+	if len(input) == 0 {
+		return input
+	}
 
-	for _, item := range slice {
-		if !seen[item] {
-			seen[item] = true
-			result = append(result, item)
+	sort.Strings(input)
+
+	writeIndex := 1
+	for readIndex := 1; readIndex < len(input); readIndex++ {
+		if input[readIndex] != input[readIndex-1] {
+			input[writeIndex] = input[readIndex]
+			writeIndex++
 		}
 	}
-	return result
-}
 
-func main() {
-	numbers := []int{1, 2, 2, 3, 4, 4, 5}
-	uniqueNumbers := RemoveDuplicates(numbers)
-	fmt.Println("Original:", numbers)
-	fmt.Println("Unique:", uniqueNumbers)
-
-	strings := []string{"apple", "banana", "apple", "orange"}
-	uniqueStrings := RemoveDuplicates(strings)
-	fmt.Println("Original:", strings)
-	fmt.Println("Unique:", uniqueStrings)
-}package main
-
-import (
-	"fmt"
-	"strings"
-)
-
-func CleanStringSlice(input []string) []string {
-	seen := make(map[string]bool)
-	var result []string
-	for _, item := range input {
-		trimmed := strings.TrimSpace(item)
-		if trimmed == "" {
-			continue
-		}
-		if !seen[trimmed] {
-			seen[trimmed] = true
-			result = append(result, trimmed)
-		}
-	}
-	return result
-}
-
-func main() {
-	data := []string{"  apple ", "banana", "  apple", "banana ", "", "  cherry  "}
-	cleaned := CleanStringSlice(data)
-	fmt.Println("Original:", data)
-	fmt.Println("Cleaned:", cleaned)
-}
-package main
-
-import "fmt"
-
-func RemoveDuplicates(input []int) []int {
-	seen := make(map[int]bool)
-	result := []int{}
-
-	for _, value := range input {
-		if !seen[value] {
-			seen[value] = true
-			result = append(result, value)
-		}
-	}
-	return result
-}
-
-func main() {
-	data := []int{1, 2, 2, 3, 4, 4, 5, 6, 6}
-	cleaned := RemoveDuplicates(data)
-	fmt.Println("Original:", data)
-	fmt.Println("Cleaned:", cleaned)
+	return input[:writeIndex]
 }

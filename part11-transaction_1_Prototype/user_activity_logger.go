@@ -102,4 +102,93 @@ func extractUserID(r *http.Request) string {
 		return userID
 	}
 	return "anonymous"
+}package middleware
+
+import (
+	"log"
+	"net/http"
+	"sync"
+	"time"
+)
+
+type ActivityLogger struct {
+	mu      sync.RWMutex
+	clients map[string]*clientActivity
+	limit   int
+	window  time.Duration
+}
+
+type clientActivity struct {
+	count    int
+	lastSeen time.Time
+}
+
+func NewActivityLogger(limit int, window time.Duration) *ActivityLogger {
+	return &ActivityLogger{
+		clients: make(map[string]*clientActivity),
+		limit:   limit,
+		window:  window,
+	}
+}
+
+func (al *ActivityLogger) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		clientIP := r.RemoteAddr
+		userAgent := r.UserAgent()
+		path := r.URL.Path
+
+		if !al.allowRequest(clientIP) {
+			http.Error(w, "Too many requests", http.StatusTooManyRequests)
+			return
+		}
+
+		log.Printf("Activity: %s - %s - %s", clientIP, userAgent, path)
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (al *ActivityLogger) allowRequest(clientIP string) bool {
+	al.mu.Lock()
+	defer al.mu.Unlock()
+
+	now := time.Now()
+	activity, exists := al.clients[clientIP]
+
+	if !exists {
+		al.clients[clientIP] = &clientActivity{
+			count:    1,
+			lastSeen: now,
+		}
+		return true
+	}
+
+	if now.Sub(activity.lastSeen) > al.window {
+		activity.count = 1
+		activity.lastSeen = now
+		return true
+	}
+
+	if activity.count >= al.limit {
+		return false
+	}
+
+	activity.count++
+	activity.lastSeen = now
+	return true
+}
+
+func (al *ActivityLogger) Cleanup() {
+	ticker := time.NewTicker(al.window * 2)
+	go func() {
+		for range ticker.C {
+			al.mu.Lock()
+			now := time.Now()
+			for ip, activity := range al.clients {
+				if now.Sub(activity.lastSeen) > al.window*2 {
+					delete(al.clients, ip)
+				}
+			}
+			al.mu.Unlock()
+		}
+	}()
 }

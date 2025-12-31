@@ -159,3 +159,83 @@ func main() {
         fmt.Printf("ID: %d, Email: %s, Phone: %s\n", record.ID, record.Email, record.Phone)
     }
 }
+package main
+
+import (
+    "fmt"
+    "strings"
+)
+
+type DataRecord struct {
+    ID    int
+    Email string
+    Phone string
+}
+
+func RemoveDuplicates(records []DataRecord) []DataRecord {
+    seen := make(map[int]bool)
+    result := []DataRecord{}
+    
+    for _, record := range records {
+        if !seen[record.ID] {
+            seen[record.ID] = true
+            result = append(result, record)
+        }
+    }
+    return result
+}
+
+func ValidateEmail(email string) bool {
+    if !strings.Contains(email, "@") {
+        return false
+    }
+    parts := strings.Split(email, "@")
+    if len(parts) != 2 {
+        return false
+    }
+    return len(parts[0]) > 0 && len(parts[1]) > 0
+}
+
+func CleanPhoneNumber(phone string) string {
+    var builder strings.Builder
+    for _, ch := range phone {
+        if ch >= '0' && ch <= '9' {
+            builder.WriteRune(ch)
+        }
+    }
+    return builder.String()
+}
+
+func ProcessRecords(records []DataRecord) []DataRecord {
+    uniqueRecords := RemoveDuplicates(records)
+    
+    for i := range uniqueRecords {
+        uniqueRecords[i].Phone = CleanPhoneNumber(uniqueRecords[i].Phone)
+    }
+    
+    validRecords := []DataRecord{}
+    for _, record := range uniqueRecords {
+        if ValidateEmail(record.Email) {
+            validRecords = append(validRecords, record)
+        }
+    }
+    
+    return validRecords
+}
+
+func main() {
+    sampleData := []DataRecord{
+        {1, "user@example.com", "(123) 456-7890"},
+        {2, "invalid-email", "555-1234"},
+        {1, "user@example.com", "1234567890"},
+        {3, "another@test.org", "+1-800-555-0199"},
+    }
+    
+    cleaned := ProcessRecords(sampleData)
+    
+    fmt.Printf("Processed %d records\n", len(cleaned))
+    for _, record := range cleaned {
+        fmt.Printf("ID: %d, Email: %s, Phone: %s\n", 
+            record.ID, record.Email, record.Phone)
+    }
+}

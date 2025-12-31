@@ -1,109 +1,53 @@
-
 package main
 
 import (
-	"encoding/csv"
+	"encoding/json"
 	"fmt"
-	"io"
-	"os"
-	"strconv"
+	"regexp"
+	"strings"
 )
 
-type DataRecord struct {
-	ID    int
-	Name  string
-	Value float64
+type UserData struct {
+	Email    string `json:"email"`
+	Username string `json:"username"`
+	Age      int    `json:"age"`
 }
 
-func ProcessCSVFile(filename string) ([]DataRecord, error) {
-	file, err := os.Open(filename)
+func ValidateEmail(email string) bool {
+	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	return emailRegex.MatchString(email)
+}
+
+func SanitizeUsername(username string) string {
+	return strings.TrimSpace(username)
+}
+
+func ProcessUserData(rawData []byte) (*UserData, error) {
+	var data UserData
+	err := json.Unmarshal(rawData, &data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open file: %w", err)
-	}
-	defer file.Close()
-
-	reader := csv.NewReader(file)
-	records := make([]DataRecord, 0)
-
-	// Skip header
-	_, err = reader.Read()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read header: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
 	}
 
-	for {
-		row, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("failed to read row: %w", err)
-		}
-
-		if len(row) < 3 {
-			continue
-		}
-
-		id, err := strconv.Atoi(row[0])
-		if err != nil {
-			continue
-		}
-
-		name := row[1]
-
-		value, err := strconv.ParseFloat(row[2], 64)
-		if err != nil {
-			continue
-		}
-
-		records = append(records, DataRecord{
-			ID:    id,
-			Name:  name,
-			Value: value,
-		})
+	if !ValidateEmail(data.Email) {
+		return nil, fmt.Errorf("invalid email format: %s", data.Email)
 	}
 
-	return records, nil
-}
+	data.Username = SanitizeUsername(data.Username)
 
-func ValidateRecords(records []DataRecord) []DataRecord {
-	validRecords := make([]DataRecord, 0)
-	for _, record := range records {
-		if record.ID > 0 && record.Name != "" && record.Value >= 0 {
-			validRecords = append(validRecords, record)
-		}
-	}
-	return validRecords
-}
-
-func CalculateAverage(records []DataRecord) float64 {
-	if len(records) == 0 {
-		return 0
+	if data.Age < 0 || data.Age > 150 {
+		return nil, fmt.Errorf("age out of valid range: %d", data.Age)
 	}
 
-	total := 0.0
-	for _, record := range records {
-		total += record.Value
-	}
-	return total / float64(len(records))
+	return &data, nil
 }
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: data_processor <csv_file>")
-		return
-	}
-
-	records, err := ProcessCSVFile(os.Args[1])
+	rawJSON := `{"email":"test@example.com","username":"  john_doe  ","age":25}`
+	processedData, err := ProcessUserData([]byte(rawJSON))
 	if err != nil {
-		fmt.Printf("Error processing file: %v\n", err)
+		fmt.Printf("Error processing data: %v\n", err)
 		return
 	}
-
-	validRecords := ValidateRecords(records)
-	average := CalculateAverage(validRecords)
-
-	fmt.Printf("Total records: %d\n", len(records))
-	fmt.Printf("Valid records: %d\n", len(validRecords))
-	fmt.Printf("Average value: %.2f\n", average)
+	fmt.Printf("Processed data: %+v\n", processedData)
 }

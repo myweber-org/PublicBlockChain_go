@@ -45,4 +45,56 @@ func ProcessUserInput(username, email string, age int) (UserData, error) {
 		return UserData{}, err
 	}
 	return userData, nil
+}package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+)
+
+// DataPayload represents a simple JSON structure
+type DataPayload struct {
+	ID      int    `json:"id"`
+	Name    string `json:"name"`
+	Active  bool   `json:"active"`
+	Version string `json:"version,omitempty"`
+}
+
+// ValidatePayload checks if the DataPayload has valid fields
+func ValidatePayload(p *DataPayload) error {
+	if p.ID <= 0 {
+		return fmt.Errorf("invalid ID: must be positive integer")
+	}
+	if p.Name == "" {
+		return fmt.Errorf("name cannot be empty")
+	}
+	return nil
+}
+
+// ParseJSONData unmarshals JSON bytes into a DataPayload and validates it
+func ParseJSONData(rawData []byte) (*DataPayload, error) {
+	var payload DataPayload
+	if err := json.Unmarshal(rawData, &payload); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
+	}
+
+	if err := ValidatePayload(&payload); err != nil {
+		return nil, fmt.Errorf("validation failed: %w", err)
+	}
+
+	return &payload, nil
+}
+
+func main() {
+	// Example JSON data
+	jsonStr := `{"id": 101, "name": "TestItem", "active": true}`
+
+	payload, err := ParseJSONData([]byte(jsonStr))
+	if err != nil {
+		log.Fatalf("Error processing data: %v", err)
+	}
+
+	fmt.Printf("Processed payload: ID=%d, Name=%s, Active=%t\n",
+		payload.ID, payload.Name, payload.Active)
 }

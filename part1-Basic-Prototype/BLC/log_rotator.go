@@ -394,4 +394,139 @@ func (rl *RotatingLogger) Close() error {
 		return rl.file.Close()
 	}
 	return nil
+}package main
+
+import (
+    "fmt"
+    "io"
+    "os"
+    "path/filepath"
+    "sort"
+    "strconv"
+    "strings"
+    "time"
+)
+
+const (
+    maxFileSize  = 10 * 1024 * 1024 // 10MB
+    maxBackups   = 5
+    logExtension = ".log"
+)
+
+type LogRotator struct {
+    filePath string
+    file     *os.File
+    size     int64
+}
+
+func NewLogRotator(path string) (*LogRotator, error) {
+    rotator := &LogRotator{filePath: path}
+    if err := rotator.openFile(); err != nil {
+        return nil, err
+    }
+    return rotator, nil
+}
+
+func (lr *LogRotator) Write(p []byte) (int, error) {
+    if lr.size+int64(len(p)) > maxFileSize {
+        if err := lr.rotate(); err != nil {
+            return 0, err
+        }
+    }
+    n, err := lr.file.Write(p)
+    if err == nil {
+        lr.size += int64(n)
+    }
+    return n, err
+}
+
+func (lr *LogRotator) rotate() error {
+    if lr.file != nil {
+        lr.file.Close()
+    }
+
+    baseDir := filepath.Dir(lr.filePath)
+    baseName := filepath.Base(lr.filePath)
+    nameWithoutExt := strings.TrimSuffix(baseName, logExtension)
+
+    files, err := filepath.Glob(filepath.Join(baseDir, nameWithoutExt+".*"+logExtension))
+    if err != nil {
+        return err
+    }
+
+    var backups []string
+    for _, f := range files {
+        if strings.HasPrefix(filepath.Base(f), nameWithoutExt+".") {
+            backups = append(backups, f)
+        }
+    }
+
+    sort.Sort(sort.Reverse(sort.StringSlice(backups)))
+
+    for i, backup := range backups {
+        if i >= maxBackups-1 {
+            os.Remove(backup)
+            continue
+        }
+        parts := strings.Split(filepath.Base(backup), ".")
+        if len(parts) < 3 {
+            continue
+        }
+        num, err := strconv.Atoi(parts[1])
+        if err != nil {
+            continue
+        }
+        newName := filepath.Join(baseDir, fmt.Sprintf("%s.%d%s", nameWithoutExt, num+1, logExtension))
+        os.Rename(backup, newName)
+    }
+
+    newBackup := filepath.Join(baseDir, fmt.Sprintf("%s.1%s", nameWithoutExt, logExtension))
+    if err := os.Rename(lr.filePath, newBackup); err != nil && !os.IsNotExist(err) {
+        return err
+    }
+
+    return lr.openFile()
+}
+
+func (lr *LogRotator) openFile() error {
+    file, err := os.OpenFile(lr.filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+    if err != nil {
+        return err
+    }
+    info, err := file.Stat()
+    if err != nil {
+        file.Close()
+        return err
+    }
+    lr.file = file
+    lr.size = info.Size()
+    return nil
+}
+
+func (lr *LogRotator) Close() error {
+    if lr.file != nil {
+        return lr.file.Close()
+    }
+    return nil
+}
+
+func main() {
+    rotator, err := NewLogRotator("app.log")
+    if err != nil {
+        fmt.Printf("Failed to create log rotator: %v\n", err)
+        return
+    }
+    defer rotator.Close()
+
+    for i := 0; i < 1000; i++ {
+        logEntry := fmt.Sprintf("[%s] Log entry %d: Test message for rotation\n",
+            time.Now().Format("2006-01-02 15:04:05"), i)
+        if _, err := rotator.Write([]byte(logEntry)); err != nil {
+            fmt.Printf("Write error: %v\n", err)
+            break
+        }
+        time.Sleep(10 * time.Millisecond)
+    }
+
+    fmt.Println("Log rotation test completed")
 }

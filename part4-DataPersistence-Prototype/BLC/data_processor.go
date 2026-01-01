@@ -79,3 +79,27 @@ func isValidCategory(category string) bool {
 	}
 	return validCategories[category]
 }
+package main
+
+import (
+	"strings"
+	"unicode"
+)
+
+func ProcessInput(input string) (string, error) {
+	if input == "" {
+		return "", nil
+	}
+
+	trimmed := strings.TrimSpace(input)
+	var cleaned strings.Builder
+
+	for _, r := range trimmed {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsSpace(r) {
+			cleaned.WriteRune(r)
+		}
+	}
+
+	result := strings.Join(strings.Fields(cleaned.String()), " ")
+	return result, nil
+}

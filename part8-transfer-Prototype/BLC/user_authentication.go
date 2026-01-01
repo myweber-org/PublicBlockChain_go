@@ -37,8 +37,8 @@ func AuthMiddleware(next http.Handler) http.Handler {
 }
 
 func validateToken(tokenString string) (string, error) {
-	// Token validation logic here
-	// This is a placeholder implementation
+	// Simplified token validation logic
+	// In production, use a proper JWT library
 	if tokenString == "valid_token_example" {
 		return "user123", nil
 	}

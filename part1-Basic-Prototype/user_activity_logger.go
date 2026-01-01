@@ -141,4 +141,83 @@ func main() {
 	}
 
 	fmt.Println("Activity logging completed")
+}package middleware
+
+import (
+    "net/http"
+    "sync"
+    "time"
+)
+
+type ActivityLogger struct {
+    requests map[string][]time.Time
+    mu       sync.RWMutex
+    limit    int
+    window   time.Duration
+}
+
+func NewActivityLogger(limit int, window time.Duration) *ActivityLogger {
+    return &ActivityLogger{
+        requests: make(map[string][]time.Time),
+        limit:    limit,
+        window:   window,
+    }
+}
+
+func (al *ActivityLogger) Log(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        ip := r.RemoteAddr
+        path := r.URL.Path
+        method := r.Method
+
+        al.mu.Lock()
+        defer al.mu.Unlock()
+
+        now := time.Now()
+        key := ip + ":" + path
+
+        if timestamps, exists := al.requests[key]; exists {
+            var valid []time.Time
+            for _, ts := range timestamps {
+                if now.Sub(ts) <= al.window {
+                    valid = append(valid, ts)
+                }
+            }
+
+            if len(valid) >= al.limit {
+                http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+                return
+            }
+
+            al.requests[key] = append(valid, now)
+        } else {
+            al.requests[key] = []time.Time{now}
+        }
+
+        next.ServeHTTP(w, r)
+    })
+}
+
+func (al *ActivityLogger) Cleanup() {
+    ticker := time.NewTicker(time.Hour)
+    defer ticker.Stop()
+
+    for range ticker.C {
+        al.mu.Lock()
+        now := time.Now()
+        for key, timestamps := range al.requests {
+            var valid []time.Time
+            for _, ts := range timestamps {
+                if now.Sub(ts) <= al.window {
+                    valid = append(valid, ts)
+                }
+            }
+            if len(valid) == 0 {
+                delete(al.requests, key)
+            } else {
+                al.requests[key] = valid
+            }
+        }
+        al.mu.Unlock()
+    }
 }

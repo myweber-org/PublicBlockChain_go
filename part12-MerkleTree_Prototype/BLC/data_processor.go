@@ -2,54 +2,130 @@
 package main
 
 import (
-    "encoding/json"
-    "fmt"
-    "strings"
+	"encoding/csv"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+	"strings"
 )
 
-// DataPayload represents a generic structure for incoming JSON data.
-type DataPayload struct {
-    ID    int             `json:"id"`
-    Value string          `json:"value"`
-    Tags  []string        `json:"tags"`
-    Meta  json.RawMessage `json:"meta"`
+type DataRecord struct {
+	ID    int
+	Name  string
+	Value float64
+	Valid bool
 }
 
-// ValidatePayload checks the basic integrity of a DataPayload.
-func ValidatePayload(payload *DataPayload) error {
-    if payload.ID <= 0 {
-        return fmt.Errorf("invalid ID: must be positive integer")
-    }
-    if strings.TrimSpace(payload.Value) == "" {
-        return fmt.Errorf("value cannot be empty or whitespace")
-    }
-    return nil
+func ProcessCSVFile(filename string) ([]DataRecord, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	reader.TrimLeadingSpace = true
+
+	var records []DataRecord
+	lineNumber := 0
+
+	for {
+		lineNumber++
+		row, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("csv read error at line %d: %w", lineNumber, err)
+		}
+
+		if len(row) < 4 {
+			continue
+		}
+
+		record, err := parseRecord(row)
+		if err != nil {
+			fmt.Printf("Warning: line %d - %v\n", lineNumber, err)
+			continue
+		}
+
+		records = append(records, record)
+	}
+
+	return records, nil
 }
 
-// ParseJSONData attempts to unmarshal raw JSON bytes into a DataPayload and validate it.
-func ParseJSONData(rawData []byte) (*DataPayload, error) {
-    var payload DataPayload
-    if err := json.Unmarshal(rawData, &payload); err != nil {
-        return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
-    }
+func parseRecord(row []string) (DataRecord, error) {
+	var record DataRecord
 
-    if err := ValidatePayload(&payload); err != nil {
-        return nil, fmt.Errorf("validation failed: %w", err)
-    }
+	id, err := strconv.Atoi(strings.TrimSpace(row[0]))
+	if err != nil {
+		return record, fmt.Errorf("invalid ID format: %s", row[0])
+	}
+	record.ID = id
 
-    return &payload, nil
+	record.Name = strings.TrimSpace(row[1])
+
+	value, err := strconv.ParseFloat(strings.TrimSpace(row[2]), 64)
+	if err != nil {
+		return record, fmt.Errorf("invalid value format: %s", row[2])
+	}
+	record.Value = value
+
+	validStr := strings.ToLower(strings.TrimSpace(row[3]))
+	record.Valid = validStr == "true" || validStr == "1" || validStr == "yes"
+
+	return record, nil
+}
+
+func FilterValidRecords(records []DataRecord) []DataRecord {
+	var validRecords []DataRecord
+	for _, record := range records {
+		if record.Valid {
+			validRecords = append(validRecords, record)
+		}
+	}
+	return validRecords
+}
+
+func CalculateAverage(records []DataRecord) float64 {
+	if len(records) == 0 {
+		return 0.0
+	}
+
+	var sum float64
+	for _, record := range records {
+		sum += record.Value
+	}
+	return sum / float64(len(records))
 }
 
 func main() {
-    // Example usage
-    jsonStr := `{"id": 42, "value": "sample data", "tags": ["go", "json"], "meta": {"version": 1}}`
-    data := []byte(jsonStr)
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: data_processor <csv_file>")
+		os.Exit(1)
+	}
 
-    result, err := ParseJSONData(data)
-    if err != nil {
-        fmt.Printf("Error: %v\n", err)
-        return
-    }
+	filename := os.Args[1]
+	records, err := ProcessCSVFile(filename)
+	if err != nil {
+		fmt.Printf("Error processing file: %v\n", err)
+		os.Exit(1)
+	}
 
-    fmt.Printf("Parsed payload: ID=%d, Value=%s, Tags=%v\n", result.ID, result.Value, result.Tags)
+	fmt.Printf("Total records processed: %d\n", len(records))
+
+	validRecords := FilterValidRecords(records)
+	fmt.Printf("Valid records: %d\n", len(validRecords))
+
+	average := CalculateAverage(validRecords)
+	fmt.Printf("Average value of valid records: %.2f\n", average)
+
+	for i, record := range validRecords {
+		if i < 5 {
+			fmt.Printf("Record %d: ID=%d, Name=%s, Value=%.2f\n",
+				i+1, record.ID, record.Name, record.Value)
+		}
+	}
 }

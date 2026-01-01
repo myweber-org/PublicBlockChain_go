@@ -1,46 +1,67 @@
 
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
-func RemoveDuplicates(input []string) []string {
+type DataRecord struct {
+	ID    int
+	Email string
+	Valid bool
+}
+
+func RemoveDuplicates(records []DataRecord) []DataRecord {
 	seen := make(map[string]bool)
-	result := []string{}
+	var unique []DataRecord
 
-	for _, item := range input {
-		if !seen[item] {
-			seen[item] = true
-			result = append(result, item)
+	for _, record := range records {
+		email := strings.ToLower(strings.TrimSpace(record.Email))
+		if !seen[email] {
+			seen[email] = true
+			unique = append(unique, record)
 		}
 	}
-	return result
+	return unique
+}
+
+func ValidateEmails(records []DataRecord) []DataRecord {
+	var valid []DataRecord
+	for _, record := range records {
+		record.Valid = strings.Contains(record.Email, "@") && strings.Contains(record.Email, ".")
+		valid = append(valid, record)
+	}
+	return valid
+}
+
+func PrintRecords(records []DataRecord) {
+	for _, record := range records {
+		status := "INVALID"
+		if record.Valid {
+			status = "VALID"
+		}
+		fmt.Printf("ID: %d, Email: %s, Status: %s\n", record.ID, record.Email, status)
+	}
 }
 
 func main() {
-	data := []string{"apple", "banana", "apple", "orange", "banana", "grape"}
-	cleaned := RemoveDuplicates(data)
-	fmt.Println("Original:", data)
-	fmt.Println("Cleaned:", cleaned)
-}package main
-
-import "fmt"
-
-func removeDuplicates(input []int) []int {
-	seen := make(map[int]bool)
-	result := []int{}
-
-	for _, value := range input {
-		if !seen[value] {
-			seen[value] = true
-			result = append(result, value)
-		}
+	records := []DataRecord{
+		{1, "user@example.com", false},
+		{2, "user@example.com", false},
+		{3, "invalid-email", false},
+		{4, "another@domain.org", false},
+		{5, "ANOTHER@DOMAIN.ORG", false},
 	}
-	return result
-}
 
-func main() {
-	data := []int{1, 2, 2, 3, 4, 4, 5, 6, 6}
-	cleaned := removeDuplicates(data)
-	fmt.Println("Original:", data)
-	fmt.Println("Cleaned:", cleaned)
+	fmt.Println("Original records:")
+	PrintRecords(records)
+
+	unique := RemoveDuplicates(records)
+	fmt.Println("\nAfter deduplication:")
+	PrintRecords(unique)
+
+	validated := ValidateEmails(unique)
+	fmt.Println("\nAfter validation:")
+	PrintRecords(validated)
 }

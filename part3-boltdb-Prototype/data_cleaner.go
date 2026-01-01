@@ -77,4 +77,38 @@ func main() {
     for _, record := range valid {
         fmt.Printf("ID: %d, Email: %s, Phone: %s\n", record.ID, record.Email, record.Phone)
     }
+}package main
+
+import (
+	"regexp"
+	"strings"
+)
+
+func SanitizeCSVField(input string) string {
+	if input == "" {
+		return input
+	}
+
+	// Remove leading/trailing whitespace
+	trimmed := strings.TrimSpace(input)
+
+	// Escape double quotes by doubling them (standard CSV escaping)
+	escaped := strings.ReplaceAll(trimmed, `"`, `""`)
+
+	// Check if field needs quoting
+	needsQuoting := false
+	if strings.ContainsAny(escaped, `,"`) {
+		needsQuoting = true
+	} else {
+		// Check for newlines or carriage returns
+		re := regexp.MustCompile(`[\r\n]`)
+		if re.MatchString(escaped) {
+			needsQuoting = true
+		}
+	}
+
+	if needsQuoting {
+		return `"` + escaped + `"`
+	}
+	return escaped
 }

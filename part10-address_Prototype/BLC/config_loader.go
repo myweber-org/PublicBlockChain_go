@@ -1,63 +1,97 @@
 package config
 
 import (
-	"bufio"
-	"fmt"
-	"os"
-	"strings"
+    "fmt"
+    "io/ioutil"
+    "os"
+
+    "gopkg.in/yaml.v2"
 )
 
-type Config map[string]string
-
-func LoadConfig(filename string) (Config, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open config file: %w", err)
-	}
-	defer file.Close()
-
-	config := make(Config)
-	scanner := bufio.NewScanner(file)
-	lineNumber := 0
-
-	for scanner.Scan() {
-		lineNumber++
-		line := strings.TrimSpace(scanner.Text())
-
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid syntax at line %d", lineNumber)
-		}
-
-		key := strings.TrimSpace(parts[0])
-		value := strings.TrimSpace(parts[1])
-		value = os.ExpandEnv(value)
-
-		if key == "" {
-			return nil, fmt.Errorf("empty key at line %d", lineNumber)
-		}
-
-		config[key] = value
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error reading config file: %w", err)
-	}
-
-	return config, nil
+type DatabaseConfig struct {
+    Host     string `yaml:"host"`
+    Port     int    `yaml:"port"`
+    Username string `yaml:"username"`
+    Password string `yaml:"password"`
+    Name     string `yaml:"name"`
 }
 
-func (c Config) Get(key string) string {
-	return c[key]
+type ServerConfig struct {
+    Port int    `yaml:"port"`
+    Mode string `yaml:"mode"`
 }
 
-func (c Config) GetWithDefault(key, defaultValue string) string {
-	if value, exists := c[key]; exists {
-		return value
-	}
-	return defaultValue
+type AppConfig struct {
+    Database DatabaseConfig `yaml:"database"`
+    Server   ServerConfig   `yaml:"server"`
+    LogLevel string         `yaml:"log_level"`
+}
+
+func LoadConfig(filePath string) (*AppConfig, error) {
+    data, err := ioutil.ReadFile(filePath)
+    if err != nil {
+        return nil, fmt.Errorf("failed to read config file: %w", err)
+    }
+
+    var config AppConfig
+    if err := yaml.Unmarshal(data, &config); err != nil {
+        return nil, fmt.Errorf("failed to parse YAML: %w", err)
+    }
+
+    return &config, nil
+}
+
+func ValidateConfig(config *AppConfig) error {
+    if config.Database.Host == "" {
+        return fmt.Errorf("database host is required")
+    }
+    if config.Database.Port <= 0 {
+        return fmt.Errorf("database port must be positive")
+    }
+    if config.Server.Port <= 0 {
+        return fmt.Errorf("server port must be positive")
+    }
+    return nil
+}
+
+func GetDefaultConfig() *AppConfig {
+    return &AppConfig{
+        Database: DatabaseConfig{
+            Host:     "localhost",
+            Port:     5432,
+            Username: "postgres",
+            Password: "",
+            Name:     "appdb",
+        },
+        Server: ServerConfig{
+            Port: 8080,
+            Mode: "development",
+        },
+        LogLevel: "info",
+    }
+}
+
+func SaveConfig(config *AppConfig, filePath string) error {
+    data, err := yaml.Marshal(config)
+    if err != nil {
+        return fmt.Errorf("failed to marshal config: %w", err)
+    }
+
+    if err := ioutil.WriteFile(filePath, data, 0644); err != nil {
+        return fmt.Errorf("failed to write config file: %w", err)
+    }
+
+    return nil
+}
+
+func LoadOrCreateConfig(filePath string) (*AppConfig, error) {
+    if _, err := os.Stat(filePath); os.IsNotExist(err) {
+        defaultConfig := GetDefaultConfig()
+        if err := SaveConfig(defaultConfig, filePath); err != nil {
+            return nil, fmt.Errorf("failed to create default config: %w", err)
+        }
+        return defaultConfig, nil
+    }
+
+    return LoadConfig(filePath)
 }

@@ -1,40 +1,4 @@
-package main
-
-import (
-    "log"
-    "net/http"
-    "time"
-)
-
-type ActivityLogger struct {
-    handler http.Handler
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-    start := time.Now()
-    al.handler.ServeHTTP(w, r)
-    duration := time.Since(start)
-
-    log.Printf("Activity: %s %s from %s took %v", r.Method, r.URL.Path, r.RemoteAddr, duration)
-}
-
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-    return &ActivityLogger{handler: handler}
-}
-
-func apiHandler(w http.ResponseWriter, r *http.Request) {
-    w.WriteHeader(http.StatusOK)
-    w.Write([]byte("API response"))
-}
-
-func main() {
-    mux := http.NewServeMux()
-    mux.HandleFunc("/api", apiHandler)
-
-    wrappedMux := NewActivityLogger(mux)
-    log.Println("Server starting on :8080")
-    http.ListenAndServe(":8080", wrappedMux)
-}package middleware
+package middleware
 
 import (
 	"log"
@@ -43,24 +7,43 @@ import (
 )
 
 type ActivityLogger struct {
-	handler http.Handler
+	Logger *log.Logger
 }
 
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
+func NewActivityLogger(logger *log.Logger) *ActivityLogger {
+	return &ActivityLogger{Logger: logger}
 }
 
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	
-	al.handler.ServeHTTP(w, r)
-	
-	duration := time.Since(start)
-	
-	log.Printf("Activity: %s %s from %s took %v",
-		r.Method,
-		r.URL.Path,
-		r.RemoteAddr,
-		duration,
-	)
+func (al *ActivityLogger) LogActivity(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		
+		recorder := &responseRecorder{
+			ResponseWriter: w,
+			statusCode:     http.StatusOK,
+		}
+		
+		next.ServeHTTP(recorder, r)
+		
+		duration := time.Since(start)
+		
+		al.Logger.Printf(
+			"Method: %s | Path: %s | Status: %d | Duration: %v | User-Agent: %s",
+			r.Method,
+			r.URL.Path,
+			recorder.statusCode,
+			duration,
+			r.UserAgent(),
+		)
+	})
+}
+
+type responseRecorder struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rr *responseRecorder) WriteHeader(code int) {
+	rr.statusCode = code
+	rr.ResponseWriter.WriteHeader(code)
 }

@@ -95,4 +95,90 @@ type responseRecorder struct {
 func (rr *responseRecorder) WriteHeader(code int) {
 	rr.statusCode = code
 	rr.ResponseWriter.WriteHeader(code)
+}package middleware
+
+import (
+	"encoding/json"
+	"net/http"
+	"sync"
+	"time"
+)
+
+type ActivityLog struct {
+	UserID    string    `json:"user_id"`
+	Action    string    `json:"action"`
+	Path      string    `json:"path"`
+	Method    string    `json:"method"`
+	Timestamp time.Time `json:"timestamp"`
+	IPAddress string    `json:"ip_address"`
+}
+
+type ActivityLogger struct {
+	mu          sync.RWMutex
+	rateLimiter map[string]time.Time
+	window      time.Duration
+}
+
+func NewActivityLogger(window time.Duration) *ActivityLogger {
+	return &ActivityLogger{
+		rateLimiter: make(map[string]time.Time),
+		window:      window,
+	}
+}
+
+func (al *ActivityLogger) LogActivity(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userID := r.Header.Get("X-User-ID")
+		if userID == "" {
+			userID = "anonymous"
+		}
+
+		clientIP := r.RemoteAddr
+		key := userID + ":" + r.URL.Path
+
+		al.mu.Lock()
+		lastCall, exists := al.rateLimiter[key]
+		shouldLog := !exists || time.Since(lastCall) > al.window
+		
+		if shouldLog {
+			al.rateLimiter[key] = time.Now()
+		}
+		al.mu.Unlock()
+
+		if shouldLog {
+			activity := ActivityLog{
+				UserID:    userID,
+				Action:    "request",
+				Path:      r.URL.Path,
+				Method:    r.Method,
+				Timestamp: time.Now().UTC(),
+				IPAddress: clientIP,
+			}
+
+			logData, err := json.Marshal(activity)
+			if err == nil {
+				go al.persistLog(logData)
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (al *ActivityLogger) persistLog(data []byte) {
+	// Simulated persistence - in production would write to database or message queue
+	time.Sleep(10 * time.Millisecond)
+}
+
+func (al *ActivityLogger) GetActivityCount(userID string) int {
+	al.mu.RLock()
+	defer al.mu.RUnlock()
+
+	count := 0
+	for key := range al.rateLimiter {
+		if len(userID) > 0 && len(key) > len(userID) && key[:len(userID)] == userID {
+			count++
+		}
+	}
+	return count
 }

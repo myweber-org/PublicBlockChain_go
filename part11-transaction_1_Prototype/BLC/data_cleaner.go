@@ -1,21 +1,24 @@
-package datautils
 
-import "sort"
+package main
 
-func RemoveDuplicates(input []string) []string {
-	if len(input) == 0 {
-		return input
-	}
+import "fmt"
 
-	sort.Strings(input)
+func removeDuplicates(input []int) []int {
+	seen := make(map[int]bool)
+	result := []int{}
 
-	writeIndex := 1
-	for readIndex := 1; readIndex < len(input); readIndex++ {
-		if input[readIndex] != input[readIndex-1] {
-			input[writeIndex] = input[readIndex]
-			writeIndex++
+	for _, value := range input {
+		if !seen[value] {
+			seen[value] = true
+			result = append(result, value)
 		}
 	}
+	return result
+}
 
-	return input[:writeIndex]
+func main() {
+	data := []int{1, 2, 2, 3, 4, 4, 5, 1, 6}
+	cleaned := removeDuplicates(data)
+	fmt.Println("Original:", data)
+	fmt.Println("Cleaned:", cleaned)
 }

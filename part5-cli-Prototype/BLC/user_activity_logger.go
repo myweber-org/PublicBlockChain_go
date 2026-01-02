@@ -48,4 +48,40 @@ type responseRecorder struct {
 func (rr *responseRecorder) WriteHeader(code int) {
 	rr.statusCode = code
 	rr.ResponseWriter.WriteHeader(code)
+}package middleware
+
+import (
+	"log"
+	"net/http"
+	"time"
+)
+
+type ActivityLogger struct {
+	Logger *log.Logger
+}
+
+func NewActivityLogger(logger *log.Logger) *ActivityLogger {
+	return &ActivityLogger{Logger: logger}
+}
+
+func (al *ActivityLogger) LogActivity(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		userAgent := r.UserAgent()
+		clientIP := r.RemoteAddr
+		method := r.Method
+		path := r.URL.Path
+
+		next.ServeHTTP(w, r)
+
+		duration := time.Since(start)
+		al.Logger.Printf(
+			"Activity: %s %s | IP: %s | Agent: %s | Duration: %v",
+			method,
+			path,
+			clientIP,
+			userAgent,
+			duration,
+		)
+	})
 }

@@ -126,3 +126,75 @@ func getStringSlice(key string, defaultValue []string) []string {
     }
     return defaultValue
 }
+package config
+
+import (
+	"encoding/json"
+	"os"
+	"strings"
+)
+
+type DatabaseConfig struct {
+	Host     string `json:"host" env:"DB_HOST" validate:"required"`
+	Port     int    `json:"port" env:"DB_PORT" validate:"min=1,max=65535"`
+	Username string `json:"username" env:"DB_USER"`
+	Password string `json:"password" env:"DB_PASS"`
+	SSLMode  string `json:"ssl_mode" env:"DB_SSL_MODE" default:"disable"`
+}
+
+type ServerConfig struct {
+	Port         int    `json:"port" env:"SERVER_PORT" default:"8080"`
+	ReadTimeout  int    `json:"read_timeout" env:"SERVER_READ_TIMEOUT" default:"30"`
+	WriteTimeout int    `json:"write_timeout" env:"SERVER_WRITE_TIMEOUT" default:"30"`
+	DebugMode    bool   `json:"debug_mode" env:"SERVER_DEBUG"`
+}
+
+type AppConfig struct {
+	Database DatabaseConfig `json:"database"`
+	Server   ServerConfig   `json:"server"`
+	LogLevel string         `json:"log_level" env:"LOG_LEVEL" default:"info"`
+}
+
+func LoadConfig(configPath string) (*AppConfig, error) {
+	var config AppConfig
+	
+	if configPath != "" {
+		file, err := os.Open(configPath)
+		if err != nil {
+			return nil, err
+		}
+		defer file.Close()
+		
+		decoder := json.NewDecoder(file)
+		if err := decoder.Decode(&config); err != nil {
+			return nil, err
+		}
+	}
+	
+	overrideFromEnv(&config)
+	setDefaults(&config)
+	
+	if err := validateConfig(&config); err != nil {
+		return nil, err
+	}
+	
+	return &config, nil
+}
+
+func overrideFromEnv(config *AppConfig) {
+	overrideStruct(config)
+}
+
+func overrideStruct(s interface{}) {
+	// Implementation would use reflection to read struct tags
+	// and override values from environment variables
+}
+
+func setDefaults(config *AppConfig) {
+	// Implementation would apply default values from struct tags
+}
+
+func validateConfig(config *AppConfig) error {
+	// Implementation would validate required fields and constraints
+	return nil
+}

@@ -46,3 +46,55 @@ func GetUserID(ctx context.Context) (string, bool) {
 func validateToken(tokenString, secret string) (string, error) {
 	return "user-123", nil
 }
+package middleware
+
+import (
+	"context"
+	"net/http"
+	"strings"
+)
+
+type UserInfo struct {
+	ID    string
+	Email string
+	Role  string
+}
+
+func AuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			http.Error(w, "Authorization header required", http.StatusUnauthorized)
+			return
+		}
+
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
+			return
+		}
+
+		token := parts[1]
+		userInfo, err := validateToken(token)
+		if err != nil {
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), "user", userInfo)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func validateToken(token string) (*UserInfo, error) {
+	// In real implementation, parse and verify JWT token
+	// This is a simplified example
+	if token == "valid_token_example" {
+		return &UserInfo{
+			ID:    "user123",
+			Email: "user@example.com",
+			Role:  "admin",
+		}, nil
+	}
+	return nil, http.ErrAbortHandler
+}

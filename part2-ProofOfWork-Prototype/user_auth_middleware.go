@@ -1,3 +1,4 @@
+
 package middleware
 
 import (
@@ -12,39 +13,39 @@ type contextKey string
 
 const (
 	UserIDKey contextKey = "userID"
+	RoleKey   contextKey = "role"
 )
 
-type JWTConfig struct {
-	SecretKey []byte
+type AuthConfig struct {
+	JWTSecret     string
+	PublicRoutes  []string
+	AdminOnly     []string
+	TokenHeader   string
 }
 
-func NewJWTConfig(secretKey string) *JWTConfig {
-	return &JWTConfig{
-		SecretKey: []byte(secretKey),
-	}
-}
-
-func AuthMiddleware(config *JWTConfig) func(http.Handler) http.Handler {
+func NewAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			authHeader := r.Header.Get("Authorization")
-			if authHeader == "" {
+			path := r.URL.Path
+			for _, publicRoute := range cfg.PublicRoutes {
+				if strings.HasPrefix(path, publicRoute) {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+
+			tokenHeader := r.Header.Get(cfg.TokenHeader)
+			if tokenHeader == "" {
 				http.Error(w, "Authorization header required", http.StatusUnauthorized)
 				return
 			}
 
-			parts := strings.Split(authHeader, " ")
-			if len(parts) != 2 || parts[0] != "Bearer" {
-				http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
-				return
-			}
-
-			tokenString := parts[1]
-			token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			tokenStr := strings.TrimPrefix(tokenHeader, "Bearer ")
+			token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
 				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 					return nil, jwt.ErrSignatureInvalid
 				}
-				return config.SecretKey, nil
+				return []byte(cfg.JWTSecret), nil
 			})
 
 			if err != nil || !token.Valid {
@@ -52,18 +53,33 @@ func AuthMiddleware(config *JWTConfig) func(http.Handler) http.Handler {
 				return
 			}
 
-			if claims, ok := token.Claims.(jwt.MapClaims); ok {
-				userID, ok := claims["userID"].(string)
-				if !ok {
-					http.Error(w, "Invalid token claims", http.StatusUnauthorized)
+			claims, ok := token.Claims.(jwt.MapClaims)
+			if !ok {
+				http.Error(w, "Invalid token claims", http.StatusUnauthorized)
+				return
+			}
+
+			userID, ok := claims["userID"].(string)
+			if !ok {
+				http.Error(w, "Invalid user identifier", http.StatusUnauthorized)
+				return
+			}
+
+			role, ok := claims["role"].(string)
+			if !ok {
+				role = "user"
+			}
+
+			for _, adminRoute := range cfg.AdminOnly {
+				if strings.HasPrefix(path, adminRoute) && role != "admin" {
+					http.Error(w, "Insufficient permissions", http.StatusForbidden)
 					return
 				}
-
-				ctx := context.WithValue(r.Context(), UserIDKey, userID)
-				next.ServeHTTP(w, r.WithContext(ctx))
-			} else {
-				http.Error(w, "Invalid token claims", http.StatusUnauthorized)
 			}
+
+			ctx := context.WithValue(r.Context(), UserIDKey, userID)
+			ctx = context.WithValue(ctx, RoleKey, role)
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
@@ -71,4 +87,9 @@ func AuthMiddleware(config *JWTConfig) func(http.Handler) http.Handler {
 func GetUserID(ctx context.Context) (string, bool) {
 	userID, ok := ctx.Value(UserIDKey).(string)
 	return userID, ok
+}
+
+func GetUserRole(ctx context.Context) (string, bool) {
+	role, ok := ctx.Value(RoleKey).(string)
+	return role, ok
 }

@@ -10,17 +10,7 @@ type contextKey string
 
 const userIDKey contextKey = "userID"
 
-type Authenticator struct {
-	secretKey []byte
-}
-
-func NewAuthenticator(secretKey string) *Authenticator {
-	return &Authenticator{
-		secretKey: []byte(secretKey),
-	}
-}
-
-func (a *Authenticator) Middleware(next http.Handler) http.Handler {
+func Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
@@ -35,7 +25,7 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 		}
 
 		tokenString := parts[1]
-		userID, err := a.validateToken(tokenString)
+		userID, err := validateToken(tokenString)
 		if err != nil {
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
@@ -46,13 +36,19 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-func (a *Authenticator) validateToken(tokenString string) (string, error) {
-	// Simplified token validation - in real implementation use proper JWT library
-	// This is a placeholder that always returns a fixed user ID for demonstration
-	return "user-12345", nil
-}
-
 func GetUserID(ctx context.Context) (string, bool) {
 	userID, ok := ctx.Value(userIDKey).(string)
 	return userID, ok
+}
+
+func validateToken(tokenString string) (string, error) {
+	// In a real implementation, this would parse and verify a JWT
+	// For this example, we'll do a simple mock validation
+	if tokenString == "" || len(tokenString) < 10 {
+		return "", http.ErrAbortHandler
+	}
+	
+	// Mock: extract user ID from token (in reality, decode JWT claims)
+	// This is a simplified example - actual JWT validation is more complex
+	return "user_" + tokenString[:8], nil
 }

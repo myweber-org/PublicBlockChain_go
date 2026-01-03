@@ -36,16 +36,16 @@ func Authenticate(next http.Handler) http.Handler {
 	})
 }
 
-func validateToken(token string) (string, error) {
-	// In a real application, this would verify JWT signature
-	// and extract claims. This is a simplified example.
-	if token == "" || len(token) < 10 {
-		return "", http.ErrAbortHandler
-	}
-	return "user-" + token[:8], nil
-}
-
 func GetUserID(ctx context.Context) (string, bool) {
 	userID, ok := ctx.Value(userIDKey).(string)
 	return userID, ok
+}
+
+func validateToken(token string) (string, error) {
+	// Simplified token validation - in production use proper JWT library
+	if token == "" || len(token) < 10 {
+		return "", http.ErrAbortHandler
+	}
+	// Mock validation returning user ID
+	return "user_" + token[:8], nil
 }

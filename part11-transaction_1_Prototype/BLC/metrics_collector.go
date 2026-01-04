@@ -1,58 +1,65 @@
+
 package main
 
 import (
 	"fmt"
-	"runtime"
+	"net/http"
 	"time"
 )
 
-type SystemMetrics struct {
-	Timestamp   time.Time
-	CPUPercent  float64
-	MemoryAlloc uint64
-	MemoryTotal uint64
-	NumGoroutine int
+type Metrics struct {
+	RequestCount int
+	TotalLatency time.Duration
+	StatusCodes  map[int]int
 }
 
-func collectMetrics() SystemMetrics {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
+var metrics = Metrics{
+	StatusCodes: make(map[int]int),
+}
 
-	return SystemMetrics{
-		Timestamp:   time.Now(),
-		CPUPercent:  getCPUUsage(),
-		MemoryAlloc: m.Alloc,
-		MemoryTotal: m.Sys,
-		NumGoroutine: runtime.NumGoroutine(),
+func metricsMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		recorder := &responseRecorder{ResponseWriter: w, statusCode: http.StatusOK}
+		next.ServeHTTP(recorder, r)
+		duration := time.Since(start)
+
+		metrics.RequestCount++
+		metrics.TotalLatency += duration
+		metrics.StatusCodes[recorder.statusCode]++
 	}
 }
 
-func getCPUUsage() float64 {
-	start := time.Now()
-	runtime.Gosched()
-	time.Sleep(100 * time.Millisecond)
-	elapsed := time.Since(start)
-	return float64(elapsed) / float64(time.Second) * 100
+type responseRecorder struct {
+	http.ResponseWriter
+	statusCode int
 }
 
-func displayMetrics(metrics SystemMetrics) {
-	fmt.Printf("Timestamp: %s\n", metrics.Timestamp.Format("2006-01-02 15:04:05"))
-	fmt.Printf("CPU Usage: %.2f%%\n", metrics.CPUPercent)
-	fmt.Printf("Memory Allocated: %v bytes\n", metrics.MemoryAlloc)
-	fmt.Printf("Total Memory: %v bytes\n", metrics.MemoryTotal)
-	fmt.Printf("Goroutines: %d\n", metrics.NumGoroutine)
-	fmt.Println("---")
+func (r *responseRecorder) WriteHeader(code int) {
+	r.statusCode = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func handler(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, "Request processed")
+}
+
+func metricsHandler(w http.ResponseWriter, r *http.Request) {
+	avgLatency := time.Duration(0)
+	if metrics.RequestCount > 0 {
+		avgLatency = metrics.TotalLatency / time.Duration(metrics.RequestCount)
+	}
+
+	fmt.Fprintf(w, "Requests: %d\n", metrics.RequestCount)
+	fmt.Fprintf(w, "Average Latency: %v\n", avgLatency)
+	fmt.Fprintf(w, "Status Codes:\n")
+	for code, count := range metrics.StatusCodes {
+		fmt.Fprintf(w, "  %d: %d\n", code, count)
+	}
 }
 
 func main() {
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			metrics := collectMetrics()
-			displayMetrics(metrics)
-		}
-	}
+	http.HandleFunc("/", metricsMiddleware(handler))
+	http.HandleFunc("/metrics", metricsHandler)
+	http.ListenAndServe(":8080", nil)
 }

@@ -105,3 +105,193 @@ func main() {
 
 	fmt.Println("File decrypted successfully")
 }
+package main
+
+import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+)
+
+const (
+	saltSize      = 16
+	nonceSize     = 12
+	keyIterations = 100000
+	keyLength     = 32
+)
+
+func deriveKey(password string, salt []byte) []byte {
+	hash := sha256.New()
+	hash.Write([]byte(password))
+	hash.Write(salt)
+	for i := 0; i < keyIterations; i++ {
+		hash.Write(hash.Sum(nil))
+	}
+	return hash.Sum(nil)[:keyLength]
+}
+
+func encryptFile(inputPath, outputPath, password string) error {
+	salt := make([]byte, saltSize)
+	if _, err := rand.Read(salt); err != nil {
+		return err
+	}
+
+	key := deriveKey(password, salt)
+
+	inputFile, err := os.Open(inputPath)
+	if err != nil {
+		return err
+	}
+	defer inputFile.Close()
+
+	outputFile, err := os.Create(outputPath)
+	if err != nil {
+		return err
+	}
+	defer outputFile.Close()
+
+	if _, err := outputFile.Write(salt); err != nil {
+		return err
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return err
+	}
+
+	nonce := make([]byte, nonceSize)
+	if _, err := rand.Read(nonce); err != nil {
+		return err
+	}
+
+	if _, err := outputFile.Write(nonce); err != nil {
+		return err
+	}
+
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return err
+	}
+
+	buffer := make([]byte, 4096)
+	for {
+		n, err := inputFile.Read(buffer)
+		if err != nil && err != io.EOF {
+			return err
+		}
+		if n == 0 {
+			break
+		}
+
+		ciphertext := aesgcm.Seal(nil, nonce, buffer[:n], nil)
+		if _, err := outputFile.Write(ciphertext); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func decryptFile(inputPath, outputPath, password string) error {
+	inputFile, err := os.Open(inputPath)
+	if err != nil {
+		return err
+	}
+	defer inputFile.Close()
+
+	salt := make([]byte, saltSize)
+	if _, err := io.ReadFull(inputFile, salt); err != nil {
+		return err
+	}
+
+	key := deriveKey(password, salt)
+
+	nonce := make([]byte, nonceSize)
+	if _, err := io.ReadFull(inputFile, nonce); err != nil {
+		return err
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return err
+	}
+
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return err
+	}
+
+	outputFile, err := os.Create(outputPath)
+	if err != nil {
+		return err
+	}
+	defer outputFile.Close()
+
+	buffer := make([]byte, 4096+aesgcm.Overhead())
+	for {
+		n, err := inputFile.Read(buffer)
+		if err != nil && err != io.EOF {
+			return err
+		}
+		if n == 0 {
+			break
+		}
+
+		if n < aesgcm.Overhead() {
+			return errors.New("ciphertext too short")
+		}
+
+		plaintext, err := aesgcm.Open(nil, nonce, buffer[:n], nil)
+		if err != nil {
+			return err
+		}
+
+		if _, err := outputFile.Write(plaintext); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func main() {
+	if len(os.Args) < 4 {
+		fmt.Println("Usage: go run file_encryption.go <encrypt|decrypt> <input> <output>")
+		fmt.Println("Set PASSWORD environment variable for encryption key")
+		os.Exit(1)
+	}
+
+	password := os.Getenv("PASSWORD")
+	if password == "" {
+		fmt.Println("Error: PASSWORD environment variable not set")
+		os.Exit(1)
+	}
+
+	action := os.Args[1]
+	inputPath := os.Args[2]
+	outputPath := os.Args[3]
+
+	switch action {
+	case "encrypt":
+		if err := encryptFile(inputPath, outputPath, password); err != nil {
+			fmt.Printf("Encryption failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("File encrypted successfully")
+	case "decrypt":
+		if err := decryptFile(inputPath, outputPath, password); err != nil {
+			fmt.Printf("Decryption failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("File decrypted successfully")
+	default:
+		fmt.Println("Invalid action. Use 'encrypt' or 'decrypt'")
+		os.Exit(1)
+	}
+}

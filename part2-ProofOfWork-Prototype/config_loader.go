@@ -3,60 +3,89 @@ package config
 import (
     "fmt"
     "os"
-    "strconv"
-    "strings"
+    "path/filepath"
+
+    "gopkg.in/yaml.v3"
 )
 
-type Config struct {
-    ServerPort int
-    DatabaseURL string
-    CacheEnabled bool
-    LogLevel string
-    MaxConnections int
+type DatabaseConfig struct {
+    Host     string `yaml:"host" env:"DB_HOST"`
+    Port     int    `yaml:"port" env:"DB_PORT"`
+    Username string `yaml:"username" env:"DB_USER"`
+    Password string `yaml:"password" env:"DB_PASS"`
+    Name     string `yaml:"name" env:"DB_NAME"`
 }
 
-func LoadConfig() (*Config, error) {
-    cfg := &Config{}
-    
-    portStr := getEnvOrDefault("SERVER_PORT", "8080")
-    port, err := strconv.Atoi(portStr)
+type ServerConfig struct {
+    Port         int    `yaml:"port" env:"SERVER_PORT"`
+    ReadTimeout  int    `yaml:"read_timeout" env:"SERVER_READ_TIMEOUT"`
+    WriteTimeout int    `yaml:"write_timeout" env:"SERVER_WRITE_TIMEOUT"`
+    Debug        bool   `yaml:"debug" env:"SERVER_DEBUG"`
+}
+
+type AppConfig struct {
+    Database DatabaseConfig `yaml:"database"`
+    Server   ServerConfig   `yaml:"server"`
+    LogLevel string         `yaml:"log_level" env:"LOG_LEVEL"`
+}
+
+func LoadConfig(configPath string) (*AppConfig, error) {
+    var config AppConfig
+
+    absPath, err := filepath.Abs(configPath)
     if err != nil {
-        return nil, fmt.Errorf("invalid SERVER_PORT value: %v", err)
+        return nil, fmt.Errorf("failed to resolve config path: %w", err)
     }
-    cfg.ServerPort = port
-    
-    cfg.DatabaseURL = getEnvOrDefault("DATABASE_URL", "postgres://localhost:5432/app")
-    
-    cacheEnabledStr := getEnvOrDefault("CACHE_ENABLED", "true")
-    cacheEnabled, err := strconv.ParseBool(cacheEnabledStr)
+
+    data, err := os.ReadFile(absPath)
     if err != nil {
-        return nil, fmt.Errorf("invalid CACHE_ENABLED value: %v", err)
+        return nil, fmt.Errorf("failed to read config file: %w", err)
     }
-    cfg.CacheEnabled = cacheEnabled
-    
-    cfg.LogLevel = strings.ToUpper(getEnvOrDefault("LOG_LEVEL", "INFO"))
-    validLogLevels := map[string]bool{"DEBUG": true, "INFO": true, "WARN": true, "ERROR": true}
-    if !validLogLevels[cfg.LogLevel] {
-        return nil, fmt.Errorf("invalid LOG_LEVEL value: %s", cfg.LogLevel)
+
+    if err := yaml.Unmarshal(data, &config); err != nil {
+        return nil, fmt.Errorf("failed to parse YAML config: %w", err)
     }
-    
-    maxConnStr := getEnvOrDefault("MAX_CONNECTIONS", "100")
-    maxConn, err := strconv.Atoi(maxConnStr)
-    if err != nil {
-        return nil, fmt.Errorf("invalid MAX_CONNECTIONS value: %v", err)
-    }
-    if maxConn <= 0 {
-        return nil, fmt.Errorf("MAX_CONNECTIONS must be positive")
-    }
-    cfg.MaxConnections = maxConn
-    
-    return cfg, nil
+
+    overrideFromEnv(&config)
+
+    return &config, nil
+}
+
+func overrideFromEnv(config *AppConfig) {
+    config.Database.Host = getEnvOrDefault("DB_HOST", config.Database.Host)
+    config.Database.Port = getEnvIntOrDefault("DB_PORT", config.Database.Port)
+    config.Database.Username = getEnvOrDefault("DB_USER", config.Database.Username)
+    config.Database.Password = getEnvOrDefault("DB_PASS", config.Database.Password)
+    config.Database.Name = getEnvOrDefault("DB_NAME", config.Database.Name)
+
+    config.Server.Port = getEnvIntOrDefault("SERVER_PORT", config.Server.Port)
+    config.Server.ReadTimeout = getEnvIntOrDefault("SERVER_READ_TIMEOUT", config.Server.ReadTimeout)
+    config.Server.WriteTimeout = getEnvIntOrDefault("SERVER_WRITE_TIMEOUT", config.Server.WriteTimeout)
+    config.Server.Debug = getEnvBoolOrDefault("SERVER_DEBUG", config.Server.Debug)
+
+    config.LogLevel = getEnvOrDefault("LOG_LEVEL", config.LogLevel)
 }
 
 func getEnvOrDefault(key, defaultValue string) string {
-    value := os.Getenv(key)
-    if value == "" {
-        return defaultValue
+    if value := os.Getenv(key); value != "" {
+        return value
     }
-    return value
+    return defaultValue
+}
+
+func getEnvIntOrDefault(key string, defaultValue int) int {
+    if value := os.Getenv(key); value != "" {
+        var result int
+        if _, err := fmt.Sscanf(value, "%d", &result); err == nil {
+            return result
+        }
+    }
+    return defaultValue
+}
+
+func getEnvBoolOrDefault(key string, defaultValue bool) bool {
+    if value := os.Getenv(key); value != "" {
+        return value == "true" || value == "1" || value == "yes"
+    }
+    return defaultValue
 }

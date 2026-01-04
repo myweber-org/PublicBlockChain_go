@@ -1,3 +1,4 @@
+
 package main
 
 import (
@@ -9,58 +10,92 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 )
 
-func deriveKey(passphrase string) []byte {
-	hash := sha256.Sum256([]byte(passphrase))
-	return hash[:]
+const (
+	saltSize   = 16
+	nonceSize  = 12
+	keyLen     = 32
+	iterations = 100000
+)
+
+func deriveKey(password, salt []byte) []byte {
+	hash := sha256.New()
+	hash.Write(password)
+	hash.Write(salt)
+	for i := 0; i < iterations-1; i++ {
+		hash.Write(hash.Sum(nil))
+	}
+	return hash.Sum(nil)
 }
 
-func encrypt(plaintext, passphrase string) (string, error) {
-	key := deriveKey(passphrase)
+func encrypt(plaintext, password string) (string, error) {
+	salt := make([]byte, saltSize)
+	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
+		return "", err
+	}
+
+	key := deriveKey([]byte(password), salt)
+
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return "", err
 	}
 
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-
-	nonce := make([]byte, gcm.NonceSize())
+	nonce := make([]byte, nonceSize)
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		return "", err
 	}
 
-	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
-	return base64.StdEncoding.EncodeToString(ciphertext), nil
-}
-
-func decrypt(encodedCiphertext, passphrase string) (string, error) {
-	key := deriveKey(passphrase)
-	ciphertext, err := base64.StdEncoding.DecodeString(encodedCiphertext)
+	aesgcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return "", err
 	}
+
+	ciphertext := aesgcm.Seal(nil, nonce, []byte(plaintext), nil)
+
+	result := base64.StdEncoding.EncodeToString(salt) + ":" +
+		base64.StdEncoding.EncodeToString(nonce) + ":" +
+		base64.StdEncoding.EncodeToString(ciphertext)
+
+	return result, nil
+}
+
+func decrypt(encrypted, password string) (string, error) {
+	parts := strings.Split(encrypted, ":")
+	if len(parts) != 3 {
+		return "", errors.New("invalid encrypted format")
+	}
+
+	salt, err := base64.StdEncoding.DecodeString(parts[0])
+	if err != nil {
+		return "", err
+	}
+
+	nonce, err := base64.StdEncoding.DecodeString(parts[1])
+	if err != nil {
+		return "", err
+	}
+
+	ciphertext, err := base64.StdEncoding.DecodeString(parts[2])
+	if err != nil {
+		return "", err
+	}
+
+	key := deriveKey([]byte(password), salt)
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return "", err
 	}
 
-	gcm, err := cipher.NewGCM(block)
+	aesgcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return "", err
 	}
 
-	nonceSize := gcm.NonceSize()
-	if len(ciphertext) < nonceSize {
-		return "", errors.New("ciphertext too short")
-	}
-
-	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	plaintext, err := aesgcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
 		return "", err
 	}
@@ -69,19 +104,19 @@ func decrypt(encodedCiphertext, passphrase string) (string, error) {
 }
 
 func main() {
-	secret := "confidential data"
-	password := "securePass123"
+	password := "securePass123!"
+	message := "Confidential data: Project X specifications"
 
-	encrypted, err := encrypt(secret, password)
+	encrypted, err := encrypt(message, password)
 	if err != nil {
-		fmt.Printf("Encryption failed: %v\n", err)
+		fmt.Printf("Encryption error: %v\n", err)
 		return
 	}
 	fmt.Printf("Encrypted: %s\n", encrypted)
 
 	decrypted, err := decrypt(encrypted, password)
 	if err != nil {
-		fmt.Printf("Decryption failed: %v\n", err)
+		fmt.Printf("Decryption error: %v\n", err)
 		return
 	}
 	fmt.Printf("Decrypted: %s\n", decrypted)

@@ -2,50 +2,52 @@
 package main
 
 import (
-    "regexp"
-    "strings"
+	"regexp"
+	"strings"
 )
 
 type User struct {
-    Username string
-    Email    string
+	ID       int
+	Username string
+	Email    string
+	Age      int
 }
 
 func ValidateUsername(username string) bool {
-    if len(username) < 3 || len(username) > 20 {
-        return false
-    }
-    validUsername := regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
-    return validUsername.MatchString(username)
+	if len(username) < 3 || len(username) > 20 {
+		return false
+	}
+	validPattern := regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+	return validPattern.MatchString(username)
 }
 
 func SanitizeEmail(email string) string {
-    trimmedEmail := strings.TrimSpace(email)
-    return strings.ToLower(trimmedEmail)
+	trimmed := strings.TrimSpace(email)
+	return strings.ToLower(trimmed)
 }
 
-func ValidateEmail(email string) bool {
-    emailRegex := regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$`)
-    return emailRegex.MatchString(email)
+func ValidateUserAge(age int) bool {
+	return age >= 18 && age <= 120
 }
 
-func ProcessUserInput(username, email string) (User, error) {
-    if !ValidateUsername(username) {
-        return User{}, ErrInvalidUsername
-    }
+func ProcessUserInput(username, email string, age int) (User, error) {
+	if !ValidateUsername(username) {
+		return User{}, ErrInvalidUsername
+	}
 
-    sanitizedEmail := SanitizeEmail(email)
-    if !ValidateEmail(sanitizedEmail) {
-        return User{}, ErrInvalidEmail
-    }
+	sanitizedEmail := SanitizeEmail(email)
+	if !ValidateUserAge(age) {
+		return User{}, ErrInvalidAge
+	}
 
-    return User{
-        Username: username,
-        Email:    sanitizedEmail,
-    }, nil
+	return User{
+		Username: username,
+		Email:    sanitizedEmail,
+		Age:      age,
+	}, nil
 }
 
 var (
-    ErrInvalidUsername = errors.New("invalid username format")
-    ErrInvalidEmail    = errors.New("invalid email format")
+	ErrInvalidUsername = errors.New("invalid username format")
+	ErrInvalidAge      = errors.New("age must be between 18 and 120")
 )

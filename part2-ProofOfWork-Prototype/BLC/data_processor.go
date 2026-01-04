@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -9,13 +8,13 @@ import (
 	"strconv"
 )
 
-type DataRecord struct {
+type Record struct {
 	ID    int
 	Name  string
 	Value float64
 }
 
-func ProcessCSVFile(filename string) ([]DataRecord, error) {
+func ProcessCSVFile(filename string) ([]Record, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
@@ -23,115 +22,87 @@ func ProcessCSVFile(filename string) ([]DataRecord, error) {
 	defer file.Close()
 
 	reader := csv.NewReader(file)
-	reader.TrimLeadingSpace = true
-
-	var records []DataRecord
-	lineNumber := 0
+	records := []Record{}
+	lineNum := 0
 
 	for {
-		lineNumber++
-		row, err := reader.Read()
+		line, err := reader.Read()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("csv read error at line %d: %w", lineNumber, err)
+			return nil, fmt.Errorf("csv read error: %w", err)
 		}
 
-		if len(row) != 3 {
-			return nil, fmt.Errorf("invalid column count at line %d: expected 3, got %d", lineNumber, len(row))
+		lineNum++
+		if lineNum == 1 {
+			continue
 		}
 
-		id, err := strconv.Atoi(row[0])
+		if len(line) != 3 {
+			return nil, fmt.Errorf("invalid column count at line %d", lineNum)
+		}
+
+		id, err := strconv.Atoi(line[0])
 		if err != nil {
-			return nil, fmt.Errorf("invalid ID at line %d: %w", lineNumber, err)
+			return nil, fmt.Errorf("invalid ID at line %d: %w", lineNum, err)
 		}
 
-		name := row[1]
+		name := line[1]
 		if name == "" {
-			return nil, fmt.Errorf("empty name at line %d", lineNumber)
+			return nil, fmt.Errorf("empty name at line %d", lineNum)
 		}
 
-		value, err := strconv.ParseFloat(row[2], 64)
+		value, err := strconv.ParseFloat(line[2], 64)
 		if err != nil {
-			return nil, fmt.Errorf("invalid value at line %d: %w", lineNumber, err)
+			return nil, fmt.Errorf("invalid value at line %d: %w", lineNum, err)
 		}
 
-		records = append(records, DataRecord{
+		records = append(records, Record{
 			ID:    id,
 			Name:  name,
 			Value: value,
 		})
 	}
 
-	if len(records) == 0 {
-		return nil, fmt.Errorf("no valid records found in file")
-	}
-
 	return records, nil
 }
 
-func CalculateStatistics(records []DataRecord) (float64, float64) {
+func CalculateStats(records []Record) (float64, float64, int) {
 	if len(records) == 0 {
-		return 0, 0
+		return 0, 0, 0
 	}
 
 	var sum float64
 	var max float64 = records[0].Value
+	count := len(records)
 
-	for _, record := range records {
-		sum += record.Value
-		if record.Value > max {
-			max = record.Value
+	for _, r := range records {
+		sum += r.Value
+		if r.Value > max {
+			max = r.Value
 		}
 	}
 
-	average := sum / float64(len(records))
-	return average, max
+	average := sum / float64(count)
+	return average, max, count
 }
 
-func ValidateRecords(records []DataRecord) error {
-	seenIDs := make(map[int]bool)
-
-	for _, record := range records {
-		if record.ID <= 0 {
-			return fmt.Errorf("invalid ID %d: must be positive", record.ID)
-		}
-
-		if seenIDs[record.ID] {
-			return fmt.Errorf("duplicate ID %d found", record.ID)
-		}
-		seenIDs[record.ID] = true
-
-		if record.Value < 0 {
-			return fmt.Errorf("negative value %f for ID %d", record.Value, record.ID)
-		}
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: data_processor <csv_file>")
+		os.Exit(1)
 	}
 
-	return nil
-}
-package main
-
-import (
-	"regexp"
-	"strings"
-)
-
-func SanitizeUsername(input string) string {
-	re := regexp.MustCompile(`[^a-zA-Z0-9_-]`)
-	sanitized := re.ReplaceAllString(input, "")
-	return strings.TrimSpace(sanitized)
-}
-
-func ValidateEmail(email string) bool {
-	pattern := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
-	matched, _ := regexp.MatchString(pattern, email)
-	return matched
-}
-
-func TruncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
+	filename := os.Args[1]
+	records, err := ProcessCSVFile(filename)
+	if err != nil {
+		fmt.Printf("Error processing file: %v\n", err)
+		os.Exit(1)
 	}
-	return s[:maxLen]
+
+	avg, max, count := CalculateStats(records)
+	fmt.Printf("Processed %d records\n", count)
+	fmt.Printf("Average value: %.2f\n", avg)
+	fmt.Printf("Maximum value: %.2f\n", max)
 }

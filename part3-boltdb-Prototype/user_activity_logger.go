@@ -227,4 +227,60 @@ type responseRecorder struct {
 func (rr *responseRecorder) WriteHeader(code int) {
 	rr.statusCode = code
 	rr.ResponseWriter.WriteHeader(code)
+}package middleware
+
+import (
+	"log"
+	"net/http"
+	"time"
+)
+
+type ActivityLog struct {
+	UserID    string
+	IPAddress string
+	Method    string
+	Path      string
+	Timestamp time.Time
+}
+
+func ActivityLogger(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		userID := "anonymous"
+		if authHeader := r.Header.Get("Authorization"); authHeader != "" {
+			userID = extractUserID(authHeader)
+		}
+
+		activity := ActivityLog{
+			UserID:    userID,
+			IPAddress: r.RemoteAddr,
+			Method:    r.Method,
+			Path:      r.URL.Path,
+			Timestamp: start,
+		}
+
+		log.Printf("Activity: %+v", activity)
+
+		lrw := &loggingResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+		next.ServeHTTP(lrw, r)
+
+		duration := time.Since(start)
+		log.Printf("Completed %s %s for user %s - Status: %d, Duration: %v",
+			r.Method, r.URL.Path, userID, lrw.statusCode, duration)
+	})
+}
+
+type loggingResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (lrw *loggingResponseWriter) WriteHeader(code int) {
+	lrw.statusCode = code
+	lrw.ResponseWriter.WriteHeader(code)
+}
+
+func extractUserID(token string) string {
+	return "user_" + token[:8]
 }

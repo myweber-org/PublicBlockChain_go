@@ -3,13 +3,13 @@ package middleware
 import (
     "net/http"
     "strings"
-    "github.com/dgrijalva/jwt-go"
+    "github.com/golang-jwt/jwt/v5"
 )
 
 type Claims struct {
     Username string `json:"username"`
     Role     string `json:"role"`
-    jwt.StandardClaims
+    jwt.RegisteredClaims
 }
 
 func AuthMiddleware(secretKey string) func(http.Handler) http.Handler {
@@ -21,14 +21,16 @@ func AuthMiddleware(secretKey string) func(http.Handler) http.Handler {
                 return
             }
 
-            tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-            if tokenString == authHeader {
-                http.Error(w, "Bearer token required", http.StatusUnauthorized)
+            tokenParts := strings.Split(authHeader, " ")
+            if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
+                http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
                 return
             }
 
+            tokenStr := tokenParts[1]
             claims := &Claims{}
-            token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+
+            token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
                 return []byte(secretKey), nil
             })
 

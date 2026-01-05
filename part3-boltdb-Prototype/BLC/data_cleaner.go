@@ -178,3 +178,39 @@ func main() {
 		fmt.Printf("ID: %d, Name: %s, Valid: %v\n", record.ID, record.Name, record.Valid)
 	}
 }
+package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+type DataCleaner struct{}
+
+func (dc *DataCleaner) RemoveDuplicates(items []string) []string {
+	seen := make(map[string]bool)
+	result := []string{}
+	for _, item := range items {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
+			continue
+		}
+		if !seen[trimmed] {
+			seen[trimmed] = true
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
+func (dc *DataCleaner) ProcessRecords(records []string) []string {
+	cleaned := dc.RemoveDuplicates(records)
+	return cleaned
+}
+
+func main() {
+	cleaner := &DataCleaner{}
+	sampleData := []string{"apple", " banana ", "apple", "cherry", "", "  banana  "}
+	result := cleaner.ProcessRecords(sampleData)
+	fmt.Println("Cleaned data:", result)
+}

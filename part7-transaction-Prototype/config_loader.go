@@ -181,4 +181,78 @@ func overrideInt(field *int, envVar string) {
 			*field = intVal
 		}
 	}
+}package config
+
+import (
+	"errors"
+	"io/ioutil"
+	"os"
+
+	"gopkg.in/yaml.v2"
+)
+
+type Config struct {
+	Server struct {
+		Host string `yaml:"host"`
+		Port int    `yaml:"port"`
+	} `yaml:"server"`
+	Database struct {
+		Host     string `yaml:"host"`
+		Port     int    `yaml:"port"`
+		Name     string `yaml:"name"`
+		Username string `yaml:"username"`
+		Password string `yaml:"password"`
+	} `yaml:"database"`
+	Logging struct {
+		Level  string `yaml:"level"`
+		Output string `yaml:"output"`
+	} `yaml:"logging"`
+}
+
+func LoadConfig(path string) (*Config, error) {
+	if path == "" {
+		return nil, errors.New("config path cannot be empty")
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	data, err := ioutil.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+
+	var config Config
+	err = yaml.Unmarshal(data, &config)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := validateConfig(&config); err != nil {
+		return nil, err
+	}
+
+	return &config, nil
+}
+
+func validateConfig(c *Config) error {
+	if c.Server.Host == "" {
+		return errors.New("server host cannot be empty")
+	}
+	if c.Server.Port <= 0 || c.Server.Port > 65535 {
+		return errors.New("server port must be between 1 and 65535")
+	}
+	if c.Database.Name == "" {
+		return errors.New("database name cannot be empty")
+	}
+	if c.Logging.Level == "" {
+		c.Logging.Level = "info"
+	}
+	if c.Logging.Output == "" {
+		c.Logging.Output = "stdout"
+	}
+	return nil
 }

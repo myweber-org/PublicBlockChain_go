@@ -181,3 +181,53 @@ func main() {
 		}
 	}
 }
+package main
+
+import (
+    "encoding/json"
+    "errors"
+    "strings"
+)
+
+type UserData struct {
+    ID    int    `json:"id"`
+    Name  string `json:"name"`
+    Email string `json:"email"`
+}
+
+func ValidateUserInput(rawData []byte) (*UserData, error) {
+    if len(rawData) == 0 {
+        return nil, errors.New("empty input data")
+    }
+
+    var user UserData
+    err := json.Unmarshal(rawData, &user)
+    if err != nil {
+        return nil, errors.New("invalid JSON format")
+    }
+
+    if user.ID <= 0 {
+        return nil, errors.New("invalid user ID")
+    }
+
+    user.Name = strings.TrimSpace(user.Name)
+    if user.Name == "" {
+        return nil, errors.New("name cannot be empty")
+    }
+
+    user.Email = strings.ToLower(strings.TrimSpace(user.Email))
+    if !strings.Contains(user.Email, "@") {
+        return nil, errors.New("invalid email format")
+    }
+
+    return &user, nil
+}
+
+func TransformUserData(user *UserData) map[string]interface{} {
+    return map[string]interface{}{
+        "user_id":    user.ID,
+        "full_name":  strings.ToTitle(user.Name),
+        "email_addr": user.Email,
+        "is_active":  true,
+    }
+}

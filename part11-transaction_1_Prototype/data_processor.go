@@ -318,4 +318,77 @@ func CalculateStats(records []Record) (float64, float64) {
 
 	average := sum / float64(len(records))
 	return average, max
+}package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"regexp"
+	"strings"
+)
+
+type UserProfile struct {
+	ID        int    `json:"id"`
+	Username  string `json:"username"`
+	Email     string `json:"email"`
+	Age       int    `json:"age"`
+	Active    bool   `json:"active"`
+	Timestamp string `json:"timestamp"`
+}
+
+func ValidateEmail(email string) bool {
+	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	return emailRegex.MatchString(email)
+}
+
+func TransformUsername(username string) string {
+	return strings.ToLower(strings.TrimSpace(username))
+}
+
+func ProcessUserData(rawData []byte) (*UserProfile, error) {
+	var profile UserProfile
+	err := json.Unmarshal(rawData, &profile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal user data: %w", err)
+	}
+
+	if profile.Username == "" {
+		return nil, fmt.Errorf("username cannot be empty")
+	}
+	profile.Username = TransformUsername(profile.Username)
+
+	if !ValidateEmail(profile.Email) {
+		return nil, fmt.Errorf("invalid email format: %s", profile.Email)
+	}
+
+	if profile.Age < 0 || profile.Age > 150 {
+		return nil, fmt.Errorf("age out of valid range: %d", profile.Age)
+	}
+
+	return &profile, nil
+}
+
+func main() {
+	jsonData := `{
+		"id": 42,
+		"username": "  JohnDoe  ",
+		"email": "john@example.com",
+		"age": 30,
+		"active": true,
+		"timestamp": "2024-01-15T10:30:00Z"
+	}`
+
+	processedProfile, err := ProcessUserData([]byte(jsonData))
+	if err != nil {
+		fmt.Printf("Error processing data: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Processed User Profile:\n")
+	fmt.Printf("ID: %d\n", processedProfile.ID)
+	fmt.Printf("Username: %s\n", processedProfile.Username)
+	fmt.Printf("Email: %s\n", processedProfile.Email)
+	fmt.Printf("Age: %d\n", processedProfile.Age)
+	fmt.Printf("Active: %v\n", processedProfile.Active)
+	fmt.Printf("Timestamp: %s\n", processedProfile.Timestamp)
 }

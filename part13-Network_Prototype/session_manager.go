@@ -1,107 +1,100 @@
-
 package session
 
 import (
-	"crypto/rand"
-	"encoding/base64"
-	"errors"
 	"sync"
 	"time"
 )
 
 type Session struct {
-	Token     string
-	UserID    string
-	ExpiresAt time.Time
+	ID        string
 	Data      map[string]interface{}
+	ExpiresAt time.Time
+	mu        sync.RWMutex
 }
 
 type Manager struct {
 	sessions map[string]*Session
-	mutex    sync.RWMutex
-	ttl      time.Duration
+	mu       sync.RWMutex
+	stopChan chan struct{}
 }
 
-func NewManager(ttl time.Duration) *Manager {
-	return &Manager{
+func NewManager(cleanupInterval time.Duration) *Manager {
+	m := &Manager{
 		sessions: make(map[string]*Session),
-		ttl:      ttl,
+		stopChan: make(chan struct{}),
 	}
+	go m.startCleanup(cleanupInterval)
+	return m
 }
 
-func (m *Manager) CreateSession(userID string, data map[string]interface{}) (string, error) {
-	token, err := generateToken()
-	if err != nil {
-		return "", err
-	}
+func (m *Manager) CreateSession(id string, ttl time.Duration) *Session {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	session := &Session{
-		Token:     token,
-		UserID:    userID,
-		ExpiresAt: time.Now().Add(m.ttl),
-		Data:      data,
+		ID:        id,
+		Data:      make(map[string]interface{}),
+		ExpiresAt: time.Now().Add(ttl),
 	}
-
-	m.mutex.Lock()
-	m.sessions[token] = session
-	m.mutex.Unlock()
-
-	return token, nil
+	m.sessions[id] = session
+	return session
 }
 
-func (m *Manager) ValidateSession(token string) (*Session, error) {
-	m.mutex.RLock()
-	session, exists := m.sessions[token]
-	m.mutex.RUnlock()
+func (m *Manager) GetSession(id string) *Session {
+	m.mu.RLock()
+	session, exists := m.sessions[id]
+	m.mu.RUnlock()
 
-	if !exists {
-		return nil, errors.New("session not found")
+	if !exists || time.Now().After(session.ExpiresAt) {
+		return nil
 	}
-
-	if time.Now().After(session.ExpiresAt) {
-		m.DeleteSession(token)
-		return nil, errors.New("session expired")
-	}
-
-	return session, nil
+	return session
 }
 
-func (m *Manager) DeleteSession(token string) {
-	m.mutex.Lock()
-	delete(m.sessions, token)
-	m.mutex.Unlock()
-}
+func (m *Manager) startCleanup(interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
 
-func (m *Manager) CleanupExpired() {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-
-	now := time.Now()
-	for token, session := range m.sessions {
-		if now.After(session.ExpiresAt) {
-			delete(m.sessions, token)
+	for {
+		select {
+		case <-ticker.C:
+			m.cleanupExpired()
+		case <-m.stopChan:
+			return
 		}
 	}
 }
 
-func (m *Manager) RefreshSession(token string) error {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
+func (m *Manager) cleanupExpired() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	session, exists := m.sessions[token]
-	if !exists {
-		return errors.New("session not found")
+	now := time.Now()
+	for id, session := range m.sessions {
+		if now.After(session.ExpiresAt) {
+			delete(m.sessions, id)
+		}
 	}
-
-	session.ExpiresAt = time.Now().Add(m.ttl)
-	return nil
 }
 
-func generateToken() (string, error) {
-	b := make([]byte, 32)
-	_, err := rand.Read(b)
-	if err != nil {
-		return "", err
-	}
-	return base64.URLEncoding.EncodeToString(b), nil
+func (m *Manager) Stop() {
+	close(m.stopChan)
+}
+
+func (s *Session) Set(key string, value interface{}) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Data[key] = value
+}
+
+func (s *Session) Get(key string) interface{} {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.Data[key]
+}
+
+func (s *Session) Extend(ttl time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ExpiresAt = time.Now().Add(ttl)
 }

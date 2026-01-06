@@ -1,52 +1,42 @@
-package data
+package main
 
 import (
-	"errors"
-	"strings"
-	"time"
+	"encoding/json"
+	"fmt"
+	"log"
 )
 
-type Record struct {
-	ID        string
-	Value     float64
-	Timestamp time.Time
-	Tags      []string
+type User struct {
+	ID    int    `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
 }
 
-func ValidateRecord(r Record) error {
-	if r.ID == "" {
-		return errors.New("record ID cannot be empty")
+func ValidateJSON(data []byte) (*User, error) {
+	var user User
+	err := json.Unmarshal(data, &user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse JSON: %w", err)
 	}
-	if r.Value < 0 {
-		return errors.New("record value must be non-negative")
+
+	if user.ID <= 0 {
+		return nil, fmt.Errorf("invalid user ID: %d", user.ID)
 	}
-	if r.Timestamp.IsZero() {
-		return errors.New("record timestamp must be set")
+	if user.Name == "" {
+		return nil, fmt.Errorf("user name cannot be empty")
 	}
-	return nil
+	if user.Email == "" {
+		return nil, fmt.Errorf("user email cannot be empty")
+	}
+
+	return &user, nil
 }
 
-func TransformRecord(r Record, multiplier float64) (Record, error) {
-	if err := ValidateRecord(r); err != nil {
-		return Record{}, err
+func main() {
+	jsonData := []byte(`{"id": 123, "name": "John Doe", "email": "john@example.com"}`)
+	user, err := ValidateJSON(jsonData)
+	if err != nil {
+		log.Fatal(err)
 	}
-
-	transformed := r
-	transformed.Value = r.Value * multiplier
-
-	for i, tag := range transformed.Tags {
-		transformed.Tags[i] = strings.ToUpper(strings.TrimSpace(tag))
-	}
-
-	return transformed, nil
-}
-
-func FilterRecords(records []Record, minValue float64) []Record {
-	var filtered []Record
-	for _, r := range records {
-		if r.Value >= minValue {
-			filtered = append(filtered, r)
-		}
-	}
-	return filtered
+	fmt.Printf("Valid user: %+v\n", user)
 }

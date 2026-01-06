@@ -105,4 +105,62 @@ func main() {
 	fmt.Printf("Processed %d records\n", count)
 	fmt.Printf("Average value: %.2f\n", avg)
 	fmt.Printf("Maximum value: %.2f\n", max)
+}package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+)
+
+type User struct {
+	ID    int    `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+func ParseUserJSON(data []byte) (*User, error) {
+	var user User
+	err := json.Unmarshal(data, &user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse user JSON: %w", err)
+	}
+	return &user, nil
+}
+
+func ValidateUser(user *User) error {
+	if user.ID <= 0 {
+		return fmt.Errorf("invalid user ID: %d", user.ID)
+	}
+	if user.Name == "" {
+		return fmt.Errorf("user name cannot be empty")
+	}
+	if user.Email == "" {
+		return fmt.Errorf("user email cannot be empty")
+	}
+	return nil
+}
+
+func ProcessUserData(jsonData []byte) (*User, error) {
+	user, err := ParseUserJSON(jsonData)
+	if err != nil {
+		return nil, err
+	}
+
+	err = ValidateUser(user)
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+func main() {
+	jsonStr := `{"id": 123, "name": "John Doe", "email": "john@example.com"}`
+	user, err := ProcessUserData([]byte(jsonStr))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("Processed user: ID=%d, Name=%s, Email=%s\n", user.ID, user.Name, user.Email)
 }

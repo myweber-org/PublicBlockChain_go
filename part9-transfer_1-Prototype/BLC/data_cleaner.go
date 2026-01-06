@@ -1,62 +1,28 @@
-
 package main
 
-import (
-	"fmt"
-	"strings"
-)
+import "fmt"
 
-type DataRecord struct {
-	ID    int
-	Email string
-	Valid bool
-}
+func RemoveDuplicates[T comparable](slice []T) []T {
+	seen := make(map[T]bool)
+	result := []T{}
 
-func deduplicateEmails(records []DataRecord) []DataRecord {
-	seen := make(map[string]bool)
-	var unique []DataRecord
-
-	for _, record := range records {
-		email := strings.ToLower(strings.TrimSpace(record.Email))
-		if !seen[email] {
-			seen[email] = true
-			record.Email = email
-			unique = append(unique, record)
+	for _, item := range slice {
+		if !seen[item] {
+			seen[item] = true
+			result = append(result, item)
 		}
 	}
-	return unique
-}
-
-func validateEmail(email string) bool {
-	if len(email) == 0 {
-		return false
-	}
-	return strings.Contains(email, "@") && strings.Contains(email, ".")
-}
-
-func processRecords(records []DataRecord) []DataRecord {
-	validRecords := []DataRecord{}
-	for _, record := range records {
-		if validateEmail(record.Email) {
-			record.Valid = true
-			validRecords = append(validRecords, record)
-		}
-	}
-	return deduplicateEmails(validRecords)
+	return result
 }
 
 func main() {
-	sampleData := []DataRecord{
-		{1, "user@example.com", false},
-		{2, "USER@example.com", false},
-		{3, "test@domain.org", false},
-		{4, "invalid-email", false},
-		{5, "test@domain.org", false},
-	}
+	numbers := []int{1, 2, 2, 3, 4, 4, 5}
+	uniqueNumbers := RemoveDuplicates(numbers)
+	fmt.Println("Original:", numbers)
+	fmt.Println("Unique:", uniqueNumbers)
 
-	cleaned := processRecords(sampleData)
-	fmt.Printf("Processed %d records, %d valid unique records found\n", len(sampleData), len(cleaned))
-	for _, record := range cleaned {
-		fmt.Printf("ID: %d, Email: %s, Valid: %v\n", record.ID, record.Email, record.Valid)
-	}
+	strings := []string{"apple", "banana", "apple", "orange"}
+	uniqueStrings := RemoveDuplicates(strings)
+	fmt.Println("Original:", strings)
+	fmt.Println("Unique:", uniqueStrings)
 }

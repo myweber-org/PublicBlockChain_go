@@ -6,100 +6,13 @@ import (
 	"time"
 )
 
-type ActivityLogger struct {
-	handler http.Handler
-}
-
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	recorder := &responseRecorder{
-		ResponseWriter: w,
-		statusCode:     http.StatusOK,
-	}
-
-	al.handler.ServeHTTP(recorder, r)
-
-	duration := time.Since(start)
-	log.Printf(
-		"%s %s %d %s %s",
-		r.Method,
-		r.URL.Path,
-		recorder.statusCode,
-		duration,
-		r.RemoteAddr,
-	)
-}
-
-type responseRecorder struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (rr *responseRecorder) WriteHeader(code int) {
-	rr.statusCode = code
-	rr.ResponseWriter.WriteHeader(code)
-}package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLogger struct {
-	handler http.Handler
-}
-
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	recorder := &responseRecorder{
-		ResponseWriter: w,
-		statusCode:     http.StatusOK,
-	}
-
-	al.handler.ServeHTTP(recorder, r)
-
-	duration := time.Since(start)
-	log.Printf(
-		"%s %s %d %s %s",
-		r.Method,
-		r.URL.Path,
-		recorder.statusCode,
-		duration,
-		r.RemoteAddr,
-	)
-}
-
-type responseRecorder struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (rr *responseRecorder) WriteHeader(code int) {
-	rr.statusCode = code
-	rr.ResponseWriter.WriteHeader(code)
-}package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
 type ActivityLog struct {
-	UserID    string
-	Endpoint  string
-	Method    string
-	Timestamp time.Time
-	IPAddress string
+	Timestamp time.Time `json:"timestamp"`
+	UserID    string    `json:"user_id"`
+	Method    string    `json:"method"`
+	Path      string    `json:"path"`
+	IPAddress string    `json:"ip_address"`
+	UserAgent string    `json:"user_agent"`
 }
 
 func ActivityLogger(next http.Handler) http.Handler {
@@ -108,20 +21,21 @@ func ActivityLogger(next http.Handler) http.Handler {
 		
 		userID := "anonymous"
 		if authHeader := r.Header.Get("Authorization"); authHeader != "" {
-			userID = extractUserID(authHeader)
+			userID = extractUserIDFromToken(authHeader)
 		}
 
 		activity := ActivityLog{
-			UserID:    userID,
-			Endpoint:  r.URL.Path,
-			Method:    r.Method,
 			Timestamp: start,
+			UserID:    userID,
+			Method:    r.Method,
+			Path:      r.URL.Path,
 			IPAddress: r.RemoteAddr,
+			UserAgent: r.UserAgent(),
 		}
 
 		log.Printf("Activity: %s %s by %s from %s", 
 			activity.Method, 
-			activity.Endpoint, 
+			activity.Path, 
 			activity.UserID, 
 			activity.IPAddress)
 
@@ -129,158 +43,6 @@ func ActivityLogger(next http.Handler) http.Handler {
 	})
 }
 
-func extractUserID(token string) string {
-	return "user_" + token[:8]
-}package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLogger struct {
-	handler http.Handler
-}
-
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	al.handler.ServeHTTP(w, r)
-	duration := time.Since(start)
-
-	log.Printf("Activity: %s %s from %s took %v",
-		r.Method,
-		r.URL.Path,
-		r.RemoteAddr,
-		duration,
-	)
-}package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLogger struct {
-	handler http.Handler
-}
-
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	
-	al.handler.ServeHTTP(w, r)
-	
-	duration := time.Since(start)
-	
-	log.Printf("Activity: %s %s from %s took %v",
-		r.Method,
-		r.URL.Path,
-		r.RemoteAddr,
-		duration,
-	)
-}package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLogger struct {
-	handler http.Handler
-}
-
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	recorder := &responseRecorder{ResponseWriter: w, statusCode: http.StatusOK}
-	
-	al.handler.ServeHTTP(recorder, r)
-	
-	duration := time.Since(start)
-	log.Printf("%s %s %d %s %s",
-		r.Method,
-		r.URL.Path,
-		recorder.statusCode,
-		duration,
-		r.RemoteAddr,
-	)
-}
-
-type responseRecorder struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (rr *responseRecorder) WriteHeader(code int) {
-	rr.statusCode = code
-	rr.ResponseWriter.WriteHeader(code)
-}package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLog struct {
-	UserID    string
-	IPAddress string
-	Method    string
-	Path      string
-	Timestamp time.Time
-}
-
-func ActivityLogger(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-
-		userID := "anonymous"
-		if authHeader := r.Header.Get("Authorization"); authHeader != "" {
-			userID = extractUserID(authHeader)
-		}
-
-		activity := ActivityLog{
-			UserID:    userID,
-			IPAddress: r.RemoteAddr,
-			Method:    r.Method,
-			Path:      r.URL.Path,
-			Timestamp: start,
-		}
-
-		log.Printf("Activity: %+v", activity)
-
-		lrw := &loggingResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
-		next.ServeHTTP(lrw, r)
-
-		duration := time.Since(start)
-		log.Printf("Completed %s %s for user %s - Status: %d, Duration: %v",
-			r.Method, r.URL.Path, userID, lrw.statusCode, duration)
-	})
-}
-
-type loggingResponseWriter struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (lrw *loggingResponseWriter) WriteHeader(code int) {
-	lrw.statusCode = code
-	lrw.ResponseWriter.WriteHeader(code)
-}
-
-func extractUserID(token string) string {
+func extractUserIDFromToken(token string) string {
 	return "user_" + token[:8]
 }

@@ -61,3 +61,35 @@ func main() {
 
 	fmt.Println("Duplicate removal completed successfully")
 }
+package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+func CleanString(input string) string {
+	trimmed := strings.TrimSpace(input)
+	lower := strings.ToLower(trimmed)
+	return lower
+}
+
+func RemoveDuplicates(elements []string) []string {
+	encountered := map[string]bool{}
+	result := []string{}
+
+	for v := range elements {
+		cleaned := CleanString(elements[v])
+		if !encountered[cleaned] {
+			encountered[cleaned] = true
+			result = append(result, cleaned)
+		}
+	}
+	return result
+}
+
+func main() {
+	data := []string{" Apple", "banana ", "apple", " Banana", "Cherry", "cherry "}
+	unique := RemoveDuplicates(data)
+	fmt.Println("Cleaned unique data:", unique)
+}

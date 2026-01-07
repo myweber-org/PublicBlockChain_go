@@ -3,231 +3,69 @@ package main
 import (
 	"errors"
 	"strings"
+	"unicode"
 )
 
-type UserData struct {
-	ID    int
-	Name  string
-	Email string
-}
+func ValidateUsername(username string) error {
+	if len(username) < 3 || len(username) > 20 {
+		return errors.New("username must be between 3 and 20 characters")
+	}
 
-func ValidateUserData(data UserData) error {
-	if data.ID <= 0 {
-		return errors.New("invalid user ID")
-	}
-	if strings.TrimSpace(data.Name) == "" {
-		return errors.New("name cannot be empty")
-	}
-	if !strings.Contains(data.Email, "@") {
-		return errors.New("invalid email format")
+	for _, r := range username {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' && r != '-' {
+			return errors.New("username can only contain letters, digits, underscores, and hyphens")
+		}
 	}
 	return nil
 }
 
-func TransformUserName(data UserData) UserData {
-	data.Name = strings.ToUpper(strings.TrimSpace(data.Name))
-	return data
+func NormalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
 }
 
-func ProcessUserInput(rawName, rawEmail string, id int) (UserData, error) {
-	user := UserData{
-		ID:    id,
-		Name:  rawName,
-		Email: rawEmail,
+func SanitizeInput(input string) string {
+	replacer := strings.NewReplacer(
+		"<", "&lt;",
+		">", "&gt;",
+		"\"", "&quot;",
+		"'", "&#39;",
+	)
+	return replacer.Replace(input)
+}
+
+func ValidatePasswordStrength(password string) (bool, []string) {
+	var issues []string
+
+	if len(password) < 8 {
+		issues = append(issues, "password must be at least 8 characters long")
 	}
 
-	if err := ValidateUserData(user); err != nil {
-		return UserData{}, err
-	}
-
-	user = TransformUserName(user)
-	return user, nil
-}
-package main
-
-import (
-	"regexp"
-	"strings"
-)
-
-type DataProcessor struct {
-	allowedPattern *regexp.Regexp
-}
-
-func NewDataProcessor(allowedPattern string) (*DataProcessor, error) {
-	compiled, err := regexp.Compile(allowedPattern)
-	if err != nil {
-		return nil, err
-	}
-	return &DataProcessor{allowedPattern: compiled}, nil
-}
-
-func (dp *DataProcessor) CleanInput(input string) string {
-	trimmed := strings.TrimSpace(input)
-	return dp.allowedPattern.FindString(trimmed)
-}
-
-func (dp *DataProcessor) ValidateInput(input string) bool {
-	return dp.allowedPattern.MatchString(strings.TrimSpace(input))
-}
-
-func (dp *DataProcessor) ProcessBatch(inputs []string) []string {
-	var results []string
-	for _, input := range inputs {
-		cleaned := dp.CleanInput(input)
-		if cleaned != "" {
-			results = append(results, cleaned)
+	var hasUpper, hasLower, hasDigit, hasSpecial bool
+	for _, r := range password {
+		switch {
+		case unicode.IsUpper(r):
+			hasUpper = true
+		case unicode.IsLower(r):
+			hasLower = true
+		case unicode.IsDigit(r):
+			hasDigit = true
+		case unicode.IsPunct(r) || unicode.IsSymbol(r):
+			hasSpecial = true
 		}
 	}
-	return results
-}
-package main
 
-import (
-	"encoding/csv"
-	"fmt"
-	"io"
-	"os"
-	"strings"
-)
-
-type DataRecord struct {
-	ID      string
-	Name    string
-	Email   string
-	Active  string
-}
-
-func ProcessCSVFile(filename string) ([]DataRecord, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open file: %w", err)
+	if !hasUpper {
+		issues = append(issues, "password must contain at least one uppercase letter")
 	}
-	defer file.Close()
-
-	reader := csv.NewReader(file)
-	reader.TrimLeadingSpace = true
-
-	var records []DataRecord
-	lineNumber := 0
-
-	for {
-		lineNumber++
-		row, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("csv read error at line %d: %w", lineNumber, err)
-		}
-
-		if lineNumber == 1 {
-			continue
-		}
-
-		if len(row) < 4 {
-			return nil, fmt.Errorf("insufficient columns at line %d", lineNumber)
-		}
-
-		record := DataRecord{
-			ID:     strings.TrimSpace(row[0]),
-			Name:   strings.TrimSpace(row[1]),
-			Email:  strings.TrimSpace(row[2]),
-			Active: strings.TrimSpace(row[3]),
-		}
-
-		if record.ID == "" || record.Name == "" {
-			return nil, fmt.Errorf("missing required fields at line %d", lineNumber)
-		}
-
-		if !strings.Contains(record.Email, "@") {
-			return nil, fmt.Errorf("invalid email format at line %d", lineNumber)
-		}
-
-		records = append(records, record)
+	if !hasLower {
+		issues = append(issues, "password must contain at least one lowercase letter")
+	}
+	if !hasDigit {
+		issues = append(issues, "password must contain at least one digit")
+	}
+	if !hasSpecial {
+		issues = append(issues, "password must contain at least one special character")
 	}
 
-	return records, nil
-}
-
-func ValidateRecords(records []DataRecord) []DataRecord {
-	var validRecords []DataRecord
-	for _, record := range records {
-		if record.Active == "true" && len(record.Name) > 0 {
-			validRecords = append(validRecords, record)
-		}
-	}
-	return validRecords
-}
-
-func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: data_processor <csv_file>")
-		os.Exit(1)
-	}
-
-	records, err := ProcessCSVFile(os.Args[1])
-	if err != nil {
-		fmt.Printf("Error processing file: %v\n", err)
-		os.Exit(1)
-	}
-
-	validRecords := ValidateRecords(records)
-	fmt.Printf("Processed %d records, %d valid active records\n", len(records), len(validRecords))
-
-	for i, record := range validRecords {
-		if i < 3 {
-			fmt.Printf("ID: %s, Name: %s, Email: %s\n", record.ID, record.Name, record.Email)
-		}
-	}
-}
-package main
-
-import (
-    "encoding/json"
-    "errors"
-    "strings"
-)
-
-type UserData struct {
-    ID    int    `json:"id"`
-    Name  string `json:"name"`
-    Email string `json:"email"`
-}
-
-func ValidateUserInput(rawData []byte) (*UserData, error) {
-    if len(rawData) == 0 {
-        return nil, errors.New("empty input data")
-    }
-
-    var user UserData
-    err := json.Unmarshal(rawData, &user)
-    if err != nil {
-        return nil, errors.New("invalid JSON format")
-    }
-
-    if user.ID <= 0 {
-        return nil, errors.New("invalid user ID")
-    }
-
-    user.Name = strings.TrimSpace(user.Name)
-    if user.Name == "" {
-        return nil, errors.New("name cannot be empty")
-    }
-
-    user.Email = strings.ToLower(strings.TrimSpace(user.Email))
-    if !strings.Contains(user.Email, "@") {
-        return nil, errors.New("invalid email format")
-    }
-
-    return &user, nil
-}
-
-func TransformUserData(user *UserData) map[string]interface{} {
-    return map[string]interface{}{
-        "user_id":    user.ID,
-        "full_name":  strings.ToTitle(user.Name),
-        "email_addr": user.Email,
-        "is_active":  true,
-    }
+	return len(issues) == 0, issues
 }

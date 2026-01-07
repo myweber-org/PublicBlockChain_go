@@ -127,4 +127,70 @@ func (c *Config) Validate() error {
         return fmt.Errorf("database name cannot be empty")
     }
     return nil
+}package config
+
+import (
+    "fmt"
+    "os"
+    "strconv"
+    "strings"
+)
+
+type Config struct {
+    ServerPort int
+    DBHost     string
+    DBPort     int
+    DebugMode  bool
+    MaxWorkers int
+}
+
+func Load() (*Config, error) {
+    cfg := &Config{
+        ServerPort: 8080,
+        DBHost:     "localhost",
+        DBPort:     5432,
+        DebugMode:  false,
+        MaxWorkers: 10,
+    }
+
+    if portStr := os.Getenv("SERVER_PORT"); portStr != "" {
+        port, err := strconv.Atoi(portStr)
+        if err != nil {
+            return nil, fmt.Errorf("invalid SERVER_PORT: %v", err)
+        }
+        cfg.ServerPort = port
+    }
+
+    if host := os.Getenv("DB_HOST"); host != "" {
+        cfg.DBHost = host
+    }
+
+    if portStr := os.Getenv("DB_PORT"); portStr != "" {
+        port, err := strconv.Atoi(portStr)
+        if err != nil {
+            return nil, fmt.Errorf("invalid DB_PORT: %v", err)
+        }
+        cfg.DBPort = port
+    }
+
+    if debugStr := os.Getenv("DEBUG_MODE"); debugStr != "" {
+        debug, err := strconv.ParseBool(strings.ToLower(debugStr))
+        if err != nil {
+            return nil, fmt.Errorf("invalid DEBUG_MODE: %v", err)
+        }
+        cfg.DebugMode = debug
+    }
+
+    if workersStr := os.Getenv("MAX_WORKERS"); workersStr != "" {
+        workers, err := strconv.Atoi(workersStr)
+        if err != nil {
+            return nil, fmt.Errorf("invalid MAX_WORKERS: %v", err)
+        }
+        if workers < 1 {
+            return nil, fmt.Errorf("MAX_WORKERS must be positive")
+        }
+        cfg.MaxWorkers = workers
+    }
+
+    return cfg, nil
 }

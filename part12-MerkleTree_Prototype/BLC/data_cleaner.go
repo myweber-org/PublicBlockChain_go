@@ -79,3 +79,30 @@ func main() {
 
 	fmt.Printf("Successfully cleaned data. Output saved to %s\n", outputFile)
 }
+package main
+
+import (
+	"fmt"
+	"sort"
+)
+
+func CleanData(input []string) []string {
+	seen := make(map[string]struct{})
+	unique := []string{}
+
+	for _, item := range input {
+		if _, exists := seen[item]; !exists {
+			seen[item] = struct{}{}
+			unique = append(unique, item)
+		}
+	}
+
+	sort.Strings(unique)
+	return unique
+}
+
+func main() {
+	data := []string{"zebra", "apple", "banana", "apple", "cherry", "banana"}
+	cleaned := CleanData(data)
+	fmt.Println("Cleaned data:", cleaned)
+}

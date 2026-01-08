@@ -87,4 +87,65 @@ func main() {
 	fmt.Printf("Server: %s:%d\n", config.Server.Host, config.Server.Port)
 	fmt.Printf("Database: %s@%s:%d/%s\n", config.Database.Username, config.Database.Host, config.Database.Port, config.Database.Name)
 	fmt.Printf("Logging: level=%s, file=%s\n", config.Logging.Level, config.Logging.FilePath)
+}package main
+
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
+type FileProcessor struct {
+	workerCount int
+	jobQueue    chan string
+	wg          sync.WaitGroup
+}
+
+func NewFileProcessor(workers int) *FileProcessor {
+	return &FileProcessor{
+		workerCount: workers,
+		jobQueue:    make(chan string, 100),
+	}
+}
+
+func (fp *FileProcessor) Start() {
+	for i := 0; i < fp.workerCount; i++ {
+		fp.wg.Add(1)
+		go fp.worker(i)
+	}
+}
+
+func (fp *FileProcessor) worker(id int) {
+	defer fp.wg.Done()
+	for filePath := range fp.jobQueue {
+		fp.processFile(id, filePath)
+	}
+}
+
+func (fp *FileProcessor) processFile(workerID int, path string) {
+	fmt.Printf("Worker %d processing: %s\n", workerID, path)
+	time.Sleep(100 * time.Millisecond)
+	fmt.Printf("Worker %d completed: %s\n", workerID, path)
+}
+
+func (fp *FileProcessor) AddJob(path string) {
+	fp.jobQueue <- path
+}
+
+func (fp *FileProcessor) Stop() {
+	close(fp.jobQueue)
+	fp.wg.Wait()
+	fmt.Println("All workers stopped")
+}
+
+func main() {
+	processor := NewFileProcessor(3)
+	processor.Start()
+
+	files := []string{"data1.txt", "data2.txt", "data3.txt", "data4.txt", "data5.txt"}
+	for _, file := range files {
+		processor.AddJob(file)
+	}
+
+	processor.Stop()
 }

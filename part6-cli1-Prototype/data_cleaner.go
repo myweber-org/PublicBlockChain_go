@@ -23,3 +23,40 @@ func main() {
     fmt.Printf("Original: %v\n", data)
     fmt.Printf("Cleaned: %v\n", cleaned)
 }
+package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+func RemoveDuplicates(slice []string) []string {
+	keys := make(map[string]bool)
+	list := []string{}
+	for _, entry := range slice {
+		if _, value := keys[entry]; !value {
+			keys[entry] = true
+			list = append(list, entry)
+		}
+	}
+	return list
+}
+
+func NormalizeString(s string) string {
+	return strings.ToLower(strings.TrimSpace(s))
+}
+
+func CleanData(data []string) []string {
+	cleaned := []string{}
+	for _, item := range data {
+		normalized := NormalizeString(item)
+		cleaned = append(cleaned, normalized)
+	}
+	return RemoveDuplicates(cleaned)
+}
+
+func main() {
+	rawData := []string{"  Apple", "banana  ", "APPLE", "Banana", "  cherry  "}
+	cleanedData := CleanData(rawData)
+	fmt.Println("Cleaned data:", cleanedData)
+}

@@ -1,3 +1,4 @@
+
 package main
 
 import (
@@ -6,40 +7,38 @@ import (
 	"log"
 )
 
-type User struct {
-	ID       int    `json:"id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Active   bool   `json:"active"`
+// ValidateJSON checks if the provided byte slice contains valid JSON.
+func ValidateJSON(data []byte) (bool, error) {
+	var js interface{}
+	err := json.Unmarshal(data, &js)
+	if err != nil {
+		return false, fmt.Errorf("invalid JSON: %w", err)
+	}
+	return true, nil
 }
 
-func ValidateJSON(data []byte) (*User, error) {
-	var user User
-	err := json.Unmarshal(data, &user)
+// ParseJSONToMap parses JSON bytes into a map[string]interface{}.
+func ParseJSONToMap(data []byte) (map[string]interface{}, error) {
+	var result map[string]interface{}
+	err := json.Unmarshal(data, &result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
+		return nil, fmt.Errorf("failed to parse JSON: %w", err)
 	}
-
-	if user.Username == "" {
-		return nil, fmt.Errorf("username cannot be empty")
-	}
-	if user.Email == "" {
-		return nil, fmt.Errorf("email cannot be empty")
-	}
-	if user.ID <= 0 {
-		return nil, fmt.Errorf("ID must be a positive integer")
-	}
-
-	return &user, nil
+	return result, nil
 }
 
 func main() {
-	jsonData := []byte(`{"id": 123, "username": "johndoe", "email": "john@example.com", "active": true}`)
+	sampleJSON := []byte(`{"name": "test", "value": 42}`)
 
-	user, err := ValidateJSON(jsonData)
+	valid, err := ValidateJSON(sampleJSON)
 	if err != nil {
 		log.Fatalf("Validation error: %v", err)
 	}
+	fmt.Printf("JSON is valid: %v\n", valid)
 
-	fmt.Printf("Validated user: %+v\n", user)
+	parsed, err := ParseJSONToMap(sampleJSON)
+	if err != nil {
+		log.Fatalf("Parse error: %v", err)
+	}
+	fmt.Printf("Parsed data: %v\n", parsed)
 }

@@ -147,3 +147,134 @@ func main() {
 	fmt.Println("Original:", data)
 	fmt.Println("Cleaned:", cleaned)
 }
+package main
+
+import (
+	"encoding/csv"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+	"strings"
+)
+
+type Record struct {
+	ID    int
+	Name  string
+	Email string
+	Score float64
+}
+
+func cleanCSVData(inputPath string, outputPath string) error {
+	inputFile, err := os.Open(inputPath)
+	if err != nil {
+		return fmt.Errorf("failed to open input file: %w", err)
+	}
+	defer inputFile.Close()
+
+	outputFile, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
+	}
+	defer outputFile.Close()
+
+	reader := csv.NewReader(inputFile)
+	writer := csv.NewWriter(outputFile)
+	defer writer.Flush()
+
+	headers, err := reader.Read()
+	if err != nil {
+		return fmt.Errorf("failed to read headers: %w", err)
+	}
+
+	headers = append(headers, "Valid")
+	if err := writer.Write(headers); err != nil {
+		return fmt.Errorf("failed to write headers: %w", err)
+	}
+
+	lineNumber := 1
+	for {
+		lineNumber++
+		row, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			fmt.Printf("Warning: line %d: %v\n", lineNumber, err)
+			continue
+		}
+
+		record, validationErr := validateRecord(row)
+		isValid := validationErr == nil
+
+		outputRow := make([]string, len(row)+1)
+		copy(outputRow, row)
+		outputRow[len(row)] = strconv.FormatBool(isValid)
+
+		if isValid {
+			fmt.Printf("Processed record ID %d: %s\n", record.ID, record.Name)
+		} else {
+			fmt.Printf("Invalid record at line %d: %v\n", lineNumber, validationErr)
+		}
+
+		if err := writer.Write(outputRow); err != nil {
+			return fmt.Errorf("failed to write row: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func validateRecord(row []string) (Record, error) {
+	if len(row) < 4 {
+		return Record{}, fmt.Errorf("insufficient columns")
+	}
+
+	id, err := strconv.Atoi(strings.TrimSpace(row[0]))
+	if err != nil {
+		return Record{}, fmt.Errorf("invalid ID: %w", err)
+	}
+
+	name := strings.TrimSpace(row[1])
+	if name == "" {
+		return Record{}, fmt.Errorf("name cannot be empty")
+	}
+
+	email := strings.TrimSpace(row[2])
+	if !strings.Contains(email, "@") {
+		return Record{}, fmt.Errorf("invalid email format")
+	}
+
+	score, err := strconv.ParseFloat(strings.TrimSpace(row[3]), 64)
+	if err != nil {
+		return Record{}, fmt.Errorf("invalid score: %w", err)
+	}
+
+	if score < 0 || score > 100 {
+		return Record{}, fmt.Errorf("score out of range (0-100)")
+	}
+
+	return Record{
+		ID:    id,
+		Name:  name,
+		Email: email,
+		Score: score,
+	}, nil
+}
+
+func main() {
+	if len(os.Args) != 3 {
+		fmt.Println("Usage: data_cleaner <input.csv> <output.csv>")
+		os.Exit(1)
+	}
+
+	inputFile := os.Args[1]
+	outputFile := os.Args[2]
+
+	if err := cleanCSVData(inputFile, outputFile); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Data cleaning completed successfully")
+}

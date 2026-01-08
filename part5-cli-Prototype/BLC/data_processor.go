@@ -1,34 +1,46 @@
+
 package main
 
 import (
+	"encoding/json"
 	"fmt"
-	"regexp"
-	"strings"
+	"log"
 )
 
-func ValidateEmail(email string) bool {
-	re := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
-	return re.MatchString(email)
+// ValidateJSON checks if the provided byte slice contains valid JSON.
+func ValidateJSON(data []byte) (bool, error) {
+	var js interface{}
+	err := json.Unmarshal(data, &js)
+	if err != nil {
+		return false, fmt.Errorf("invalid JSON: %w", err)
+	}
+	return true, nil
 }
 
-func SanitizeInput(input string) string {
-	return strings.TrimSpace(strings.ToLower(input))
-}
-
-func TransformToSlug(input string) string {
-	slug := strings.ToLower(input)
-	slug = regexp.MustCompile(`[^a-z0-9]+`).ReplaceAllString(slug, "-")
-	slug = strings.Trim(slug, "-")
-	return slug
+// ParseUserData attempts to parse JSON into a predefined User struct.
+func ParseUserData(jsonData []byte) (map[string]interface{}, error) {
+	var result map[string]interface{}
+	err := json.Unmarshal(jsonData, &result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse user data: %w", err)
+	}
+	return result, nil
 }
 
 func main() {
-	email := "test@example.com"
-	fmt.Printf("Email %s valid: %v\n", email, ValidateEmail(email))
+	sampleJSON := []byte(`{"name": "Alice", "age": 30, "active": true}`)
 
-	input := "  HELLO World!  "
-	fmt.Printf("Sanitized '%s': '%s'\n", input, SanitizeInput(input))
+	valid, err := ValidateJSON(sampleJSON)
+	if err != nil {
+		log.Printf("Validation error: %v", err)
+	} else {
+		fmt.Println("JSON is valid:", valid)
+	}
 
-	title := "Go Programming 101: Best Practices"
-	fmt.Printf("Slug for '%s': '%s'\n", title, TransformToSlug(title))
+	userData, err := ParseUserData(sampleJSON)
+	if err != nil {
+		log.Printf("Parse error: %v", err)
+	} else {
+		fmt.Printf("Parsed user data: %v\n", userData)
+	}
 }

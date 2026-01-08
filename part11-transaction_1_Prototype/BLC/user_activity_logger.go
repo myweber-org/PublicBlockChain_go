@@ -6,64 +6,39 @@ import (
 	"time"
 )
 
-type ActivityLogger struct {
-	handler http.Handler
+type ActivityRecorder struct {
+	ResponseWriter http.ResponseWriter
+	StatusCode     int
 }
 
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
+func (ar *ActivityRecorder) WriteHeader(code int) {
+	ar.StatusCode = code
+	ar.ResponseWriter.WriteHeader(code)
 }
 
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	recorder := &responseRecorder{ResponseWriter: w, statusCode: http.StatusOK}
-	
-	al.handler.ServeHTTP(recorder, r)
-	
-	duration := time.Since(start)
-	
-	log.Printf("[%s] %s %s %d %v",
-		r.RemoteAddr,
-		r.Method,
-		r.URL.Path,
-		recorder.statusCode,
-		duration,
-	)
+func (ar *ActivityRecorder) Header() http.Header {
+	return ar.ResponseWriter.Header()
 }
 
-type responseRecorder struct {
-	http.ResponseWriter
-	statusCode int
+func (ar *ActivityRecorder) Write(b []byte) (int, error) {
+	return ar.ResponseWriter.Write(b)
 }
 
-func (rr *responseRecorder) WriteHeader(code int) {
-	rr.statusCode = code
-	rr.ResponseWriter.WriteHeader(code)
-}package middleware
+func ActivityLogger(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		startTime := time.Now()
+		recorder := &ActivityRecorder{ResponseWriter: w, StatusCode: http.StatusOK}
 
-import (
-	"log"
-	"net/http"
-	"time"
-)
+		next.ServeHTTP(recorder, r)
 
-type ActivityLogger struct {
-	handler http.Handler
-}
-
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	al.handler.ServeHTTP(w, r)
-	duration := time.Since(start)
-
-	log.Printf("Activity: %s %s from %s completed in %v",
-		r.Method,
-		r.URL.Path,
-		r.RemoteAddr,
-		duration,
-	)
+		duration := time.Since(startTime)
+		log.Printf(
+			"Activity: %s %s %d %v %s",
+			r.Method,
+			r.URL.Path,
+			recorder.StatusCode,
+			duration,
+			r.RemoteAddr,
+		)
+	})
 }

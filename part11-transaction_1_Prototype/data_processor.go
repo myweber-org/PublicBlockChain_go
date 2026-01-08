@@ -392,3 +392,47 @@ func main() {
 	fmt.Printf("Active: %v\n", processedProfile.Active)
 	fmt.Printf("Timestamp: %s\n", processedProfile.Timestamp)
 }
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+)
+
+type User struct {
+	ID    int    `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+func ValidateJSON(data []byte) (*User, error) {
+	var user User
+	err := json.Unmarshal(data, &user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse JSON: %w", err)
+	}
+
+	if user.Name == "" {
+		return nil, fmt.Errorf("name field is required")
+	}
+	if user.Email == "" {
+		return nil, fmt.Errorf("email field is required")
+	}
+	if user.ID <= 0 {
+		return nil, fmt.Errorf("id must be a positive integer")
+	}
+
+	return &user, nil
+}
+
+func main() {
+	jsonData := []byte(`{"id": 123, "name": "John Doe", "email": "john@example.com"}`)
+
+	user, err := ValidateJSON(jsonData)
+	if err != nil {
+		log.Fatalf("Validation error: %v", err)
+	}
+
+	fmt.Printf("Valid user: %+v\n", user)
+}

@@ -106,3 +106,35 @@ func main() {
 	cleaned := CleanData(data)
 	fmt.Println("Cleaned data:", cleaned)
 }
+package datautils
+
+import (
+	"regexp"
+	"strings"
+	"unicode"
+)
+
+func SanitizeString(input string) string {
+	// Trim leading and trailing whitespace
+	trimmed := strings.TrimSpace(input)
+	
+	// Replace multiple spaces with a single space
+	spaceRegex := regexp.MustCompile(`\s+`)
+	normalized := spaceRegex.ReplaceAllString(trimmed, " ")
+	
+	// Remove any non-printable characters
+	var result strings.Builder
+	for _, r := range normalized {
+		if unicode.IsPrint(r) {
+			result.WriteRune(r)
+		}
+	}
+	
+	return result.String()
+}
+
+func NormalizeWhitespace(input string) string {
+	// Convert all whitespace sequences to single spaces
+	whitespaceRegex := regexp.MustCompile(`\s+`)
+	return whitespaceRegex.ReplaceAllString(strings.TrimSpace(input), " ")
+}

@@ -313,4 +313,186 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Printf("Decrypted: %s\n", decrypted)
+}package main
+
+import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+
+	"golang.org/x/crypto/pbkdf2"
+)
+
+const (
+	saltSize      = 16
+	nonceSize     = 12
+	keyIterations = 100000
+	keyLength     = 32
+)
+
+type EncryptedData struct {
+	Ciphertext string `json:"ciphertext"`
+	Salt       string `json:"salt"`
+	Nonce      string `json:"nonce"`
+}
+
+func deriveKey(password string, salt []byte) []byte {
+	return pbkdf2.Key([]byte(password), salt, keyIterations, keyLength, sha256.New)
+}
+
+func encryptData(plaintext, password string) (*EncryptedData, error) {
+	salt := make([]byte, saltSize)
+	if _, err := rand.Read(salt); err != nil {
+		return nil, fmt.Errorf("failed to generate salt: %w", err)
+	}
+
+	nonce := make([]byte, nonceSize)
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, fmt.Errorf("failed to generate nonce: %w", err)
+	}
+
+	key := deriveKey(password, salt)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cipher: %w", err)
+	}
+
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCM: %w", err)
+	}
+
+	ciphertext := aesgcm.Seal(nil, nonce, []byte(plaintext), nil)
+
+	return &EncryptedData{
+		Ciphertext: base64.StdEncoding.EncodeToString(ciphertext),
+		Salt:       base64.StdEncoding.EncodeToString(salt),
+		Nonce:      base64.StdEncoding.EncodeToString(nonce),
+	}, nil
+}
+
+func decryptData(encrypted *EncryptedData, password string) (string, error) {
+	salt, err := base64.StdEncoding.DecodeString(encrypted.Salt)
+	if err != nil {
+		return "", fmt.Errorf("invalid salt encoding: %w", err)
+	}
+
+	nonce, err := base64.StdEncoding.DecodeString(encrypted.Nonce)
+	if err != nil {
+		return "", fmt.Errorf("invalid nonce encoding: %w", err)
+	}
+
+	ciphertext, err := base64.StdEncoding.DecodeString(encrypted.Ciphertext)
+	if err != nil {
+		return "", fmt.Errorf("invalid ciphertext encoding: %w", err)
+	}
+
+	key := deriveKey(password, salt)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", fmt.Errorf("failed to create cipher: %w", err)
+	}
+
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", fmt.Errorf("failed to create GCM: %w", err)
+	}
+
+	plaintext, err := aesgcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", errors.New("decryption failed: invalid password or corrupted data")
+	}
+
+	return string(plaintext), nil
+}
+
+func processFile(inputPath, outputPath, password string, encrypt bool) error {
+	var data []byte
+	var err error
+
+	if inputPath == "-" {
+		data, err = io.ReadAll(os.Stdin)
+	} else {
+		data, err = os.ReadFile(inputPath)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to read input: %w", err)
+	}
+
+	var result string
+	if encrypt {
+		encrypted, err := encryptData(string(data), password)
+		if err != nil {
+			return fmt.Errorf("encryption failed: %w", err)
+		}
+		result = fmt.Sprintf("SALT:%s\nNONCE:%s\nDATA:%s",
+			encrypted.Salt, encrypted.Nonce, encrypted.Ciphertext)
+	} else {
+		lines := strings.Split(string(data), "\n")
+		if len(lines) < 3 {
+			return errors.New("invalid encrypted file format")
+		}
+
+		salt := strings.TrimPrefix(lines[0], "SALT:")
+		nonce := strings.TrimPrefix(lines[1], "NONCE:")
+		ciphertext := strings.TrimPrefix(lines[2], "DATA:")
+
+		encrypted := &EncryptedData{
+			Salt:       salt,
+			Nonce:      nonce,
+			Ciphertext: ciphertext,
+		}
+
+		plaintext, err := decryptData(encrypted, password)
+		if err != nil {
+			return fmt.Errorf("decryption failed: %w", err)
+		}
+		result = plaintext
+	}
+
+	if outputPath == "-" {
+		fmt.Print(result)
+	} else {
+		if err := os.WriteFile(outputPath, []byte(result), 0644); err != nil {
+			return fmt.Errorf("failed to write output: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func main() {
+	if len(os.Args) < 5 {
+		fmt.Println("Usage: file_encryptor <encrypt|decrypt> <input_file|-> <output_file|-> <password>")
+		fmt.Println("Use '-' for stdin/stdout")
+		os.Exit(1)
+	}
+
+	action := os.Args[1]
+	inputFile := os.Args[2]
+	outputFile := os.Args[3]
+	password := os.Args[4]
+
+	encrypt := false
+	switch action {
+	case "encrypt":
+		encrypt = true
+	case "decrypt":
+		encrypt = false
+	default:
+		fmt.Printf("Invalid action: %s. Use 'encrypt' or 'decrypt'\n", action)
+		os.Exit(1)
+	}
+
+	if err := processFile(inputFile, outputFile, password, encrypt); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
 }

@@ -265,4 +265,84 @@ type ConfigError struct {
 
 func (e *ConfigError) Error() string {
     return "config error: " + e.Field + " - " + e.Message
+}package config
+
+import (
+	"errors"
+	"os"
+	"strconv"
+	"strings"
+)
+
+type AppConfig struct {
+	ServerPort int
+	DBHost     string
+	DBPort     int
+	DebugMode  bool
+	APIKey     string
+}
+
+func LoadConfig() (*AppConfig, error) {
+	cfg := &AppConfig{}
+	var err error
+
+	cfg.ServerPort, err = getEnvInt("SERVER_PORT", 8080)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.DBHost = getEnvString("DB_HOST", "localhost")
+	
+	cfg.DBPort, err = getEnvInt("DB_PORT", 5432)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.DebugMode, err = getEnvBool("DEBUG_MODE", false)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.APIKey = getEnvString("API_KEY", "")
+	if cfg.APIKey == "" {
+		return nil, errors.New("API_KEY environment variable is required")
+	}
+
+	if cfg.ServerPort < 1 || cfg.ServerPort > 65535 {
+		return nil, errors.New("SERVER_PORT must be between 1 and 65535")
+	}
+
+	return cfg, nil
+}
+
+func getEnvString(key, defaultValue string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return defaultValue
+}
+
+func getEnvInt(key string, defaultValue int) (int, error) {
+	if value, exists := os.LookupEnv(key); exists {
+		intValue, err := strconv.Atoi(value)
+		if err != nil {
+			return 0, errors.New("invalid integer value for " + key)
+		}
+		return intValue, nil
+	}
+	return defaultValue, nil
+}
+
+func getEnvBool(key string, defaultValue bool) (bool, error) {
+	if value, exists := os.LookupEnv(key); exists {
+		lowerValue := strings.ToLower(value)
+		if lowerValue == "true" || lowerValue == "1" || lowerValue == "yes" {
+			return true, nil
+		}
+		if lowerValue == "false" || lowerValue == "0" || lowerValue == "no" {
+			return false, nil
+		}
+		return false, errors.New("invalid boolean value for " + key)
+	}
+	return defaultValue, nil
 }

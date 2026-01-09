@@ -133,4 +133,18 @@ func main() {
 	cleaned := RemoveDuplicates(data)
 	fmt.Println("Original:", data)
 	fmt.Println("Cleaned:", cleaned)
+}package utils
+
+import "strings"
+
+// CleanStrings removes empty strings and trims whitespace from each element.
+func CleanStrings(input []string) []string {
+    cleaned := make([]string, 0, len(input))
+    for _, s := range input {
+        trimmed := strings.TrimSpace(s)
+        if trimmed != "" {
+            cleaned = append(cleaned, trimmed)
+        }
+    }
+    return cleaned
 }

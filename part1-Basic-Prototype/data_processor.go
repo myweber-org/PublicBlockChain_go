@@ -1,81 +1,117 @@
+
 package main
 
 import (
-	"errors"
+	"encoding/csv"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
 	"strings"
 )
 
-type DataRecord struct {
-	ID    string
-	Value string
-	Valid bool
+type Record struct {
+	ID    int
+	Name  string
+	Email string
+	Score float64
 }
 
-func ValidateRecord(record DataRecord) error {
-	if record.ID == "" {
-		return errors.New("ID cannot be empty")
-	}
-	if len(record.Value) > 100 {
-		return errors.New("value exceeds maximum length")
-	}
-	return nil
-}
-
-func TransformValue(value string) string {
-	return strings.ToUpper(strings.TrimSpace(value))
-}
-
-func ProcessRecords(records []DataRecord) ([]DataRecord, error) {
-	var processed []DataRecord
-	for _, rec := range records {
-		if err := ValidateRecord(rec); err != nil {
-			return nil, err
-		}
-		rec.Value = TransformValue(rec.Value)
-		rec.Valid = true
-		processed = append(processed, rec)
-	}
-	return processed, nil
-}
-package main
-
-import (
-	"encoding/json"
-	"fmt"
-	"log"
-)
-
-type UserData struct {
-	ID    int    `json:"id"`
-	Name  string `json:"name"`
-	Email string `json:"email"`
-}
-
-func ValidateAndParseJSON(input []byte) (*UserData, error) {
-	var data UserData
-	err := json.Unmarshal(input, &data)
+func ProcessCSV(filename string) ([]Record, error) {
+	file, err := os.Open(filename)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	reader.TrimLeadingSpace = true
+
+	var records []Record
+	lineNum := 0
+
+	for {
+		lineNum++
+		row, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("csv read error at line %d: %w", lineNum, err)
+		}
+
+		if len(row) != 4 {
+			return nil, fmt.Errorf("invalid column count at line %d: expected 4, got %d", lineNum, len(row))
+		}
+
+		id, err := strconv.Atoi(strings.TrimSpace(row[0]))
+		if err != nil {
+			return nil, fmt.Errorf("invalid ID at line %d: %w", lineNum, err)
+		}
+
+		name := strings.TrimSpace(row[1])
+		if name == "" {
+			return nil, fmt.Errorf("empty name at line %d", lineNum)
+		}
+
+		email := strings.TrimSpace(row[2])
+		if !strings.Contains(email, "@") {
+			return nil, fmt.Errorf("invalid email format at line %d", lineNum)
+		}
+
+		score, err := strconv.ParseFloat(strings.TrimSpace(row[3]), 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid score at line %d: %w", lineNum, err)
+		}
+
+		records = append(records, Record{
+			ID:    id,
+			Name:  name,
+			Email: email,
+			Score: score,
+		})
 	}
 
-	if data.ID <= 0 {
-		return nil, fmt.Errorf("invalid ID: must be positive integer")
-	}
-	if data.Name == "" {
-		return nil, fmt.Errorf("name field cannot be empty")
-	}
-	if data.Email == "" {
-		return nil, fmt.Errorf("email field cannot be empty")
+	return records, nil
+}
+
+func CalculateAverage(records []Record) float64 {
+	if len(records) == 0 {
+		return 0.0
 	}
 
-	return &data, nil
+	var total float64
+	for _, record := range records {
+		total += record.Score
+	}
+	return total / float64(len(records))
+}
+
+func FilterByScore(records []Record, minScore float64) []Record {
+	var filtered []Record
+	for _, record := range records {
+		if record.Score >= minScore {
+			filtered = append(filtered, record)
+		}
+	}
+	return filtered
 }
 
 func main() {
-	jsonInput := `{"id": 123, "name": "John Doe", "email": "john@example.com"}`
-	parsedData, err := ValidateAndParseJSON([]byte(jsonInput))
-	if err != nil {
-		log.Fatalf("Error: %v", err)
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: data_processor <csv_file>")
+		os.Exit(1)
 	}
-	fmt.Printf("Parsed data: %+v\n", parsedData)
+
+	records, err := ProcessCSV(os.Args[1])
+	if err != nil {
+		fmt.Printf("Error processing file: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Successfully processed %d records\n", len(records))
+	fmt.Printf("Average score: %.2f\n", CalculateAverage(records))
+
+	highScorers := FilterByScore(records, 80.0)
+	fmt.Printf("Records with score >= 80: %d\n", len(highScorers))
 }

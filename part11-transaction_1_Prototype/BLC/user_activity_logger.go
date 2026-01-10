@@ -6,39 +6,45 @@ import (
 	"time"
 )
 
-type ActivityRecorder struct {
-	ResponseWriter http.ResponseWriter
-	StatusCode     int
+type ActivityLogger struct {
+	Logger *log.Logger
 }
 
-func (ar *ActivityRecorder) WriteHeader(code int) {
-	ar.StatusCode = code
-	ar.ResponseWriter.WriteHeader(code)
+func NewActivityLogger(logger *log.Logger) *ActivityLogger {
+	return &ActivityLogger{Logger: logger}
 }
 
-func (ar *ActivityRecorder) Header() http.Header {
-	return ar.ResponseWriter.Header()
-}
-
-func (ar *ActivityRecorder) Write(b []byte) (int, error) {
-	return ar.ResponseWriter.Write(b)
-}
-
-func ActivityLogger(next http.Handler) http.Handler {
+func (al *ActivityLogger) LogActivity(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		startTime := time.Now()
-		recorder := &ActivityRecorder{ResponseWriter: w, StatusCode: http.StatusOK}
-
+		start := time.Now()
+		
+		recorder := &responseRecorder{
+			ResponseWriter: w,
+			statusCode:     http.StatusOK,
+		}
+		
 		next.ServeHTTP(recorder, r)
-
-		duration := time.Since(startTime)
-		log.Printf(
-			"Activity: %s %s %d %v %s",
+		
+		duration := time.Since(start)
+		
+		al.Logger.Printf(
+			"Method: %s | Path: %s | Status: %d | Duration: %v | IP: %s | UserAgent: %s",
 			r.Method,
 			r.URL.Path,
-			recorder.StatusCode,
+			recorder.statusCode,
 			duration,
 			r.RemoteAddr,
+			r.UserAgent(),
 		)
 	})
+}
+
+type responseRecorder struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rr *responseRecorder) WriteHeader(code int) {
+	rr.statusCode = code
+	rr.ResponseWriter.WriteHeader(code)
 }

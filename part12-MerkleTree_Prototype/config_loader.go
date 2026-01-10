@@ -1,50 +1,67 @@
 package config
 
 import (
-    "fmt"
-    "io/ioutil"
-    "gopkg.in/yaml.v2"
+	"os"
+	"strings"
+
+	"gopkg.in/yaml.v2"
 )
 
 type Config struct {
-    Server struct {
-        Host string `yaml:"host"`
-        Port int    `yaml:"port"`
-    } `yaml:"server"`
-    Database struct {
-        Name     string `yaml:"name"`
-        User     string `yaml:"user"`
-        Password string `yaml:"password"`
-    } `yaml:"database"`
+	Server struct {
+		Port string `yaml:"port" env:"SERVER_PORT"`
+		Host string `yaml:"host" env:"SERVER_HOST"`
+	} `yaml:"server"`
+	Database struct {
+		URL      string `yaml:"url" env:"DB_URL"`
+		MaxConns int    `yaml:"max_connections" env:"DB_MAX_CONNS"`
+	} `yaml:"database"`
+	LogLevel string `yaml:"log_level" env:"LOG_LEVEL"`
 }
 
-func LoadConfig(path string) (*Config, error) {
-    data, err := ioutil.ReadFile(path)
-    if err != nil {
-        return nil, fmt.Errorf("failed to read config file: %w", err)
-    }
+func LoadConfig(filePath string) (*Config, error) {
+	config := &Config{}
 
-    var cfg Config
-    if err := yaml.Unmarshal(data, &cfg); err != nil {
-        return nil, fmt.Errorf("failed to parse YAML: %w", err)
-    }
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
 
-    if err := validateConfig(&cfg); err != nil {
-        return nil, fmt.Errorf("config validation failed: %w", err)
-    }
+	decoder := yaml.NewDecoder(file)
+	if err := decoder.Decode(config); err != nil {
+		return nil, err
+	}
 
-    return &cfg, nil
+	overrideWithEnv(config)
+
+	return config, nil
 }
 
-func validateConfig(cfg *Config) error {
-    if cfg.Server.Host == "" {
-        return fmt.Errorf("server host cannot be empty")
-    }
-    if cfg.Server.Port <= 0 || cfg.Server.Port > 65535 {
-        return fmt.Errorf("invalid server port: %d", cfg.Server.Port)
-    }
-    if cfg.Database.Name == "" {
-        return fmt.Errorf("database name cannot be empty")
-    }
-    return nil
+func overrideWithEnv(c *Config) {
+	envOverride(&c.Server.Port, "SERVER_PORT")
+	envOverride(&c.Server.Host, "SERVER_HOST")
+	envOverride(&c.Database.URL, "DB_URL")
+	envOverrideInt(&c.Database.MaxConns, "DB_MAX_CONNS")
+	envOverride(&c.LogLevel, "LOG_LEVEL")
+}
+
+func envOverride(field *string, envVar string) {
+	if val := os.Getenv(envVar); val != "" {
+		*field = val
+	}
+}
+
+func envOverrideInt(field *int, envVar string) {
+	if val := os.Getenv(envVar); val != "" {
+		if intVal, err := parseInt(val); err == nil {
+			*field = intVal
+		}
+	}
+}
+
+func parseInt(s string) (int, error) {
+	var result int
+	_, err := fmt.Sscanf(s, "%d", &result)
+	return result, err
 }

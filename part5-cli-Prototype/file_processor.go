@@ -122,4 +122,63 @@ func main() {
         os.Exit(1)
     }
     fmt.Println("File processing completed successfully")
+}package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+// ReadJSONFile reads a JSON file and unmarshals it into the provided interface.
+func ReadJSONFile(filename string, v interface{}) error {
+	file, err := os.Open(filename)
+	if err != nil {
+		return fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	decoder := json.NewDecoder(file)
+	if err := decoder.Decode(v); err != nil {
+		return fmt.Errorf("failed to decode JSON: %w", err)
+	}
+	return nil
+}
+
+// WriteJSONFile marshals the provided data and writes it to a file.
+func WriteJSONFile(filename string, v interface{}) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return fmt.Errorf("failed to create file: %w", err)
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(v); err != nil {
+		return fmt.Errorf("failed to encode JSON: %w", err)
+	}
+	return nil
+}
+
+func main() {
+	// Example usage
+	type Config struct {
+		Host string `json:"host"`
+		Port int    `json:"port"`
+	}
+
+	config := Config{Host: "localhost", Port: 8080}
+	if err := WriteJSONFile("config.json", config); err != nil {
+		fmt.Printf("Error writing file: %v\n", err)
+		return
+	}
+	fmt.Println("File written successfully")
+
+	var loadedConfig Config
+	if err := ReadJSONFile("config.json", &loadedConfig); err != nil {
+		fmt.Printf("Error reading file: %v\n", err)
+		return
+	}
+	fmt.Printf("Loaded config: %+v\n", loadedConfig)
 }

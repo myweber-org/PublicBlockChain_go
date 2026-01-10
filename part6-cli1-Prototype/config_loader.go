@@ -1,38 +1,37 @@
 package config
 
 import (
+	"errors"
+	"io/ioutil"
 	"os"
-	"path/filepath"
 
-	"gopkg.in/yaml.v3"
+	"gopkg.in/yaml.v2"
 )
 
 type Config struct {
 	Server struct {
-		Host string `yaml:"host" env:"SERVER_HOST"`
-		Port int    `yaml:"port" env:"SERVER_PORT"`
+		Host string `yaml:"host"`
+		Port int    `yaml:"port"`
 	} `yaml:"server"`
 	Database struct {
-		Host     string `yaml:"host" env:"DB_HOST"`
-		Port     int    `yaml:"port" env:"DB_PORT"`
-		Name     string `yaml:"name" env:"DB_NAME"`
-		User     string `yaml:"user" env:"DB_USER"`
-		Password string `yaml:"password" env:"DB_PASSWORD"`
-		SSLMode  string `yaml:"ssl_mode" env:"DB_SSL_MODE"`
+		DSN      string `yaml:"dsn"`
+		MaxConns int    `yaml:"max_connections"`
 	} `yaml:"database"`
-	Logging struct {
-		Level  string `yaml:"level" env:"LOG_LEVEL"`
-		Format string `yaml:"format" env:"LOG_FORMAT"`
-	} `yaml:"logging"`
+	LogLevel string `yaml:"log_level"`
 }
 
-func LoadConfig(configPath string) (*Config, error) {
-	absPath, err := filepath.Abs(configPath)
+func LoadConfig(path string) (*Config, error) {
+	if path == "" {
+		return nil, errors.New("config path cannot be empty")
+	}
+
+	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
+	defer file.Close()
 
-	data, err := os.ReadFile(absPath)
+	data, err := ioutil.ReadAll(file)
 	if err != nil {
 		return nil, err
 	}
@@ -42,38 +41,28 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, err
 	}
 
-	overrideFromEnv(&cfg)
+	if err := validateConfig(&cfg); err != nil {
+		return nil, err
+	}
+
 	return &cfg, nil
 }
 
-func overrideFromEnv(cfg *Config) {
-	cfg.Server.Host = getEnvOrDefault("SERVER_HOST", cfg.Server.Host)
-	cfg.Server.Port = getEnvIntOrDefault("SERVER_PORT", cfg.Server.Port)
-
-	cfg.Database.Host = getEnvOrDefault("DB_HOST", cfg.Database.Host)
-	cfg.Database.Port = getEnvIntOrDefault("DB_PORT", cfg.Database.Port)
-	cfg.Database.Name = getEnvOrDefault("DB_NAME", cfg.Database.Name)
-	cfg.Database.User = getEnvOrDefault("DB_USER", cfg.Database.User)
-	cfg.Database.Password = getEnvOrDefault("DB_PASSWORD", cfg.Database.Password)
-	cfg.Database.SSLMode = getEnvOrDefault("DB_SSL_MODE", cfg.Database.SSLMode)
-
-	cfg.Logging.Level = getEnvOrDefault("LOG_LEVEL", cfg.Logging.Level)
-	cfg.Logging.Format = getEnvOrDefault("LOG_FORMAT", cfg.Logging.Format)
-}
-
-func getEnvOrDefault(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
+func validateConfig(cfg *Config) error {
+	if cfg.Server.Host == "" {
+		return errors.New("server host is required")
 	}
-	return defaultValue
-}
-
-func getEnvIntOrDefault(key string, defaultValue int) int {
-	if value := os.Getenv(key); value != "" {
-		var result int
-		if _, err := fmt.Sscanf(value, "%d", &result); err == nil {
-			return result
-		}
+	if cfg.Server.Port <= 0 || cfg.Server.Port > 65535 {
+		return errors.New("server port must be between 1 and 65535")
 	}
-	return defaultValue
+	if cfg.Database.DSN == "" {
+		return errors.New("database DSN is required")
+	}
+	if cfg.Database.MaxConns < 1 {
+		return errors.New("database max connections must be at least 1")
+	}
+	if cfg.LogLevel == "" {
+		cfg.LogLevel = "info"
+	}
+	return nil
 }

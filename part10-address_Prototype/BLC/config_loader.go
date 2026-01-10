@@ -145,4 +145,65 @@ func validateConfig(cfg *AppConfig) error {
 	}
 
 	return nil
+}package config
+
+import (
+	"os"
+	"strconv"
+	"sync"
+)
+
+type Config struct {
+	DatabaseURL  string
+	MaxConnections int
+	DebugMode    bool
+	CacheSize    int64
+}
+
+var (
+	instance *Config
+	once     sync.Once
+)
+
+func GetConfig() *Config {
+	once.Do(func() {
+		instance = &Config{
+			DatabaseURL:   getEnv("DATABASE_URL", "postgres://localhost:5432/app"),
+			MaxConnections: getEnvAsInt("MAX_CONNECTIONS", 10),
+			DebugMode:     getEnvAsBool("DEBUG_MODE", false),
+			CacheSize:     getEnvAsInt64("CACHE_SIZE", 1000000),
+		}
+	})
+	return instance
+}
+
+func getEnv(key, defaultValue string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return defaultValue
+}
+
+func getEnvAsInt(key string, defaultValue int) int {
+	valueStr := getEnv(key, "")
+	if value, err := strconv.Atoi(valueStr); err == nil {
+		return value
+	}
+	return defaultValue
+}
+
+func getEnvAsBool(key string, defaultValue bool) bool {
+	valueStr := getEnv(key, "")
+	if value, err := strconv.ParseBool(valueStr); err == nil {
+		return value
+	}
+	return defaultValue
+}
+
+func getEnvAsInt64(key string, defaultValue int64) int64 {
+	valueStr := getEnv(key, "")
+	if value, err := strconv.ParseInt(valueStr, 10, 64); err == nil {
+		return value
+	}
+	return defaultValue
 }

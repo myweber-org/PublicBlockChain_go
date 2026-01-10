@@ -66,3 +66,67 @@ func main() {
 		}
 	}
 }
+package main
+
+import (
+	"log"
+	"time"
+)
+
+type Session struct {
+	ID        string
+	UserID    string
+	ExpiresAt time.Time
+}
+
+type SessionStore interface {
+	GetAllSessions() ([]Session, error)
+	DeleteSession(id string) error
+}
+
+type DBSessionStore struct{}
+
+func (s *DBSessionStore) GetAllSessions() ([]Session, error) {
+	return []Session{}, nil
+}
+
+func (s *DBSessionStore) DeleteSession(id string) error {
+	return nil
+}
+
+func cleanupExpiredSessions(store SessionStore) error {
+	sessions, err := store.GetAllSessions()
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+	for _, session := range sessions {
+		if session.ExpiresAt.Before(now) {
+			if err := store.DeleteSession(session.ID); err != nil {
+				log.Printf("Failed to delete session %s: %v", session.ID, err)
+			} else {
+				log.Printf("Deleted expired session: %s", session.ID)
+			}
+		}
+	}
+	return nil
+}
+
+func scheduleCleanup(store SessionStore, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if err := cleanupExpiredSessions(store); err != nil {
+			log.Printf("Session cleanup failed: %v", err)
+		}
+	}
+}
+
+func main() {
+	store := &DBSessionStore{}
+	go scheduleCleanup(store, 24*time.Hour)
+
+	select {}
+}

@@ -6,40 +6,56 @@ import (
 	"time"
 )
 
-type ActivityLogger struct {
-	handler http.Handler
+type ActivityLog struct {
+	UserID    string
+	IPAddress string
+	Method    string
+	Path      string
+	Timestamp time.Time
 }
 
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
+func ActivityLogger(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		userID := "anonymous"
+		if auth := r.Header.Get("Authorization"); auth != "" {
+			userID = extractUserID(auth)
+		}
+
+		activity := ActivityLog{
+			UserID:    userID,
+			IPAddress: r.RemoteAddr,
+			Method:    r.Method,
+			Path:      r.URL.Path,
+			Timestamp: start,
+		}
+
+		logActivity(activity)
+
+		next.ServeHTTP(w, r)
+	})
 }
 
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	recorder := &responseRecorder{
-		ResponseWriter: w,
-		statusCode:     http.StatusOK,
+func extractUserID(authHeader string) string {
+	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+		return authHeader[7:min(len(authHeader), 20)] + "..."
 	}
-
-	al.handler.ServeHTTP(recorder, r)
-
-	duration := time.Since(start)
-	log.Printf(
-		"%s %s %d %s %s",
-		r.Method,
-		r.URL.Path,
-		recorder.statusCode,
-		duration,
-		r.RemoteAddr,
-	)
+	return "authenticated"
 }
 
-type responseRecorder struct {
-	http.ResponseWriter
-	statusCode int
+func logActivity(activity ActivityLog) {
+	log.Printf("ACTIVITY: User=%s IP=%s %s %s at %s",
+		activity.UserID,
+		activity.IPAddress,
+		activity.Method,
+		activity.Path,
+		activity.Timestamp.Format(time.RFC3339))
 }
 
-func (rr *responseRecorder) WriteHeader(code int) {
-	rr.statusCode = code
-	rr.ResponseWriter.WriteHeader(code)
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

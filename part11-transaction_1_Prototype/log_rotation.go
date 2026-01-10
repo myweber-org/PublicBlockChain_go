@@ -287,4 +287,63 @@ func main() {
     }
     
     fmt.Println("Log rotation demonstration completed")
+}package main
+
+import (
+	"log"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+const (
+	maxLogSize    = 10 * 1024 * 1024 // 10MB
+	maxLogFiles   = 5
+	logFileName   = "app.log"
+	checkInterval = 30 * time.Second
+)
+
+func rotateLogs() error {
+	info, err := os.Stat(logFileName)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	if info.Size() < maxLogSize {
+		return nil
+	}
+
+	for i := maxLogFiles - 1; i > 0; i-- {
+		oldName := logFileName + "." + string(rune('0'+i))
+		newName := logFileName + "." + string(rune('0'+i+1))
+		if _, err := os.Stat(oldName); err == nil {
+			os.Rename(oldName, newName)
+		}
+	}
+
+	backupName := logFileName + ".1"
+	os.Rename(logFileName, backupName)
+
+	files, _ := filepath.Glob(logFileName + ".*")
+	if len(files) > maxLogFiles {
+		for _, f := range files[maxLogFiles:] {
+			os.Remove(f)
+		}
+	}
+
+	return nil
+}
+
+func main() {
+	ticker := time.NewTicker(checkInterval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if err := rotateLogs(); err != nil {
+			log.Printf("Log rotation failed: %v", err)
+		}
+	}
 }

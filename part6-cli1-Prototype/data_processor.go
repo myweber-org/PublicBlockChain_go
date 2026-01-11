@@ -46,11 +46,11 @@ func ProcessUserData(rawData []byte) (*UserData, error) {
 }
 
 func main() {
-	jsonData := `{"email":"test@example.com","username":"  JohnDoe  ","age":25}`
-	processed, err := ProcessUserData([]byte(jsonData))
+	jsonData := []byte(`{"email":"test@example.com","username":"  JohnDoe  ","age":25}`)
+	processedData, err := ProcessUserData(jsonData)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return
 	}
-	fmt.Printf("Processed data: %+v\n", processed)
+	fmt.Printf("Processed Data: %+v\n", processedData)
 }

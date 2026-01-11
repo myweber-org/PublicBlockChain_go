@@ -147,4 +147,83 @@ func RemoveDuplicates(input []int) []int {
 		}
 	}
 	return result
+}package main
+
+import (
+	"encoding/csv"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+)
+
+type Cleaner struct {
+	TrimSpaces bool
+	RemoveEmpty bool
+}
+
+func NewCleaner() *Cleaner {
+	return &Cleaner{
+		TrimSpaces: true,
+		RemoveEmpty: true,
+	}
+}
+
+func (c *Cleaner) ProcessRow(row []string) []string {
+	var result []string
+	for _, field := range row {
+		processed := field
+		if c.TrimSpaces {
+			processed = strings.TrimSpace(processed)
+		}
+		if !c.RemoveEmpty || processed != "" {
+			result = append(result, processed)
+		}
+	}
+	return result
+}
+
+func (c *Cleaner) CleanCSV(inputPath, outputPath string) error {
+	inFile, err := os.Open(inputPath)
+	if err != nil {
+		return fmt.Errorf("open input file: %w", err)
+	}
+	defer inFile.Close()
+
+	outFile, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("create output file: %w", err)
+	}
+	defer outFile.Close()
+
+	reader := csv.NewReader(inFile)
+	writer := csv.NewWriter(outFile)
+	defer writer.Flush()
+
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("read csv: %w", err)
+		}
+
+		cleaned := c.ProcessRow(record)
+		if len(cleaned) > 0 {
+			if err := writer.Write(cleaned); err != nil {
+				return fmt.Errorf("write csv: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+func main() {
+	cleaner := NewCleaner()
+	if err := cleaner.CleanCSV("input.csv", "output.csv"); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("CSV cleaning completed successfully")
 }

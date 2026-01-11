@@ -141,3 +141,110 @@ func main() {
     
     fmt.Println("Log rotation test completed")
 }
+package main
+
+import (
+    "fmt"
+    "io"
+    "os"
+    "path/filepath"
+    "sync"
+    "time"
+)
+
+type RotatingWriter struct {
+    mu          sync.Mutex
+    file        *os.File
+    currentSize int64
+    maxSize     int64
+    basePath    string
+    fileIndex   int
+}
+
+func NewRotatingWriter(basePath string, maxSize int64) (*RotatingWriter, error) {
+    w := &RotatingWriter{
+        maxSize:  maxSize,
+        basePath: basePath,
+        fileIndex: 0,
+    }
+    
+    if err := w.openFile(); err != nil {
+        return nil, err
+    }
+    
+    return w, nil
+}
+
+func (w *RotatingWriter) openFile() error {
+    filename := fmt.Sprintf("%s.%d", w.basePath, w.fileIndex)
+    file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+    if err != nil {
+        return err
+    }
+    
+    info, err := file.Stat()
+    if err != nil {
+        file.Close()
+        return err
+    }
+    
+    if w.file != nil {
+        w.file.Close()
+    }
+    
+    w.file = file
+    w.currentSize = info.Size()
+    return nil
+}
+
+func (w *RotatingWriter) rotateIfNeeded() error {
+    if w.currentSize < w.maxSize {
+        return nil
+    }
+    
+    w.fileIndex++
+    return w.openFile()
+}
+
+func (w *RotatingWriter) Write(p []byte) (int, error) {
+    w.mu.Lock()
+    defer w.mu.Unlock()
+    
+    if err := w.rotateIfNeeded(); err != nil {
+        return 0, err
+    }
+    
+    n, err := w.file.Write(p)
+    if err == nil {
+        w.currentSize += int64(n)
+    }
+    return n, err
+}
+
+func (w *RotatingWriter) Close() error {
+    w.mu.Lock()
+    defer w.mu.Unlock()
+    
+    if w.file != nil {
+        return w.file.Close()
+    }
+    return nil
+}
+
+func main() {
+    writer, err := NewRotatingWriter("app.log", 1024*1024) // 1MB max size
+    if err != nil {
+        fmt.Printf("Failed to create rotating writer: %v\n", err)
+        return
+    }
+    defer writer.Close()
+    
+    for i := 0; i < 100; i++ {
+        logEntry := fmt.Sprintf("[%s] Log entry number %d\n", 
+            time.Now().Format(time.RFC3339), i)
+        writer.Write([]byte(logEntry))
+        time.Sleep(10 * time.Millisecond)
+    }
+    
+    fmt.Println("Log rotation test completed")
+}

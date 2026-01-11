@@ -57,3 +57,57 @@ func RemoveDuplicates[T comparable](slice []T) []T {
 	}
 	return result
 }
+package main
+
+import (
+    "fmt"
+    "strings"
+)
+
+func DeduplicateStrings(slice []string) []string {
+    seen := make(map[string]bool)
+    result := []string{}
+    for _, item := range slice {
+        if !seen[item] {
+            seen[item] = true
+            result = append(result, item)
+        }
+    }
+    return result
+}
+
+func ValidateEmail(email string) bool {
+    if !strings.Contains(email, "@") {
+        return false
+    }
+    parts := strings.Split(email, "@")
+    if len(parts) != 2 {
+        return false
+    }
+    if len(parts[0]) == 0 || len(parts[1]) == 0 {
+        return false
+    }
+    return true
+}
+
+func main() {
+    emails := []string{
+        "test@example.com",
+        "user@domain.org",
+        "test@example.com",
+        "invalid-email",
+        "another@test.net",
+        "user@domain.org",
+    }
+
+    uniqueEmails := DeduplicateStrings(emails)
+    fmt.Println("Unique emails:", uniqueEmails)
+
+    for _, email := range uniqueEmails {
+        if ValidateEmail(email) {
+            fmt.Printf("%s is valid\n", email)
+        } else {
+            fmt.Printf("%s is invalid\n", email)
+        }
+    }
+}

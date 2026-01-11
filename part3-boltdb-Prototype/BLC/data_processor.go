@@ -2,58 +2,104 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
-	"io"
-	"os"
+    "encoding/csv"
+    "errors"
+    "fmt"
+    "io"
+    "os"
+    "strconv"
 )
 
-type Config struct {
-	ServerAddress string `json:"server_address"`
-	Port          int    `json:"port"`
-	EnableLogging bool   `json:"enable_logging"`
-	MaxConnections int   `json:"max_connections"`
+type Record struct {
+    ID    int
+    Name  string
+    Value float64
 }
 
-func LoadConfig(filename string) (*Config, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open config file: %w", err)
-	}
-	defer file.Close()
+func ProcessCSV(filename string) ([]Record, error) {
+    file, err := os.Open(filename)
+    if err != nil {
+        return nil, fmt.Errorf("failed to open file: %w", err)
+    }
+    defer file.Close()
 
-	data, err := io.ReadAll(file)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
-	}
+    reader := csv.NewReader(file)
+    records := make([]Record, 0)
 
-	var config Config
-	if err := json.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse JSON: %w", err)
-	}
+    for lineNum := 1; ; lineNum++ {
+        row, err := reader.Read()
+        if err == io.EOF {
+            break
+        }
+        if err != nil {
+            return nil, fmt.Errorf("csv read error at line %d: %w", lineNum, err)
+        }
 
-	if config.ServerAddress == "" {
-		return nil, fmt.Errorf("server_address cannot be empty")
-	}
-	if config.Port <= 0 || config.Port > 65535 {
-		return nil, fmt.Errorf("port must be between 1 and 65535")
-	}
-	if config.MaxConnections < 1 {
-		return nil, fmt.Errorf("max_connections must be at least 1")
-	}
+        if len(row) != 3 {
+            return nil, fmt.Errorf("invalid column count at line %d", lineNum)
+        }
 
-	return &config, nil
+        id, err := strconv.Atoi(row[0])
+        if err != nil {
+            return nil, fmt.Errorf("invalid ID at line %d: %w", lineNum, err)
+        }
+
+        value, err := strconv.ParseFloat(row[2], 64)
+        if err != nil {
+            return nil, fmt.Errorf("invalid value at line %d: %w", lineNum, err)
+        }
+
+        records = append(records, Record{
+            ID:    id,
+            Name:  row[1],
+            Value: value,
+        })
+    }
+
+    if len(records) == 0 {
+        return nil, errors.New("no valid records found")
+    }
+
+    return records, nil
 }
 
-func main() {
-	config, err := LoadConfig("config.json")
-	if err != nil {
-		fmt.Printf("Error loading config: %v\n", err)
-		os.Exit(1)
-	}
+func ValidateRecords(records []Record) error {
+    seen := make(map[int]bool)
+    for _, rec := range records {
+        if rec.ID <= 0 {
+            return fmt.Errorf("invalid ID %d", rec.ID)
+        }
+        if rec.Name == "" {
+            return fmt.Errorf("empty name for ID %d", rec.ID)
+        }
+        if rec.Value < 0 {
+            return fmt.Errorf("negative value for ID %d", rec.ID)
+        }
+        if seen[rec.ID] {
+            return fmt.Errorf("duplicate ID %d", rec.ID)
+        }
+        seen[rec.ID] = true
+    }
+    return nil
+}
 
-	fmt.Printf("Configuration loaded successfully:\n")
-	fmt.Printf("Server: %s:%d\n", config.ServerAddress, config.Port)
-	fmt.Printf("Logging enabled: %v\n", config.EnableLogging)
-	fmt.Printf("Max connections: %d\n", config.MaxConnections)
+func CalculateStats(records []Record) (float64, float64) {
+    if len(records) == 0 {
+        return 0, 0
+    }
+
+    var sum float64
+    for _, rec := range records {
+        sum += rec.Value
+    }
+    average := sum / float64(len(records))
+
+    var variance float64
+    for _, rec := range records {
+        diff := rec.Value - average
+        variance += diff * diff
+    }
+    variance /= float64(len(records))
+
+    return average, variance
 }

@@ -255,4 +255,78 @@ func validateConfig(c *Config) error {
 		c.Logging.Output = "stdout"
 	}
 	return nil
+}package config
+
+import (
+    "os"
+    "strconv"
+    "strings"
+)
+
+type Config struct {
+    ServerPort int
+    DBHost     string
+    DBPort     int
+    DebugMode  bool
+    AllowedIPs []string
+}
+
+func LoadConfig() (*Config, error) {
+    cfg := &Config{
+        ServerPort: getEnvAsInt("SERVER_PORT", 8080),
+        DBHost:     getEnv("DB_HOST", "localhost"),
+        DBPort:     getEnvAsInt("DB_PORT", 5432),
+        DebugMode:  getEnvAsBool("DEBUG_MODE", false),
+        AllowedIPs: getEnvAsSlice("ALLOWED_IPS", []string{"127.0.0.1"}, ","),
+    }
+
+    if cfg.ServerPort < 1 || cfg.ServerPort > 65535 {
+        return nil, &ConfigError{Field: "SERVER_PORT", Value: strconv.Itoa(cfg.ServerPort)}
+    }
+
+    if cfg.DBPort < 1 || cfg.DBPort > 65535 {
+        return nil, &ConfigError{Field: "DB_PORT", Value: strconv.Itoa(cfg.DBPort)}
+    }
+
+    return cfg, nil
+}
+
+func getEnv(key, defaultValue string) string {
+    if value, exists := os.LookupEnv(key); exists {
+        return value
+    }
+    return defaultValue
+}
+
+func getEnvAsInt(key string, defaultValue int) int {
+    valueStr := getEnv(key, "")
+    if value, err := strconv.Atoi(valueStr); err == nil {
+        return value
+    }
+    return defaultValue
+}
+
+func getEnvAsBool(key string, defaultValue bool) bool {
+    valueStr := getEnv(key, "")
+    if val, err := strconv.ParseBool(valueStr); err == nil {
+        return val
+    }
+    return defaultValue
+}
+
+func getEnvAsSlice(key string, defaultValue []string, sep string) []string {
+    valueStr := getEnv(key, "")
+    if valueStr == "" {
+        return defaultValue
+    }
+    return strings.Split(valueStr, sep)
+}
+
+type ConfigError struct {
+    Field string
+    Value string
+}
+
+func (e *ConfigError) Error() string {
+    return "invalid configuration value for " + e.Field + ": " + e.Value
 }

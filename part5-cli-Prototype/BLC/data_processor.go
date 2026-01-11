@@ -1,46 +1,40 @@
-
 package main
 
 import (
-	"encoding/json"
-	"fmt"
-	"log"
+	"errors"
+	"regexp"
+	"strings"
 )
 
-// ValidateJSON checks if the provided byte slice contains valid JSON.
-func ValidateJSON(data []byte) (bool, error) {
-	var js interface{}
-	err := json.Unmarshal(data, &js)
-	if err != nil {
-		return false, fmt.Errorf("invalid JSON: %w", err)
-	}
-	return true, nil
+type UserData struct {
+	Email    string
+	Username string
+	Age      int
 }
 
-// ParseUserData attempts to parse JSON into a predefined User struct.
-func ParseUserData(jsonData []byte) (map[string]interface{}, error) {
-	var result map[string]interface{}
-	err := json.Unmarshal(jsonData, &result)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse user data: %w", err)
+func ValidateEmail(email string) error {
+	pattern := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
+	matched, _ := regexp.MatchString(pattern, email)
+	if !matched {
+		return errors.New("invalid email format")
 	}
-	return result, nil
+	return nil
 }
 
-func main() {
-	sampleJSON := []byte(`{"name": "Alice", "age": 30, "active": true}`)
+func SanitizeUsername(username string) string {
+	return strings.TrimSpace(username)
+}
 
-	valid, err := ValidateJSON(sampleJSON)
-	if err != nil {
-		log.Printf("Validation error: %v", err)
-	} else {
-		fmt.Println("JSON is valid:", valid)
+func ProcessUserData(data UserData) (UserData, error) {
+	if err := ValidateEmail(data.Email); err != nil {
+		return UserData{}, err
 	}
 
-	userData, err := ParseUserData(sampleJSON)
-	if err != nil {
-		log.Printf("Parse error: %v", err)
-	} else {
-		fmt.Printf("Parsed user data: %v\n", userData)
+	data.Username = SanitizeUsername(data.Username)
+
+	if data.Age < 0 || data.Age > 150 {
+		return UserData{}, errors.New("age must be between 0 and 150")
 	}
+
+	return data, nil
 }

@@ -55,8 +55,6 @@ func Authenticate(next http.HandlerFunc) http.HandlerFunc {
             return
         }
 
-        r.Header.Set("X-Username", claims.Username)
-        r.Header.Set("X-Role", claims.Role)
         next.ServeHTTP(w, r)
     }
 }

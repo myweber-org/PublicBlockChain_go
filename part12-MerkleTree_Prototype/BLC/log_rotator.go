@@ -167,4 +167,175 @@ func main() {
 	}
 
 	fmt.Println("Log rotation test completed")
+}package main
+
+import (
+    "compress/gzip"
+    "fmt"
+    "io"
+    "os"
+    "path/filepath"
+    "strconv"
+    "strings"
+    "sync"
+    "time"
+)
+
+type RotatingLogger struct {
+    mu          sync.Mutex
+    basePath    string
+    currentFile *os.File
+    maxSize     int64
+    fileCount   int
+    maxFiles    int
+}
+
+func NewRotatingLogger(basePath string, maxSizeMB int, maxFiles int) (*RotatingLogger, error) {
+    maxSize := int64(maxSizeMB) * 1024 * 1024
+    logger := &RotatingLogger{
+        basePath: basePath,
+        maxSize:  maxSize,
+        maxFiles: maxFiles,
+    }
+
+    if err := logger.openCurrentFile(); err != nil {
+        return nil, err
+    }
+    return logger, nil
+}
+
+func (l *RotatingLogger) openCurrentFile() error {
+    dir := filepath.Dir(l.basePath)
+    if err := os.MkdirAll(dir, 0755); err != nil {
+        return err
+    }
+
+    file, err := os.OpenFile(l.basePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        return err
+    }
+    l.currentFile = file
+    return nil
+}
+
+func (l *RotatingLogger) Write(p []byte) (int, error) {
+    l.mu.Lock()
+    defer l.mu.Unlock()
+
+    info, err := l.currentFile.Stat()
+    if err != nil {
+        return 0, err
+    }
+
+    if info.Size()+int64(len(p)) > l.maxSize {
+        if err := l.rotate(); err != nil {
+            return 0, err
+        }
+    }
+
+    return l.currentFile.Write(p)
+}
+
+func (l *RotatingLogger) rotate() error {
+    if err := l.currentFile.Close(); err != nil {
+        return err
+    }
+
+    timestamp := time.Now().Format("20060102_150405")
+    rotatedPath := fmt.Sprintf("%s.%s", l.basePath, timestamp)
+    if err := os.Rename(l.basePath, rotatedPath); err != nil {
+        return err
+    }
+
+    compressedPath := rotatedPath + ".gz"
+    if err := compressFile(rotatedPath, compressedPath); err != nil {
+        return err
+    }
+    os.Remove(rotatedPath)
+
+    l.fileCount++
+    if l.fileCount > l.maxFiles {
+        l.cleanupOldFiles()
+    }
+
+    return l.openCurrentFile()
+}
+
+func compressFile(src, dst string) error {
+    source, err := os.Open(src)
+    if err != nil {
+        return err
+    }
+    defer source.Close()
+
+    destination, err := os.Create(dst)
+    if err != nil {
+        return err
+    }
+    defer destination.Close()
+
+    gz := gzip.NewWriter(destination)
+    defer gz.Close()
+
+    _, err = io.Copy(gz, source)
+    return err
+}
+
+func (l *RotatingLogger) cleanupOldFiles() {
+    dir := filepath.Dir(l.basePath)
+    baseName := filepath.Base(l.basePath)
+
+    files, err := os.ReadDir(dir)
+    if err != nil {
+        return
+    }
+
+    var compressedFiles []string
+    for _, file := range files {
+        name := file.Name()
+        if strings.HasPrefix(name, baseName+".") && strings.HasSuffix(name, ".gz") {
+            compressedFiles = append(compressedFiles, filepath.Join(dir, name))
+        }
+    }
+
+    if len(compressedFiles) > l.maxFiles {
+        filesToDelete := compressedFiles[:len(compressedFiles)-l.maxFiles]
+        for _, file := range filesToDelete {
+            os.Remove(file)
+        }
+    }
+}
+
+func (l *RotatingLogger) extractTimestamp(filename string) (time.Time, error) {
+    parts := strings.Split(filename, ".")
+    if len(parts) < 3 {
+        return time.Time{}, fmt.Errorf("invalid filename format")
+    }
+    timestampStr := parts[len(parts)-2]
+    return time.Parse("20060102_150405", timestampStr)
+}
+
+func (l *RotatingLogger) Close() error {
+    l.mu.Lock()
+    defer l.mu.Unlock()
+    if l.currentFile != nil {
+        return l.currentFile.Close()
+    }
+    return nil
+}
+
+func main() {
+    logger, err := NewRotatingLogger("/var/log/myapp/app.log", 10, 5)
+    if err != nil {
+        panic(err)
+    }
+    defer logger.Close()
+
+    for i := 0; i < 1000; i++ {
+        msg := fmt.Sprintf("Log entry %d at %s\n", i, time.Now().Format(time.RFC3339))
+        logger.Write([]byte(msg))
+        time.Sleep(10 * time.Millisecond)
+    }
+
+    fmt.Println("Log rotation completed. Check /var/log/myapp directory for rotated files.")
 }

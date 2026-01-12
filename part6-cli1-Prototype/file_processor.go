@@ -112,4 +112,205 @@ func main() {
         fmt.Printf("ID: %d, Name: %s, Value: %.2f\n", record.ID, record.Name, record.Value)
     }
     fmt.Printf("Total value: %.2f\n", totalValue)
+}package main
+
+import (
+	"bufio"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+)
+
+type FileProcessor struct {
+	workers   int
+	batchSize int
+	mu        sync.RWMutex
+	stats     ProcessingStats
+}
+
+type ProcessingStats struct {
+	FilesProcessed int
+	TotalBytes     int64
+	Errors         int
+	StartTime      time.Time
+	Duration       time.Duration
+}
+
+type FileTask struct {
+	Path    string
+	Content []byte
+	Err     error
+}
+
+func NewFileProcessor(workers, batchSize int) *FileProcessor {
+	if workers < 1 {
+		workers = 4
+	}
+	if batchSize < 1 {
+		batchSize = 100
+	}
+
+	return &FileProcessor{
+		workers:   workers,
+		batchSize: batchSize,
+		stats: ProcessingStats{
+			StartTime: time.Now(),
+		},
+	}
+}
+
+func (fp *FileProcessor) ProcessDirectory(dirPath string, processor func([]byte) ([]byte, error)) error {
+	if _, err := os.Stat(dirPath); os.IsNotExist(err) {
+		return fmt.Errorf("directory does not exist: %s", dirPath)
+	}
+
+	taskChan := make(chan FileTask, fp.batchSize)
+	resultChan := make(chan FileTask, fp.batchSize)
+	var wg sync.WaitGroup
+
+	for i := 0; i < fp.workers; i++ {
+		wg.Add(1)
+		go fp.worker(taskChan, resultChan, &wg, processor)
+	}
+
+	go fp.collectResults(resultChan)
+
+	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if info.IsDir() {
+			return nil
+		}
+
+		if info.Size() > 100*1024*1024 {
+			return fmt.Errorf("file too large: %s", path)
+		}
+
+		taskChan <- FileTask{Path: path}
+		return nil
+	})
+
+	close(taskChan)
+	wg.Wait()
+	close(resultChan)
+
+	fp.mu.Lock()
+	fp.stats.Duration = time.Since(fp.stats.StartTime)
+	fp.mu.Unlock()
+
+	return err
+}
+
+func (fp *FileProcessor) worker(taskChan <-chan FileTask, resultChan chan<- FileTask, wg *sync.WaitGroup, processor func([]byte) ([]byte, error)) {
+	defer wg.Done()
+
+	for task := range taskChan {
+		content, err := fp.readFile(task.Path)
+		if err != nil {
+			task.Err = err
+			resultChan <- task
+			continue
+		}
+
+		processed, err := processor(content)
+		if err != nil {
+			task.Err = err
+		} else {
+			task.Content = processed
+		}
+
+		resultChan <- task
+	}
+}
+
+func (fp *FileProcessor) readFile(path string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	reader := bufio.NewReader(file)
+	var content []byte
+	buffer := make([]byte, 4096)
+
+	for {
+		n, err := reader.Read(buffer)
+		if err != nil && err != io.EOF {
+			return nil, err
+		}
+
+		if n == 0 {
+			break
+		}
+
+		content = append(content, buffer[:n]...)
+	}
+
+	return content, nil
+}
+
+func (fp *FileProcessor) collectResults(resultChan <-chan FileTask) {
+	for result := range resultChan {
+		fp.mu.Lock()
+		fp.stats.FilesProcessed++
+
+		if result.Err != nil {
+			fp.stats.Errors++
+			fmt.Printf("Error processing %s: %v\n", result.Path, result.Err)
+		} else {
+			fp.stats.TotalBytes += int64(len(result.Content))
+		}
+		fp.mu.Unlock()
+	}
+}
+
+func (fp *FileProcessor) GetStats() ProcessingStats {
+	fp.mu.RLock()
+	defer fp.mu.RUnlock()
+	return fp.stats
+}
+
+func ExampleProcessor(content []byte) ([]byte, error) {
+	if len(content) == 0 {
+		return nil, errors.New("empty content")
+	}
+
+	processed := make([]byte, len(content))
+	for i, b := range content {
+		processed[i] = b ^ 0xFF
+	}
+
+	return processed, nil
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: file_processor <directory>")
+		os.Exit(1)
+	}
+
+	dirPath := os.Args[1]
+	processor := NewFileProcessor(8, 50)
+
+	fmt.Printf("Processing files in: %s\n", dirPath)
+
+	err := processor.ProcessDirectory(dirPath, ExampleProcessor)
+	if err != nil {
+		fmt.Printf("Processing error: %v\n", err)
+		os.Exit(1)
+	}
+
+	stats := processor.GetStats()
+	fmt.Printf("\nProcessing completed:\n")
+	fmt.Printf("Files processed: %d\n", stats.FilesProcessed)
+	fmt.Printf("Total bytes: %d\n", stats.TotalBytes)
+	fmt.Printf("Errors: %d\n", stats.Errors)
+	fmt.Printf("Duration: %v\n", stats.Duration)
 }

@@ -86,4 +86,20 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Printf("50.00 GBP = %.2f JPY\n", result)
+}package main
+
+import (
+	"fmt"
+)
+
+const usdToEurRate = 0.92
+
+func ConvertUSDToEUR(amount float64) float64 {
+	return amount * usdToEurRate
+}
+
+func main() {
+	usdAmount := 100.0
+	eurAmount := ConvertUSDToEUR(usdAmount)
+	fmt.Printf("%.2f USD = %.2f EUR\n", usdAmount, eurAmount)
 }

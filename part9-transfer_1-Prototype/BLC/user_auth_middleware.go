@@ -46,3 +46,49 @@ func AuthMiddleware(secretKey string) func(http.Handler) http.Handler {
         })
     }
 }
+package middleware
+
+import (
+	"context"
+	"net/http"
+	"strings"
+)
+
+type contextKey string
+
+const UserIDKey contextKey = "userID"
+
+func AuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			http.Error(w, "Authorization header required", http.StatusUnauthorized)
+			return
+		}
+
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
+			return
+		}
+
+		token := parts[1]
+		userID, err := validateToken(token)
+		if err != nil {
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), UserIDKey, userID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func validateToken(token string) (string, error) {
+	// Simplified token validation - in production use proper JWT validation
+	if token == "invalid" {
+		return "", fmt.Errorf("invalid token")
+	}
+	// Mock user ID extraction
+	return "user-" + token[:8], nil
+}

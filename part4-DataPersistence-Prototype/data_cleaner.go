@@ -110,4 +110,11 @@ func main() {
             fmt.Printf("%s is invalid\n", email)
         }
     }
+}package utils
+
+import "strings"
+
+func SanitizeString(input string) string {
+    trimmed := strings.TrimSpace(input)
+    return strings.Join(strings.Fields(trimmed), " ")
 }

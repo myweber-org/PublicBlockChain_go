@@ -1,28 +1,23 @@
 package middleware
 
 import (
-	"context"
 	"net/http"
 	"strings"
-
-	"github.com/golang-jwt/jwt/v5"
 )
 
-type contextKey string
-
-const UserIDKey contextKey = "userID"
-
 type AuthMiddleware struct {
-	secretKey []byte
+	allowedTokens map[string]bool
 }
 
-func NewAuthMiddleware(secretKey string) *AuthMiddleware {
-	return &AuthMiddleware{
-		secretKey: []byte(secretKey),
+func NewAuthMiddleware(validTokens []string) *AuthMiddleware {
+	tokenMap := make(map[string]bool)
+	for _, token := range validTokens {
+		tokenMap[token] = true
 	}
+	return &AuthMiddleware{allowedTokens: tokenMap}
 }
 
-func (am *AuthMiddleware) Authenticate(next http.Handler) http.Handler {
+func (am *AuthMiddleware) Validate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
@@ -30,36 +25,18 @@ func (am *AuthMiddleware) Authenticate(next http.Handler) http.Handler {
 			return
 		}
 
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || parts[0] != "Bearer" {
+		parts := strings.Split(authHeader, "Bearer ")
+		if len(parts) != 2 {
 			http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
 			return
 		}
 
-		tokenString := parts[1]
-		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, jwt.ErrSignatureInvalid
-			}
-			return am.secretKey, nil
-		})
-
-		if err != nil || !token.Valid {
-			http.Error(w, "Invalid token", http.StatusUnauthorized)
+		token := strings.TrimSpace(parts[1])
+		if !am.allowedTokens[token] {
+			http.Error(w, "Invalid authentication token", http.StatusForbidden)
 			return
 		}
 
-		if claims, ok := token.Claims.(jwt.MapClaims); ok {
-			userID, ok := claims["user_id"].(string)
-			if !ok {
-				http.Error(w, "Invalid token claims", http.StatusUnauthorized)
-				return
-			}
-
-			ctx := context.WithValue(r.Context(), UserIDKey, userID)
-			next.ServeHTTP(w, r.WithContext(ctx))
-		} else {
-			http.Error(w, "Invalid token claims", http.StatusUnauthorized)
-		}
+		next.ServeHTTP(w, r)
 	})
 }

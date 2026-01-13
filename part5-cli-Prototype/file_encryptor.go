@@ -92,8 +92,8 @@ func decryptFile(inputPath, outputPath, keyHex string) error {
 
 func main() {
 	if len(os.Args) < 5 {
-		fmt.Println("Usage: go run file_encryptor.go <encrypt|decrypt> <input> <output> <key>")
-		fmt.Println("Key must be 64 hex characters for AES-256")
+		fmt.Println("Usage: go run file_encryptor.go <encrypt|decrypt> <input> <output> <key_hex>")
+		fmt.Println("Example key: 6368616e676520746869732070617373776f726420746f206120736563726574")
 		os.Exit(1)
 	}
 

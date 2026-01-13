@@ -96,4 +96,50 @@ func NewValidationError(msg string) *ValidationError {
 
 func (e *ValidationError) Error() string {
 	return "config validation error: " + e.Message
+}package config
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+)
+
+type AppConfig struct {
+	ServerPort string `json:"server_port"`
+	DatabaseURL string `json:"database_url"`
+	LogLevel string `json:"log_level"`
+	CacheEnabled bool `json:"cache_enabled"`
+}
+
+func LoadConfig(configPath string) (*AppConfig, error) {
+	absPath, err := filepath.Abs(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	file, err := os.Open(absPath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var config AppConfig
+	decoder := json.NewDecoder(file)
+	if err := decoder.Decode(&config); err != nil {
+		return nil, err
+	}
+
+	if port := os.Getenv("APP_PORT"); port != "" {
+		config.ServerPort = port
+	}
+
+	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
+		config.DatabaseURL = dbURL
+	}
+
+	if logLevel := os.Getenv("LOG_LEVEL"); logLevel != "" {
+		config.LogLevel = logLevel
+	}
+
+	return &config, nil
 }

@@ -2,221 +2,57 @@
 package main
 
 import (
-	"encoding/csv"
-	"fmt"
-	"io"
-	"os"
+	"errors"
 	"strings"
+	"time"
 )
 
 type DataRecord struct {
-	ID      string
-	Name    string
-	Email   string
-	Active  string
+	ID        string
+	Value     float64
+	Timestamp time.Time
+	Tags      []string
 }
 
-func ProcessCSVFile(filePath string) ([]DataRecord, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open file: %w", err)
+func ValidateRecord(record DataRecord) error {
+	if record.ID == "" {
+		return errors.New("record ID cannot be empty")
 	}
-	defer file.Close()
-
-	reader := csv.NewReader(file)
-	reader.TrimLeadingSpace = true
-
-	var records []DataRecord
-	lineNumber := 0
-
-	for {
-		lineNumber++
-		row, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("csv read error at line %d: %w", lineNumber, err)
-		}
-
-		if lineNumber == 1 {
-			continue
-		}
-
-		if len(row) < 4 {
-			return nil, fmt.Errorf("insufficient columns at line %d", lineNumber)
-		}
-
-		record := DataRecord{
-			ID:     strings.TrimSpace(row[0]),
-			Name:   strings.TrimSpace(row[1]),
-			Email:  strings.TrimSpace(row[2]),
-			Active: strings.TrimSpace(row[3]),
-		}
-
-		if record.ID == "" || record.Name == "" {
-			return nil, fmt.Errorf("missing required fields at line %d", lineNumber)
-		}
-
-		records = append(records, record)
+	if record.Value < 0 {
+		return errors.New("record value must be non-negative")
 	}
-
-	return records, nil
+	if record.Timestamp.IsZero() {
+		return errors.New("record timestamp must be set")
+	}
+	return nil
 }
 
-func ValidateEmail(email string) bool {
-	if !strings.Contains(email, "@") {
-		return false
+func TransformRecord(record DataRecord, multiplier float64) DataRecord {
+	return DataRecord{
+		ID:        strings.ToUpper(record.ID),
+		Value:     record.Value * multiplier,
+		Timestamp: record.Timestamp.UTC(),
+		Tags:      append(record.Tags, "processed"),
 	}
-	parts := strings.Split(email, "@")
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return false
-	}
-	return strings.Contains(parts[1], ".")
 }
 
-func FilterActiveRecords(records []DataRecord) []DataRecord {
-	var active []DataRecord
+func FilterRecords(records []DataRecord, minValue float64) []DataRecord {
+	var filtered []DataRecord
 	for _, record := range records {
-		if strings.ToLower(record.Active) == "true" || record.Active == "1" {
-			active = append(active, record)
+		if record.Value >= minValue {
+			filtered = append(filtered, record)
 		}
 	}
-	return active
+	return filtered
 }
 
-func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: data_processor <csv_file>")
-		os.Exit(1)
+func CalculateAverage(records []DataRecord) float64 {
+	if len(records) == 0 {
+		return 0
 	}
-
-	records, err := ProcessCSVFile(os.Args[1])
-	if err != nil {
-		fmt.Printf("Error processing file: %v\n", err)
-		os.Exit(1)
-	}
-
-	validRecords := 0
+	var sum float64
 	for _, record := range records {
-		if ValidateEmail(record.Email) {
-			validRecords++
-		}
+		sum += record.Value
 	}
-
-	activeRecords := FilterActiveRecords(records)
-
-	fmt.Printf("Total records: %d\n", len(records))
-	fmt.Printf("Valid email records: %d\n", validRecords)
-	fmt.Printf("Active records: %d\n", len(activeRecords))
-}
-package main
-
-import (
-    "encoding/csv"
-    "fmt"
-    "io"
-    "os"
-    "strconv"
-)
-
-type Record struct {
-    ID    int
-    Name  string
-    Value float64
-}
-
-func processCSV(filename string) ([]Record, error) {
-    file, err := os.Open(filename)
-    if err != nil {
-        return nil, fmt.Errorf("failed to open file: %w", err)
-    }
-    defer file.Close()
-
-    reader := csv.NewReader(file)
-    reader.TrimLeadingSpace = true
-
-    var records []Record
-    lineNumber := 0
-
-    for {
-        lineNumber++
-        row, err := reader.Read()
-        if err == io.EOF {
-            break
-        }
-        if err != nil {
-            return nil, fmt.Errorf("csv read error at line %d: %w", lineNumber, err)
-        }
-
-        if len(row) != 3 {
-            return nil, fmt.Errorf("invalid column count at line %d: expected 3, got %d", lineNumber, len(row))
-        }
-
-        id, err := strconv.Atoi(row[0])
-        if err != nil {
-            return nil, fmt.Errorf("invalid ID at line %d: %w", lineNumber, err)
-        }
-
-        name := row[1]
-        if name == "" {
-            return nil, fmt.Errorf("empty name at line %d", lineNumber)
-        }
-
-        value, err := strconv.ParseFloat(row[2], 64)
-        if err != nil {
-            return nil, fmt.Errorf("invalid value at line %d: %w", lineNumber, err)
-        }
-
-        records = append(records, Record{
-            ID:    id,
-            Name:  name,
-            Value: value,
-        })
-    }
-
-    if len(records) == 0 {
-        return nil, fmt.Errorf("no valid records found in file")
-    }
-
-    return records, nil
-}
-
-func calculateStats(records []Record) (float64, float64) {
-    if len(records) == 0 {
-        return 0, 0
-    }
-
-    var sum float64
-    for _, r := range records {
-        sum += r.Value
-    }
-    average := sum / float64(len(records))
-
-    var variance float64
-    for _, r := range records {
-        diff := r.Value - average
-        variance += diff * diff
-    }
-    variance = variance / float64(len(records))
-
-    return average, variance
-}
-
-func main() {
-    if len(os.Args) < 2 {
-        fmt.Println("Usage: data_processor <csv_file>")
-        os.Exit(1)
-    }
-
-    records, err := processCSV(os.Args[1])
-    if err != nil {
-        fmt.Printf("Error processing file: %v\n", err)
-        os.Exit(1)
-    }
-
-    avg, varValue := calculateStats(records)
-    fmt.Printf("Processed %d records\n", len(records))
-    fmt.Printf("Average value: %.2f\n", avg)
-    fmt.Printf("Variance: %.2f\n", varValue)
+	return sum / float64(len(records))
 }

@@ -154,4 +154,110 @@ func main() {
 		fmt.Println("Invalid operation. Use 'encrypt' or 'decrypt'")
 		os.Exit(1)
 	}
+}package main
+
+import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+)
+
+func deriveKey(passphrase string) []byte {
+	hash := sha256.Sum256([]byte(passphrase))
+	return hash[:]
+}
+
+func encryptData(plaintext []byte, passphrase string) ([]byte, error) {
+	key := deriveKey(passphrase)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, err
+	}
+
+	ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
+	return ciphertext, nil
+}
+
+func decryptData(ciphertext []byte, passphrase string) ([]byte, error) {
+	key := deriveKey(passphrase)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	nonceSize := gcm.NonceSize()
+	if len(ciphertext) < nonceSize {
+		return nil, errors.New("ciphertext too short")
+	}
+
+	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return plaintext, nil
+}
+
+func main() {
+	if len(os.Args) < 4 {
+		fmt.Println("Usage: go run file_encryption_utility.go <encrypt|decrypt> <input_file> <output_file> <passphrase>")
+		os.Exit(1)
+	}
+
+	operation := os.Args[1]
+	inputFile := os.Args[2]
+	outputFile := os.Args[3]
+	passphrase := os.Args[4]
+
+	inputData, err := os.ReadFile(inputFile)
+	if err != nil {
+		fmt.Printf("Error reading input file: %v\n", err)
+		os.Exit(1)
+	}
+
+	var result []byte
+	switch operation {
+	case "encrypt":
+		result, err = encryptData(inputData, passphrase)
+	case "decrypt":
+		result, err = decryptData(inputData, passphrase)
+	default:
+		fmt.Println("Invalid operation. Use 'encrypt' or 'decrypt'")
+		os.Exit(1)
+	}
+
+	if err != nil {
+		fmt.Printf("Error during %s operation: %v\n", operation, err)
+		os.Exit(1)
+	}
+
+	err = os.WriteFile(outputFile, result, 0644)
+	if err != nil {
+		fmt.Printf("Error writing output file: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Operation completed successfully. Output saved to %s\n", outputFile)
 }

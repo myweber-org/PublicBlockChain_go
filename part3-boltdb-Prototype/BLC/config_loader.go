@@ -108,4 +108,52 @@ func getEnvAsSlice(key string, defaultValue []string, sep string) []string {
         return defaultValue
     }
     return strings.Split(valueStr, sep)
+}package config
+
+import (
+    "os"
+    "strconv"
+    "strings"
+)
+
+type Config struct {
+    ServerPort    int
+    DatabaseURL   string
+    LogLevel      string
+    CacheEnabled  bool
+    MaxConnections int
+}
+
+func LoadConfig() (*Config, error) {
+    cfg := &Config{
+        ServerPort:    getEnvAsInt("SERVER_PORT", 8080),
+        DatabaseURL:   getEnv("DATABASE_URL", "postgres://localhost:5432/app"),
+        LogLevel:      getEnv("LOG_LEVEL", "info"),
+        CacheEnabled:  getEnvAsBool("CACHE_ENABLED", true),
+        MaxConnections: getEnvAsInt("MAX_CONNECTIONS", 100),
+    }
+    return cfg, nil
+}
+
+func getEnv(key, defaultValue string) string {
+    if value, exists := os.LookupEnv(key); exists {
+        return value
+    }
+    return defaultValue
+}
+
+func getEnvAsInt(key string, defaultValue int) int {
+    valueStr := getEnv(key, "")
+    if value, err := strconv.Atoi(valueStr); err == nil {
+        return value
+    }
+    return defaultValue
+}
+
+func getEnvAsBool(key string, defaultValue bool) bool {
+    valueStr := getEnv(key, "")
+    if value, err := strconv.ParseBool(strings.ToLower(valueStr)); err == nil {
+        return value
+    }
+    return defaultValue
 }

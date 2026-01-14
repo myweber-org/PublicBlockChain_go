@@ -1,160 +1,111 @@
+
 package main
 
 import (
-	"encoding/json"
+	"encoding/csv"
 	"fmt"
-	"log"
-)
-
-// ValidateJSON checks if the provided byte slice contains valid JSON.
-func ValidateJSON(data []byte) (bool, error) {
-	var js interface{}
-	err := json.Unmarshal(data, &js)
-	if err != nil {
-		return false, fmt.Errorf("invalid JSON: %w", err)
-	}
-	return true, nil
-}
-
-// ParseUserData attempts to parse JSON bytes into a User struct.
-type User struct {
-	ID    int    `json:"id"`
-	Name  string `json:"name"`
-	Email string `json:"email"`
-}
-
-func ParseUserData(rawData []byte) (*User, error) {
-	valid, err := ValidateJSON(rawData)
-	if !valid {
-		return nil, err
-	}
-
-	var user User
-	if err := json.Unmarshal(rawData, &user); err != nil {
-		return nil, fmt.Errorf("failed to parse user data: %w", err)
-	}
-	return &user, nil
-}
-
-func main() {
-	jsonStr := `{"id": 1, "name": "Alice", "email": "alice@example.com"}`
-	user, err := ParseUserData([]byte(jsonStr))
-	if err != nil {
-		log.Fatalf("Error: %v", err)
-	}
-	fmt.Printf("Parsed User: %+v\n", user)
-}
-package main
-
-import (
-	"errors"
-	"fmt"
-	"strings"
-	"time"
+	"io"
+	"os"
+	"strconv"
 )
 
 type DataRecord struct {
-	ID        string
-	Value     float64
-	Timestamp time.Time
-	Tags      []string
+	ID    int
+	Name  string
+	Value float64
 }
 
-func ValidateRecord(record DataRecord) error {
-	if record.ID == "" {
-		return errors.New("record ID cannot be empty")
+func ProcessCSVFile(filename string) ([]DataRecord, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
-	if record.Value < 0 {
-		return errors.New("record value cannot be negative")
-	}
-	if record.Timestamp.IsZero() {
-		return errors.New("record timestamp must be set")
-	}
-	return nil
-}
+	defer file.Close()
 
-func TransformRecord(record DataRecord, multiplier float64) DataRecord {
-	return DataRecord{
-		ID:        strings.ToUpper(record.ID),
-		Value:     record.Value * multiplier,
-		Timestamp: record.Timestamp.UTC(),
-		Tags:      append(record.Tags, "processed"),
-	}
-}
+	reader := csv.NewReader(file)
+	reader.TrimLeadingSpace = true
 
-func ProcessRecords(records []DataRecord, multiplier float64) ([]DataRecord, error) {
-	var processed []DataRecord
-	for _, record := range records {
-		if err := ValidateRecord(record); err != nil {
-			return nil, fmt.Errorf("validation failed for record %s: %w", record.ID, err)
+	var records []DataRecord
+	lineNumber := 0
+
+	for {
+		lineNumber++
+		row, err := reader.Read()
+		if err == io.EOF {
+			break
 		}
-		processed = append(processed, TransformRecord(record, multiplier))
-	}
-	return processed, nil
-}
+		if err != nil {
+			return nil, fmt.Errorf("csv read error at line %d: %w", lineNumber, err)
+		}
 
-func CalculateAverage(records []DataRecord) float64 {
+		if len(row) != 3 {
+			return nil, fmt.Errorf("invalid column count at line %d: expected 3, got %d", lineNumber, len(row))
+		}
+
+		id, err := strconv.Atoi(row[0])
+		if err != nil {
+			return nil, fmt.Errorf("invalid ID at line %d: %w", lineNumber, err)
+		}
+
+		name := row[1]
+		if name == "" {
+			return nil, fmt.Errorf("empty name at line %d", lineNumber)
+		}
+
+		value, err := strconv.ParseFloat(row[2], 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid value at line %d: %w", lineNumber, err)
+		}
+
+		records = append(records, DataRecord{
+			ID:    id,
+			Name:  name,
+			Value: value,
+		})
+	}
+
 	if len(records) == 0 {
-		return 0
+		return nil, fmt.Errorf("no valid records found in file")
 	}
+
+	return records, nil
+}
+
+func CalculateStatistics(records []DataRecord) (float64, float64, int) {
+	if len(records) == 0 {
+		return 0, 0, 0
+	}
+
 	var sum float64
-	for _, record := range records {
+	var max float64
+	count := len(records)
+
+	for i, record := range records {
 		sum += record.Value
-	}
-	return sum / float64(len(records))
-}
-
-func FilterByTag(records []DataRecord, tag string) []DataRecord {
-	var filtered []DataRecord
-	for _, record := range records {
-		for _, t := range record.Tags {
-			if t == tag {
-				filtered = append(filtered, record)
-				break
-			}
+		if i == 0 || record.Value > max {
+			max = record.Value
 		}
 	}
-	return filtered
-}
-package main
 
-import (
-	"regexp"
-	"strings"
-	"unicode"
-)
-
-type DataProcessor struct {
-	whitespaceRegex *regexp.Regexp
+	average := sum / float64(count)
+	return average, max, count
 }
 
-func NewDataProcessor() *DataProcessor {
-	return &DataProcessor{
-		whitespaceRegex: regexp.MustCompile(`\s+`),
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: data_processor <csv_file>")
+		os.Exit(1)
 	}
-}
 
-func (dp *DataProcessor) CleanString(input string) string {
-	cleaned := strings.TrimSpace(input)
-	cleaned = dp.whitespaceRegex.ReplaceAllString(cleaned, " ")
-	return cleaned
-}
+	filename := os.Args[1]
+	records, err := ProcessCSVFile(filename)
+	if err != nil {
+		fmt.Printf("Error processing file: %v\n", err)
+		os.Exit(1)
+	}
 
-func (dp *DataProcessor) NormalizeWhitespace(input string) string {
-	return dp.whitespaceRegex.ReplaceAllString(input, " ")
-}
-
-func (dp *DataProcessor) RemoveNonPrintable(input string) string {
-	return strings.Map(func(r rune) rune {
-		if unicode.IsPrint(r) {
-			return r
-		}
-		return -1
-	}, input)
-}
-
-func (dp *DataProcessor) Process(input string) string {
-	step1 := dp.RemoveNonPrintable(input)
-	step2 := dp.NormalizeWhitespace(step1)
-	return dp.CleanString(step2)
+	avg, max, count := CalculateStatistics(records)
+	fmt.Printf("Processed %d records\n", count)
+	fmt.Printf("Average value: %.2f\n", avg)
+	fmt.Printf("Maximum value: %.2f\n", max)
 }

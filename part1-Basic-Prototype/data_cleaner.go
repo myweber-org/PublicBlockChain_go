@@ -35,4 +35,11 @@ func RemoveDuplicates[T comparable](slice []T) []T {
 	}
 
 	return result
+}package utils
+
+import "strings"
+
+func SanitizeInput(input string) string {
+    trimmed := strings.TrimSpace(input)
+    return strings.Join(strings.Fields(trimmed), " ")
 }

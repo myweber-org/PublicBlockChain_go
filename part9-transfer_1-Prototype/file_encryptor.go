@@ -441,4 +441,114 @@ func main() {
 		fmt.Println("Encryption/decryption failed!")
 		os.Exit(1)
 	}
+}package main
+
+import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+)
+
+func encryptFile(inputPath, outputPath string, key []byte) error {
+	plaintext, err := os.ReadFile(inputPath)
+	if err != nil {
+		return fmt.Errorf("read file error: %w", err)
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return fmt.Errorf("cipher creation error: %w", err)
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return fmt.Errorf("gcm creation error: %w", err)
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return fmt.Errorf("nonce generation error: %w", err)
+	}
+
+	ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
+
+	if err := os.WriteFile(outputPath, ciphertext, 0644); err != nil {
+		return fmt.Errorf("write file error: %w", err)
+	}
+
+	return nil
+}
+
+func decryptFile(inputPath, outputPath string, key []byte) error {
+	ciphertext, err := os.ReadFile(inputPath)
+	if err != nil {
+		return fmt.Errorf("read file error: %w", err)
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return fmt.Errorf("cipher creation error: %w", err)
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return fmt.Errorf("gcm creation error: %w", err)
+	}
+
+	nonceSize := gcm.NonceSize()
+	if len(ciphertext) < nonceSize {
+		return errors.New("ciphertext too short")
+	}
+
+	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return fmt.Errorf("decryption error: %w", err)
+	}
+
+	if err := os.WriteFile(outputPath, plaintext, 0644); err != nil {
+		return fmt.Errorf("write file error: %w", err)
+	}
+
+	return nil
+}
+
+func main() {
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		fmt.Printf("Key generation failed: %v\n", err)
+		return
+	}
+
+	testData := []byte("Sensitive information requiring encryption")
+	tmpFile := "test_data.txt"
+	defer os.Remove(tmpFile)
+	defer os.Remove(tmpFile + ".enc")
+	defer os.Remove(tmpFile + ".dec")
+
+	if err := os.WriteFile(tmpFile, testData, 0644); err != nil {
+		fmt.Printf("Test file creation failed: %v\n", err)
+		return
+	}
+
+	if err := encryptFile(tmpFile, tmpFile+".enc", key); err != nil {
+		fmt.Printf("Encryption failed: %v\n", err)
+		return
+	}
+
+	if err := decryptFile(tmpFile+".enc", tmpFile+".dec", key); err != nil {
+		fmt.Printf("Decryption failed: %v\n", err)
+		return
+	}
+
+	decrypted, _ := os.ReadFile(tmpFile + ".dec")
+	if string(decrypted) == string(testData) {
+		fmt.Println("Encryption/decryption test passed successfully")
+	} else {
+		fmt.Println("Encryption/decryption test failed")
+	}
 }

@@ -301,3 +301,121 @@ func main() {
         time.Sleep(10 * time.Millisecond)
     }
 }
+package main
+
+import (
+    "fmt"
+    "io"
+    "os"
+    "path/filepath"
+    "sync"
+    "time"
+)
+
+type Rotator struct {
+    filename     string
+    maxSize      int64
+    rotationTime time.Duration
+    currentSize  int64
+    file         *os.File
+    mu           sync.Mutex
+    lastRotation time.Time
+}
+
+func NewRotator(filename string, maxSize int64, rotationTime time.Duration) (*Rotator, error) {
+    r := &Rotator{
+        filename:     filename,
+        maxSize:      maxSize,
+        rotationTime: rotationTime,
+        lastRotation: time.Now(),
+    }
+
+    if err := r.openFile(); err != nil {
+        return nil, err
+    }
+
+    return r, nil
+}
+
+func (r *Rotator) openFile() error {
+    file, err := os.OpenFile(r.filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        return err
+    }
+
+    info, err := file.Stat()
+    if err != nil {
+        file.Close()
+        return err
+    }
+
+    r.file = file
+    r.currentSize = info.Size()
+    return nil
+}
+
+func (r *Rotator) rotate() error {
+    if r.file != nil {
+        r.file.Close()
+    }
+
+    timestamp := time.Now().Format("20060102_150405")
+    backupName := fmt.Sprintf("%s.%s", r.filename, timestamp)
+
+    if err := os.Rename(r.filename, backupName); err != nil {
+        return err
+    }
+
+    r.lastRotation = time.Now()
+    return r.openFile()
+}
+
+func (r *Rotator) checkRotation() error {
+    now := time.Now()
+    if r.currentSize >= r.maxSize || now.Sub(r.lastRotation) >= r.rotationTime {
+        return r.rotate()
+    }
+    return nil
+}
+
+func (r *Rotator) Write(p []byte) (int, error) {
+    r.mu.Lock()
+    defer r.mu.Unlock()
+
+    if err := r.checkRotation(); err != nil {
+        return 0, err
+    }
+
+    n, err := r.file.Write(p)
+    if err == nil {
+        r.currentSize += int64(n)
+    }
+    return n, err
+}
+
+func (r *Rotator) Close() error {
+    r.mu.Lock()
+    defer r.mu.Unlock()
+
+    if r.file != nil {
+        return r.file.Close()
+    }
+    return nil
+}
+
+func main() {
+    rotator, err := NewRotator("app.log", 1024*1024, 24*time.Hour)
+    if err != nil {
+        fmt.Printf("Failed to create rotator: %v\n", err)
+        return
+    }
+    defer rotator.Close()
+
+    for i := 0; i < 100; i++ {
+        message := fmt.Sprintf("Log entry %d at %s\n", i, time.Now().Format(time.RFC3339))
+        if _, err := rotator.Write([]byte(message)); err != nil {
+            fmt.Printf("Write error: %v\n", err)
+        }
+        time.Sleep(100 * time.Millisecond)
+    }
+}

@@ -116,3 +116,45 @@ func FilterByTag(records []DataRecord, tag string) []DataRecord {
 	}
 	return filtered
 }
+package main
+
+import (
+	"regexp"
+	"strings"
+	"unicode"
+)
+
+type DataProcessor struct {
+	whitespaceRegex *regexp.Regexp
+}
+
+func NewDataProcessor() *DataProcessor {
+	return &DataProcessor{
+		whitespaceRegex: regexp.MustCompile(`\s+`),
+	}
+}
+
+func (dp *DataProcessor) CleanString(input string) string {
+	cleaned := strings.TrimSpace(input)
+	cleaned = dp.whitespaceRegex.ReplaceAllString(cleaned, " ")
+	return cleaned
+}
+
+func (dp *DataProcessor) NormalizeWhitespace(input string) string {
+	return dp.whitespaceRegex.ReplaceAllString(input, " ")
+}
+
+func (dp *DataProcessor) RemoveNonPrintable(input string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsPrint(r) {
+			return r
+		}
+		return -1
+	}, input)
+}
+
+func (dp *DataProcessor) Process(input string) string {
+	step1 := dp.RemoveNonPrintable(input)
+	step2 := dp.NormalizeWhitespace(step1)
+	return dp.CleanString(step2)
+}

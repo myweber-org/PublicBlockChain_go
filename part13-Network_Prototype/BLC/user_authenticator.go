@@ -1,19 +1,22 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
-type UserAuthenticator struct {
-	secretKey string
+type Claims struct {
+	Username string `json:"username"`
+	Role     string `json:"role"`
+	jwt.RegisteredClaims
 }
 
-func NewUserAuthenticator(secretKey string) *UserAuthenticator {
-	return &UserAuthenticator{secretKey: secretKey}
-}
+var jwtSecret = []byte("your-secret-key-change-in-production")
 
-func (ua *UserAuthenticator) Authenticate(next http.Handler) http.Handler {
+func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
@@ -21,24 +24,27 @@ func (ua *UserAuthenticator) Authenticate(next http.Handler) http.Handler {
 			return
 		}
 
-		tokenParts := strings.Split(authHeader, " ")
-		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
-			http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
+		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		if tokenString == authHeader {
+			http.Error(w, "Bearer token required", http.StatusUnauthorized)
 			return
 		}
 
-		token := tokenParts[1]
-		if !ua.validateToken(token) {
+		claims := &Claims{}
+		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			}
+			return jwtSecret, nil
+		})
+
+		if err != nil || !token.Valid {
 			http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
 			return
 		}
 
+		r.Header.Set("X-Username", claims.Username)
+		r.Header.Set("X-User-Role", claims.Role)
 		next.ServeHTTP(w, r)
 	})
-}
-
-func (ua *UserAuthenticator) validateToken(token string) bool {
-	// Simplified token validation logic
-	// In production, use proper JWT validation library
-	return token != "" && len(token) > 10
 }

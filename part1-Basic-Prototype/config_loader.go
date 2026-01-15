@@ -63,4 +63,71 @@ func validateConfig(c *Config) error {
         return fmt.Errorf("server port must be between 1 and 65535")
     }
     return nil
+}package config
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"reflect"
+	"strconv"
+	"strings"
+)
+
+type Config struct {
+	ServerPort int    `env:"SERVER_PORT" default:"8080"`
+	DBHost     string `env:"DB_HOST" default:"localhost"`
+	DBPort     int    `env:"DB_PORT" default:"5432"`
+	DebugMode  bool   `env:"DEBUG_MODE" default:"false"`
+	LogLevel   string `env:"LOG_LEVEL" default:"info"`
+}
+
+func Load() (*Config, error) {
+	cfg := &Config{}
+	t := reflect.TypeOf(cfg).Elem()
+	v := reflect.ValueOf(cfg).Elem()
+
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		envTag := field.Tag.Get("env")
+		defaultVal := field.Tag.Get("default")
+
+		envValue := os.Getenv(envTag)
+		if envValue == "" {
+			envValue = defaultVal
+		}
+
+		if err := setFieldValue(v.Field(i), envValue); err != nil {
+			return nil, fmt.Errorf("failed to set field %s: %w", field.Name, err)
+		}
+	}
+
+	return cfg, nil
+}
+
+func setFieldValue(field reflect.Value, value string) error {
+	switch field.Kind() {
+	case reflect.String:
+		field.SetString(value)
+	case reflect.Int:
+		intVal, err := strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+		field.SetInt(int64(intVal))
+	case reflect.Bool:
+		boolVal, err := strconv.ParseBool(strings.ToLower(value))
+		if err != nil {
+			return err
+		}
+		field.SetBool(boolVal)
+	default:
+		return fmt.Errorf("unsupported field type: %s", field.Kind())
+	}
+	return nil
+}
+
+func (c *Config) String() string {
+	data, _ := json.MarshalIndent(c, "", "  ")
+	return string(data)
 }

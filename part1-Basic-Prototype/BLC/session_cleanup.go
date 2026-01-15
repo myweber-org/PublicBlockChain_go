@@ -1,47 +1,40 @@
 package main
 
 import (
-	"context"
-	"log"
-	"time"
-
-	"yourproject/internal/database"
+    "context"
+    "log"
+    "time"
 )
 
-const cleanupInterval = 24 * time.Hour
-
-func main() {
-	db, err := database.NewConnection()
-	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
-	}
-	defer db.Close()
-
-	ticker := time.NewTicker(cleanupInterval)
-	defer ticker.Stop()
-
-	ctx := context.Background()
-
-	for {
-		select {
-		case <-ticker.C:
-			if err := cleanupExpiredSessions(ctx, db); err != nil {
-				log.Printf("Session cleanup failed: %v", err)
-			} else {
-				log.Println("Session cleanup completed successfully")
-			}
-		}
-	}
+type Session struct {
+    ID        string
+    UserID    string
+    ExpiresAt time.Time
 }
 
-func cleanupExpiredSessions(ctx context.Context, db *database.DB) error {
-	query := `DELETE FROM user_sessions WHERE expires_at < NOW()`
-	result, err := db.ExecContext(ctx, query)
-	if err != nil {
-		return err
-	}
+type SessionStore interface {
+    DeleteExpiredSessions(ctx context.Context, before time.Time) (int64, error)
+}
 
-	rows, _ := result.RowsAffected()
-	log.Printf("Cleaned up %d expired sessions", rows)
-	return nil
+func cleanupExpiredSessions(ctx context.Context, store SessionStore, interval time.Duration) {
+    ticker := time.NewTicker(interval)
+    defer ticker.Stop()
+
+    for {
+        select {
+        case <-ctx.Done():
+            log.Println("Session cleanup stopped:", ctx.Err())
+            return
+        case <-ticker.C:
+            before := time.Now()
+            deleted, err := store.DeleteExpiredSessions(ctx, before)
+            if err != nil {
+                log.Printf("Failed to delete expired sessions: %v", err)
+                continue
+            }
+            if deleted > 0 {
+                log.Printf("Deleted %d expired sessions", deleted)
+            }
+        }
+    }
 }

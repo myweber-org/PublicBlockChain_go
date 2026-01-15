@@ -1,75 +1,129 @@
 
-package main
+package aggregator
 
 import (
-	"log"
-	"net/http"
+	"sort"
+	"sync"
 	"time"
-
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-var (
-	httpRequestsTotal = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "http_requests_total",
-			Help: "Total number of HTTP requests",
-		},
-		[]string{"method", "path", "status"},
-	)
-
-	httpRequestDuration = promauto.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "http_request_duration_seconds",
-			Help:    "Duration of HTTP requests in seconds",
-			Buckets: prometheus.DefBuckets,
-		},
-		[]string{"method", "path"},
-	)
-)
-
-func metricsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		recorder := &responseRecorder{w, 200}
-
-		next.ServeHTTP(recorder, r)
-
-		duration := time.Since(start).Seconds()
-		status := http.StatusText(recorder.statusCode)
-
-		httpRequestsTotal.WithLabelValues(r.Method, r.URL.Path, status).Inc()
-		httpRequestDuration.WithLabelValues(r.Method, r.URL.Path).Observe(duration)
-	})
+type MetricPoint struct {
+	Value     float64
+	Timestamp time.Time
 }
 
-type responseRecorder struct {
-	http.ResponseWriter
-	statusCode int
+type SlidingWindowAggregator struct {
+	windowSize  time.Duration
+	dataPoints  []MetricPoint
+	mu          sync.RWMutex
+	percentiles []float64
 }
 
-func (rr *responseRecorder) WriteHeader(code int) {
-	rr.statusCode = code
-	rr.ResponseWriter.WriteHeader(code)
-}
-
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"healthy"}`))
-}
-
-func main() {
-	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.Handler())
-	mux.HandleFunc("/health", healthHandler)
-
-	wrappedMux := metricsMiddleware(mux)
-
-	log.Println("Starting metrics aggregator on :8080")
-	if err := http.ListenAndServe(":8080", wrappedMux); err != nil {
-		log.Fatal("Server failed:", err)
+func NewSlidingWindowAggregator(windowSize time.Duration, percentiles []float64) *SlidingWindowAggregator {
+	return &SlidingWindowAggregator{
+		windowSize:  windowSize,
+		dataPoints:  make([]MetricPoint, 0),
+		percentiles: percentiles,
 	}
+}
+
+func (swa *SlidingWindowAggregator) AddMetric(value float64) {
+	swa.mu.Lock()
+	defer swa.mu.Unlock()
+
+	now := time.Now()
+	swa.dataPoints = append(swa.dataPoints, MetricPoint{
+		Value:     value,
+		Timestamp: now,
+	})
+	swa.cleanupOldPoints(now)
+}
+
+func (swa *SlidingWindowAggregator) cleanupOldPoints(currentTime time.Time) {
+	cutoff := currentTime.Add(-swa.windowSize)
+	validStart := 0
+	for i, point := range swa.dataPoints {
+		if point.Timestamp.After(cutoff) {
+			validStart = i
+			break
+		}
+	}
+	swa.dataPoints = swa.dataPoints[validStart:]
+}
+
+func (swa *SlidingWindowAggregator) GetAggregatedMetrics() map[string]float64 {
+	swa.mu.RLock()
+	defer swa.mu.RUnlock()
+
+	if len(swa.dataPoints) == 0 {
+		return make(map[string]float64)
+	}
+
+	values := make([]float64, len(swa.dataPoints))
+	for i, point := range swa.dataPoints {
+		values[i] = point.Value
+	}
+
+	results := make(map[string]float64)
+	results["count"] = float64(len(values))
+	results["min"], results["max"], results["avg"] = calculateBasicStats(values)
+
+	if len(values) > 0 {
+		sortedValues := make([]float64, len(values))
+		copy(sortedValues, values)
+		sort.Float64s(sortedValues)
+
+		for _, p := range swa.percentiles {
+			if p >= 0 && p <= 100 {
+				key := formatPercentileKey(p)
+				results[key] = calculatePercentile(sortedValues, p)
+			}
+		}
+	}
+
+	return results
+}
+
+func calculateBasicStats(values []float64) (min, max, avg float64) {
+	if len(values) == 0 {
+		return 0, 0, 0
+	}
+
+	min = values[0]
+	max = values[0]
+	sum := 0.0
+
+	for _, v := range values {
+		if v < min {
+			min = v
+		}
+		if v > max {
+			max = v
+		}
+		sum += v
+	}
+
+	avg = sum / float64(len(values))
+	return min, max, avg
+}
+
+func calculatePercentile(sortedValues []float64, percentile float64) float64 {
+	if len(sortedValues) == 0 {
+		return 0
+	}
+
+	index := (percentile / 100) * float64(len(sortedValues)-1)
+	lowerIndex := int(index)
+	upperIndex := lowerIndex + 1
+
+	if upperIndex >= len(sortedValues) {
+		return sortedValues[lowerIndex]
+	}
+
+	weight := index - float64(lowerIndex)
+	return sortedValues[lowerIndex]*(1-weight) + sortedValues[upperIndex]*weight
+}
+
+func formatPercentileKey(percentile float64) string {
+	return "p" + strconv.FormatFloat(percentile, 'f', -1, 64)
 }

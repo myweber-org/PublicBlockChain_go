@@ -115,3 +115,70 @@ func main() {
 	highScorers := FilterByScore(records, 80.0)
 	fmt.Printf("Records with score >= 80: %d\n", len(highScorers))
 }
+package main
+
+import (
+    "errors"
+    "fmt"
+    "strings"
+    "time"
+)
+
+type UserData struct {
+    ID        int
+    Name      string
+    Email     string
+    Age       int
+    Timestamp time.Time
+}
+
+func ValidateUserData(data UserData) error {
+    if data.ID <= 0 {
+        return errors.New("invalid user ID")
+    }
+    if strings.TrimSpace(data.Name) == "" {
+        return errors.New("name cannot be empty")
+    }
+    if !strings.Contains(data.Email, "@") {
+        return errors.New("invalid email format")
+    }
+    if data.Age < 0 || data.Age > 150 {
+        return errors.New("age must be between 0 and 150")
+    }
+    return nil
+}
+
+func TransformUserData(data UserData) UserData {
+    return UserData{
+        ID:        data.ID,
+        Name:      strings.ToUpper(strings.TrimSpace(data.Name)),
+        Email:     strings.ToLower(strings.TrimSpace(data.Email)),
+        Age:       data.Age,
+        Timestamp: time.Now(),
+    }
+}
+
+func ProcessUserData(data UserData) (UserData, error) {
+    if err := ValidateUserData(data); err != nil {
+        return UserData{}, err
+    }
+    return TransformUserData(data), nil
+}
+
+func main() {
+    sampleData := UserData{
+        ID:    1001,
+        Name:  "  john doe  ",
+        Email: "JOHN@EXAMPLE.COM",
+        Age:   30,
+    }
+
+    processedData, err := ProcessUserData(sampleData)
+    if err != nil {
+        fmt.Printf("Processing failed: %v\n", err)
+        return
+    }
+
+    fmt.Printf("Original: %+v\n", sampleData)
+    fmt.Printf("Processed: %+v\n", processedData)
+}

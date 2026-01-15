@@ -1,249 +1,78 @@
-package middleware
+package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"log"
-	"net/http"
+	"os"
 	"time"
 )
 
+type ActivityLog struct {
+	Timestamp time.Time `json:"timestamp"`
+	UserID    string    `json:"user_id"`
+	Action    string    `json:"action"`
+	Details   string    `json:"details"`
+}
+
 type ActivityLogger struct {
-	handler http.Handler
+	logFile *os.File
 }
 
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
+func NewActivityLogger(filename string) (*ActivityLogger, error) {
+	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return nil, err
+	}
+	return &ActivityLogger{logFile: file}, nil
 }
 
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	recorder := &responseRecorder{
-		ResponseWriter: w,
-		statusCode:     http.StatusOK,
+func (al *ActivityLogger) LogActivity(userID, action, details string) error {
+	logEntry := ActivityLog{
+		Timestamp: time.Now().UTC(),
+		UserID:    userID,
+		Action:    action,
+		Details:   details,
 	}
 
-	al.handler.ServeHTTP(recorder, r)
-
-	duration := time.Since(start)
-	log.Printf(
-		"%s %s %d %s %s",
-		r.Method,
-		r.URL.Path,
-		recorder.statusCode,
-		duration,
-		r.RemoteAddr,
-	)
-}
-
-type responseRecorder struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (rr *responseRecorder) WriteHeader(code int) {
-	rr.statusCode = code
-	rr.ResponseWriter.WriteHeader(code)
-}package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLogger struct {
-	handler http.Handler
-}
-
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	
-	al.handler.ServeHTTP(w, r)
-	
-	duration := time.Since(start)
-	
-	log.Printf("Activity: %s %s from %s took %v",
-		r.Method,
-		r.URL.Path,
-		r.RemoteAddr,
-		duration,
-	)
-}package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLogger struct {
-	handler http.Handler
-}
-
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	al.handler.ServeHTTP(w, r)
-	duration := time.Since(start)
-
-	log.Printf("Activity: %s %s from %s took %v",
-		r.Method,
-		r.URL.Path,
-		r.RemoteAddr,
-		duration,
-	)
-}package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLogger struct {
-	Logger *log.Logger
-}
-
-func NewActivityLogger(logger *log.Logger) *ActivityLogger {
-	return &ActivityLogger{Logger: logger}
-}
-
-func (al *ActivityLogger) LogActivity(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		userAgent := r.UserAgent()
-		clientIP := r.RemoteAddr
-		method := r.Method
-		path := r.URL.Path
-
-		next.ServeHTTP(w, r)
-
-		duration := time.Since(start)
-		al.Logger.Printf(
-			"Activity: %s %s | IP: %s | Agent: %s | Duration: %v",
-			method,
-			path,
-			clientIP,
-			userAgent,
-			duration,
-		)
-	})
-}package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLogger struct {
-	handler http.Handler
-}
-
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	
-	recorder := &responseRecorder{
-		ResponseWriter: w,
-		statusCode:     http.StatusOK,
+	entryJSON, err := json.Marshal(logEntry)
+	if err != nil {
+		return err
 	}
-	
-	al.handler.ServeHTTP(recorder, r)
-	
-	duration := time.Since(start)
-	
-	log.Printf(
-		"%s %s %d %s %s",
-		r.Method,
-		r.URL.Path,
-		recorder.statusCode,
-		duration.String(),
-		r.RemoteAddr,
-	)
+
+	entryJSON = append(entryJSON, '\n')
+	_, err = al.logFile.Write(entryJSON)
+	return err
 }
 
-type responseRecorder struct {
-	http.ResponseWriter
-	statusCode int
+func (al *ActivityLogger) Close() error {
+	return al.logFile.Close()
 }
 
-func (rr *responseRecorder) WriteHeader(code int) {
-	rr.statusCode = code
-	rr.ResponseWriter.WriteHeader(code)
-}package middleware
+func main() {
+	logger, err := NewActivityLogger("activity.log")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer logger.Close()
 
-import (
-	"log"
-	"net/http"
-	"time"
-)
+	activities := []struct {
+		userID  string
+		action  string
+		details string
+	}{
+		{"user_001", "LOGIN", "User logged in from IP 192.168.1.100"},
+		{"user_001", "VIEW_PAGE", "Accessed dashboard page"},
+		{"user_002", "REGISTER", "New user registration completed"},
+		{"user_001", "LOGOUT", "User session terminated"},
+	}
 
-type ActivityLogger struct {
-	handler http.Handler
-}
+	for _, activity := range activities {
+		err := logger.LogActivity(activity.userID, activity.action, activity.details)
+		if err != nil {
+			log.Printf("Failed to log activity: %v", err)
+		}
+	}
 
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	userAgent := r.Header.Get("User-Agent")
-	ipAddress := r.RemoteAddr
-
-	al.handler.ServeHTTP(w, r)
-
-	duration := time.Since(start)
-	log.Printf("User activity: %s %s from %s (User-Agent: %s) took %v",
-		r.Method,
-		r.URL.Path,
-		ipAddress,
-		userAgent,
-		duration,
-	)
-}package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type responseWriter struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (rw *responseWriter) WriteHeader(code int) {
-	rw.statusCode = code
-	rw.ResponseWriter.WriteHeader(code)
-}
-
-func ActivityLogger(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
-
-		next.ServeHTTP(rw, r)
-
-		duration := time.Since(start)
-		log.Printf(
-			"%s %s %d %s %s",
-			r.Method,
-			r.URL.Path,
-			rw.statusCode,
-			duration,
-			r.RemoteAddr,
-		)
-	})
+	fmt.Println("Activity logging completed")
 }

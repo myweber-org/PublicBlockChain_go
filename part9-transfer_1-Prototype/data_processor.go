@@ -358,3 +358,44 @@ func ProcessUserInput(email, username string, age int) (UserData, error) {
 
 	return normalizedData, nil
 }
+package data_processor
+
+import (
+	"regexp"
+	"strings"
+)
+
+type DataProcessor struct {
+	emailRegex *regexp.Regexp
+}
+
+func NewDataProcessor() *DataProcessor {
+	regex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	return &DataProcessor{emailRegex: regex}
+}
+
+func (dp *DataProcessor) CleanInput(input string) string {
+	trimmed := strings.TrimSpace(input)
+	return strings.ToLower(trimmed)
+}
+
+func (dp *DataProcessor) ValidateEmail(email string) bool {
+	return dp.emailRegex.MatchString(email)
+}
+
+func (dp *DataProcessor) RemoveSpecialChars(input string) string {
+	reg := regexp.MustCompile(`[^a-zA-Z0-9\s]`)
+	return reg.ReplaceAllString(input, "")
+}
+
+func (dp *DataProcessor) ProcessUserData(name, email string) (string, bool) {
+	cleanName := dp.CleanInput(name)
+	cleanEmail := dp.CleanInput(email)
+	
+	if !dp.ValidateEmail(cleanEmail) {
+		return "", false
+	}
+	
+	safeName := dp.RemoveSpecialChars(cleanName)
+	return safeName, true
+}

@@ -112,3 +112,51 @@ func SanitizeInput(input string) (string, bool) {
 
 	return trimmed, true
 }
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "strings"
+)
+
+type UserData struct {
+    Name  string `json:"name"`
+    Email string `json:"email"`
+    Age   int    `json:"age"`
+}
+
+func ValidateAndParseJSON(input string) (*UserData, error) {
+    trimmedInput := strings.TrimSpace(input)
+    if trimmedInput == "" {
+        return nil, fmt.Errorf("input is empty")
+    }
+
+    var data UserData
+    err := json.Unmarshal([]byte(trimmedInput), &data)
+    if err != nil {
+        return nil, fmt.Errorf("failed to parse JSON: %w", err)
+    }
+
+    if data.Name == "" {
+        return nil, fmt.Errorf("name field is required")
+    }
+    if data.Email == "" {
+        return nil, fmt.Errorf("email field is required")
+    }
+    if data.Age <= 0 {
+        return nil, fmt.Errorf("age must be a positive integer")
+    }
+
+    return &data, nil
+}
+
+func main() {
+    jsonStr := `{"name": "John Doe", "email": "john@example.com", "age": 30}`
+    user, err := ValidateAndParseJSON(jsonStr)
+    if err != nil {
+        fmt.Printf("Error: %v\n", err)
+        return
+    }
+    fmt.Printf("Parsed user: %+v\n", user)
+}

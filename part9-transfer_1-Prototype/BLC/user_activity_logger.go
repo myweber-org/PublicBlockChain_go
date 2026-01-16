@@ -114,4 +114,116 @@ func main() {
     if err := http.ListenAndServe(":8080", wrappedMux); err != nil {
         log.Fatal(err)
     }
+}package middleware
+
+import (
+	"encoding/json"
+	"net/http"
+	"sync"
+	"time"
+)
+
+type ActivityLog struct {
+	UserID    string    `json:"user_id"`
+	Action    string    `json:"action"`
+	Path      string    `json:"path"`
+	Method    string    `json:"method"`
+	Timestamp time.Time `json:"timestamp"`
+	IPAddress string    `json:"ip_address"`
+}
+
+type RateLimiter struct {
+	mu       sync.Mutex
+	counters map[string]int
+	window   time.Duration
+	limit    int
+}
+
+func NewRateLimiter(window time.Duration, limit int) *RateLimiter {
+	return &RateLimiter{
+		counters: make(map[string]int),
+		window:   window,
+		limit:    limit,
+	}
+}
+
+func (rl *RateLimiter) Allow(key string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	count, exists := rl.counters[key]
+	currentTime := time.Now()
+
+	if !exists || time.Since(time.Unix(int64(count>>32), 0)) > rl.window {
+		rl.counters[key] = (int(currentTime.Unix()) << 32) | 1
+		return true
+	}
+
+	requests := count & 0xFFFFFFFF
+	if requests >= rl.limit {
+		return false
+	}
+
+	rl.counters[key] = (count & 0xFFFFFFFF00000000) | (requests + 1)
+	return true
+}
+
+type ActivityLogger struct {
+	rateLimiter *RateLimiter
+	logChannel  chan ActivityLog
+}
+
+func NewActivityLogger() *ActivityLogger {
+	logger := &ActivityLogger{
+		rateLimiter: NewRateLimiter(time.Minute, 100),
+		logChannel:  make(chan ActivityLog, 1000),
+	}
+	go logger.processLogs()
+	return logger
+}
+
+func (al *ActivityLogger) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userID := r.Header.Get("X-User-ID")
+		if userID == "" {
+			userID = "anonymous"
+		}
+
+		ip := r.RemoteAddr
+		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+			ip = forwarded
+		}
+
+		if al.rateLimiter.Allow(userID) {
+			activity := ActivityLog{
+				UserID:    userID,
+				Action:    "request",
+				Path:      r.URL.Path,
+				Method:    r.Method,
+				Timestamp: time.Now(),
+				IPAddress: ip,
+			}
+			select {
+			case al.logChannel <- activity:
+			default:
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (al *ActivityLogger) processLogs() {
+	for activity := range al.logChannel {
+		jsonData, err := json.Marshal(activity)
+		if err == nil {
+			go func(data []byte) {
+				_ = data
+			}(jsonData)
+		}
+	}
+}
+
+func (al *ActivityLogger) Shutdown() {
+	close(al.logChannel)
 }

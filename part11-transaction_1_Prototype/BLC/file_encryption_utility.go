@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -19,133 +20,109 @@ func deriveKey(passphrase string, salt []byte) []byte {
 	return hash.Sum(nil)
 }
 
-func encryptFile(inputPath, outputPath, passphrase string) error {
-	inputFile, err := os.Open(inputPath)
-	if err != nil {
-		return err
-	}
-	defer inputFile.Close()
-
-	plaintext, err := io.ReadAll(inputFile)
-	if err != nil {
-		return err
-	}
-
+func encryptData(plaintext []byte, passphrase string) ([]byte, error) {
 	salt := make([]byte, 16)
 	if _, err := rand.Read(salt); err != nil {
-		return err
+		return nil, err
 	}
 
 	key := deriveKey(passphrase, salt)
-
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
-		return err
+		return nil, err
 	}
 
 	ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
-
-	outputFile, err := os.Create(outputPath)
-	if err != nil {
-		return err
-	}
-	defer outputFile.Close()
-
-	outputFile.Write(salt)
-	outputFile.Write(ciphertext)
-
-	return nil
+	return append(salt, ciphertext...), nil
 }
 
-func decryptFile(inputPath, outputPath, passphrase string) error {
-	inputFile, err := os.Open(inputPath)
-	if err != nil {
-		return err
-	}
-	defer inputFile.Close()
-
-	data, err := io.ReadAll(inputFile)
-	if err != nil {
-		return err
+func decryptData(ciphertext []byte, passphrase string) ([]byte, error) {
+	if len(ciphertext) < 16 {
+		return nil, errors.New("ciphertext too short")
 	}
 
-	if len(data) < 16 {
-		return fmt.Errorf("file too short")
-	}
-
-	salt := data[:16]
-	ciphertext := data[16:]
+	salt := ciphertext[:16]
+	ciphertext = ciphertext[16:]
 
 	key := deriveKey(passphrase, salt)
-
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	nonceSize := gcm.NonceSize()
 	if len(ciphertext) < nonceSize {
-		return fmt.Errorf("ciphertext too short")
+		return nil, errors.New("ciphertext too short")
 	}
 
 	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
-	if err != nil {
-		return err
-	}
-
-	outputFile, err := os.Create(outputPath)
-	if err != nil {
-		return err
-	}
-	defer outputFile.Close()
-
-	outputFile.Write(plaintext)
-
-	return nil
+	return gcm.Open(nil, nonce, ciphertext, nil)
 }
 
 func main() {
-	if len(os.Args) < 5 {
-		fmt.Println("Usage: go run file_encryption_utility.go <encrypt|decrypt> <input> <output> <passphrase>")
+	if len(os.Args) < 4 {
+		fmt.Println("Usage: go run file_encryption_utility.go <encrypt|decrypt> <input_file> <output_file>")
+		fmt.Println("Passphrase will be read from environment variable ENCRYPTION_KEY")
 		os.Exit(1)
 	}
 
 	operation := os.Args[1]
-	inputPath := os.Args[2]
-	outputPath := os.Args[3]
-	passphrase := os.Args[4]
+	inputFile := os.Args[2]
+	outputFile := os.Args[3]
 
-	var err error
+	passphrase := os.Getenv("ENCRYPTION_KEY")
+	if passphrase == "" {
+		fmt.Println("Error: ENCRYPTION_KEY environment variable not set")
+		os.Exit(1)
+	}
+
+	inputData, err := os.ReadFile(inputFile)
+	if err != nil {
+		fmt.Printf("Error reading input file: %v\n", err)
+		os.Exit(1)
+	}
+
+	var outputData []byte
 	switch operation {
 	case "encrypt":
-		err = encryptFile(inputPath, outputPath, passphrase)
+		outputData, err = encryptData(inputData, passphrase)
 	case "decrypt":
-		err = decryptFile(inputPath, outputPath, passphrase)
+		outputData, err = decryptData(inputData, passphrase)
 	default:
-		fmt.Println("Invalid operation. Use 'encrypt' or 'decrypt'")
+		fmt.Println("Error: operation must be 'encrypt' or 'decrypt'")
 		os.Exit(1)
 	}
 
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Printf("Error during %s: %v\n", operation, err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Operation completed successfully: %s -> %s\n", inputPath, outputPath)
+	if err := os.WriteFile(outputFile, outputData, 0644); err != nil {
+		fmt.Printf("Error writing output file: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("%s operation completed successfully\n", operation)
+	fmt.Printf("Input:  %s (%d bytes)\n", inputFile, len(inputData))
+	fmt.Printf("Output: %s (%d bytes)\n", outputFile, len(outputData))
+	
+	if operation == "encrypt" {
+		fmt.Printf("Salt:   %s\n", hex.EncodeToString(outputData[:16]))
+	}
 }

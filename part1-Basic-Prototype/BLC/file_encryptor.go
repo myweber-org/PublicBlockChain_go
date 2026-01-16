@@ -264,3 +264,142 @@ func main() {
 
     fmt.Printf("Operation completed successfully. Output saved to: %s\n", outputPath)
 }
+package main
+
+import (
+    "crypto/aes"
+    "crypto/cipher"
+    "crypto/rand"
+    "encoding/hex"
+    "errors"
+    "fmt"
+    "io"
+    "os"
+)
+
+func encryptFile(inputPath, outputPath string, key []byte) error {
+    plaintext, err := os.ReadFile(inputPath)
+    if err != nil {
+        return fmt.Errorf("read file failed: %w", err)
+    }
+
+    block, err := aes.NewCipher(key)
+    if err != nil {
+        return fmt.Errorf("cipher creation failed: %w", err)
+    }
+
+    gcm, err := cipher.NewGCM(block)
+    if err != nil {
+        return fmt.Errorf("GCM mode failed: %w", err)
+    }
+
+    nonce := make([]byte, gcm.NonceSize())
+    if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+        return fmt.Errorf("nonce generation failed: %w", err)
+    }
+
+    ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
+
+    if err := os.WriteFile(outputPath, ciphertext, 0644); err != nil {
+        return fmt.Errorf("write file failed: %w", err)
+    }
+
+    return nil
+}
+
+func decryptFile(inputPath, outputPath string, key []byte) error {
+    ciphertext, err := os.ReadFile(inputPath)
+    if err != nil {
+        return fmt.Errorf("read file failed: %w", err)
+    }
+
+    block, err := aes.NewCipher(key)
+    if err != nil {
+        return fmt.Errorf("cipher creation failed: %w", err)
+    }
+
+    gcm, err := cipher.NewGCM(block)
+    if err != nil {
+        return fmt.Errorf("GCM mode failed: %w", err)
+    }
+
+    nonceSize := gcm.NonceSize()
+    if len(ciphertext) < nonceSize {
+        return errors.New("ciphertext too short")
+    }
+
+    nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+    plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+    if err != nil {
+        return fmt.Errorf("decryption failed: %w", err)
+    }
+
+    if err := os.WriteFile(outputPath, plaintext, 0644); err != nil {
+        return fmt.Errorf("write file failed: %w", err)
+    }
+
+    return nil
+}
+
+func generateKey() ([]byte, error) {
+    key := make([]byte, 32)
+    if _, err := rand.Read(key); err != nil {
+        return nil, fmt.Errorf("key generation failed: %w", err)
+    }
+    return key, nil
+}
+
+func main() {
+    if len(os.Args) < 4 {
+        fmt.Println("Usage: go run file_encryptor.go <encrypt|decrypt> <input> <output>")
+        fmt.Println("Example: go run file_encryptor.go encrypt secret.txt secret.enc")
+        os.Exit(1)
+    }
+
+    operation := os.Args[1]
+    inputPath := os.Args[2]
+    outputPath := os.Args[3]
+
+    keyHex := os.Getenv("ENCRYPTION_KEY")
+    if keyHex == "" {
+        fmt.Println("ENCRYPTION_KEY environment variable not set")
+        fmt.Println("Generating new key...")
+        key, err := generateKey()
+        if err != nil {
+            fmt.Printf("Key generation error: %v\n", err)
+            os.Exit(1)
+        }
+        keyHex = hex.EncodeToString(key)
+        fmt.Printf("Generated key: %s\n", keyHex)
+        fmt.Println("Set ENCRYPTION_KEY environment variable for future use")
+    }
+
+    key, err := hex.DecodeString(keyHex)
+    if err != nil {
+        fmt.Printf("Key decode error: %v\n", err)
+        os.Exit(1)
+    }
+
+    if len(key) != 32 {
+        fmt.Println("Key must be 32 bytes (256 bits) for AES-256")
+        os.Exit(1)
+    }
+
+    switch operation {
+    case "encrypt":
+        if err := encryptFile(inputPath, outputPath, key); err != nil {
+            fmt.Printf("Encryption failed: %v\n", err)
+            os.Exit(1)
+        }
+        fmt.Printf("File encrypted successfully: %s -> %s\n", inputPath, outputPath)
+    case "decrypt":
+        if err := decryptFile(inputPath, outputPath, key); err != nil {
+            fmt.Printf("Decryption failed: %v\n", err)
+            os.Exit(1)
+        }
+        fmt.Printf("File decrypted successfully: %s -> %s\n", inputPath, outputPath)
+    default:
+        fmt.Println("Invalid operation. Use 'encrypt' or 'decrypt'")
+        os.Exit(1)
+    }
+}

@@ -168,4 +168,70 @@ func main() {
 		return
 	}
 	fmt.Printf("Processed data: %+v\n", processedData)
+}package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"regexp"
+	"strings"
+)
+
+type UserData struct {
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Age      int    `json:"age"`
+}
+
+func validateUsername(username string) bool {
+	matched, _ := regexp.MatchString("^[a-zA-Z0-9_]{3,20}$", username)
+	return matched
+}
+
+func validateEmail(email string) bool {
+	emailRegex := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
+	matched, _ := regexp.MatchString(emailRegex, email)
+	return matched
+}
+
+func transformData(data UserData) (UserData, error) {
+	if !validateUsername(data.Username) {
+		return UserData{}, fmt.Errorf("invalid username format")
+	}
+
+	if !validateEmail(data.Email) {
+		return UserData{}, fmt.Errorf("invalid email format")
+	}
+
+	if data.Age < 0 || data.Age > 150 {
+		return UserData{}, fmt.Errorf("age must be between 0 and 150")
+	}
+
+	transformed := UserData{
+		Username: strings.ToLower(data.Username),
+		Email:    strings.ToLower(data.Email),
+		Age:      data.Age,
+	}
+
+	return transformed, nil
+}
+
+func processJSONInput(jsonStr string) (string, error) {
+	var userData UserData
+	err := json.Unmarshal([]byte(jsonStr), &userData)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse JSON: %v", err)
+	}
+
+	transformed, err := transformData(userData)
+	if err != nil {
+		return "", err
+	}
+
+	result, err := json.MarshalIndent(transformed, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal JSON: %v", err)
+	}
+
+	return string(result), nil
 }

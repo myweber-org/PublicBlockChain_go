@@ -241,4 +241,88 @@ func GenerateReport(records []DataRecord) {
 	}
 	fmt.Printf("Valid records: %d\n", validCount)
 	fmt.Printf("Invalid records: %d\n", len(records)-validCount)
+}package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"regexp"
+	"strings"
+)
+
+type UserProfile struct {
+	ID        int    `json:"id"`
+	Username  string `json:"username"`
+	Email     string `json:"email"`
+	Age       int    `json:"age"`
+	Active    bool   `json:"active"`
+	Timestamp string `json:"timestamp"`
+}
+
+func ValidateEmail(email string) bool {
+	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	return emailRegex.MatchString(email)
+}
+
+func SanitizeUsername(username string) string {
+	username = strings.TrimSpace(username)
+	username = strings.ToLower(username)
+	return username
+}
+
+func TransformProfile(profile UserProfile) (UserProfile, error) {
+	if profile.Age < 0 || profile.Age > 150 {
+		return profile, fmt.Errorf("invalid age: %d", profile.Age)
+	}
+
+	if !ValidateEmail(profile.Email) {
+		return profile, fmt.Errorf("invalid email format: %s", profile.Email)
+	}
+
+	profile.Username = SanitizeUsername(profile.Username)
+
+	if profile.Timestamp == "" {
+		profile.Timestamp = "2024-01-01T00:00:00Z"
+	}
+
+	return profile, nil
+}
+
+func ProcessUserData(jsonData []byte) ([]UserProfile, error) {
+	var profiles []UserProfile
+	err := json.Unmarshal(jsonData, &profiles)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal JSON: %v", err)
+	}
+
+	var validProfiles []UserProfile
+	for _, profile := range profiles {
+		transformed, err := TransformProfile(profile)
+		if err != nil {
+			fmt.Printf("Skipping profile ID %d: %v\n", profile.ID, err)
+			continue
+		}
+		validProfiles = append(validProfiles, transformed)
+	}
+
+	return validProfiles, nil
+}
+
+func main() {
+	jsonInput := `[
+		{"id":1,"username":"  JohnDoe  ","email":"john@example.com","age":25,"active":true,"timestamp":"2024-01-15T10:30:00Z"},
+		{"id":2,"username":"JaneSmith","email":"invalid-email","age":-5,"active":false,"timestamp":""},
+		{"id":3,"username":"BOB_LEE","email":"bob@company.org","age":30,"active":true,"timestamp":"2024-01-16T14:45:00Z"}
+	]`
+
+	processed, err := ProcessUserData([]byte(jsonInput))
+	if err != nil {
+		fmt.Printf("Error processing data: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Successfully processed %d profiles\n", len(processed))
+	for _, p := range processed {
+		fmt.Printf("ID: %d, Username: %s, Email: %s, Age: %d\n", p.ID, p.Username, p.Email, p.Age)
+	}
 }

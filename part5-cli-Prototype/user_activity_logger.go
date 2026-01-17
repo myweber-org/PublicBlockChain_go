@@ -1,64 +1,36 @@
 package middleware
 
 import (
-	"log"
-	"net/http"
-	"time"
+    "log"
+    "net/http"
+    "time"
 )
 
-type ActivityLog struct {
-	UserID    string
-	Path      string
-	Method    string
-	Timestamp time.Time
-	IPAddress string
+type responseWriter struct {
+    http.ResponseWriter
+    statusCode int
 }
 
-var activityChannel = make(chan ActivityLog, 100)
-
-func init() {
-	go processActivityLogs()
+func (rw *responseWriter) WriteHeader(code int) {
+    rw.statusCode = code
+    rw.ResponseWriter.WriteHeader(code)
 }
 
 func ActivityLogger(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        start := time.Now()
+        rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 
-		userID := "anonymous"
-		if authHeader := r.Header.Get("Authorization"); authHeader != "" {
-			userID = extractUserID(authHeader)
-		}
+        next.ServeHTTP(rw, r)
 
-		activity := ActivityLog{
-			UserID:    userID,
-			Path:      r.URL.Path,
-			Method:    r.Method,
-			Timestamp: start,
-			IPAddress: r.RemoteAddr,
-		}
-
-		select {
-		case activityChannel <- activity:
-		default:
-			log.Println("Activity log buffer full, dropping log entry")
-		}
-
-		next.ServeHTTP(w, r)
-	})
-}
-
-func extractUserID(token string) string {
-	return "user_" + token[:8]
-}
-
-func processActivityLogs() {
-	for activity := range activityChannel {
-		log.Printf("ACTIVITY: User=%s %s %s from %s at %s",
-			activity.UserID,
-			activity.Method,
-			activity.Path,
-			activity.IPAddress,
-			activity.Timestamp.Format(time.RFC3339),
-		)
-	}
+        duration := time.Since(start)
+        log.Printf(
+            "%s %s %d %s %s",
+            r.Method,
+            r.URL.Path,
+            rw.statusCode,
+            duration,
+            r.RemoteAddr,
+        )
+    })
 }

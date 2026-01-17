@@ -178,4 +178,58 @@ func main() {
 	}
 
 	GenerateReport(records)
+}package main
+
+import (
+	"errors"
+	"strings"
+)
+
+type UserData struct {
+	Username string
+	Email    string
+	Age      int
+}
+
+func ValidateUsername(username string) error {
+	if len(username) < 3 {
+		return errors.New("username must be at least 3 characters")
+	}
+	if len(username) > 50 {
+		return errors.New("username cannot exceed 50 characters")
+	}
+	return nil
+}
+
+func ValidateEmail(email string) error {
+	if !strings.Contains(email, "@") {
+		return errors.New("invalid email format")
+	}
+	return nil
+}
+
+func NormalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func TransformUserData(username, email string, age int) (UserData, error) {
+	if err := ValidateUsername(username); err != nil {
+		return UserData{}, err
+	}
+
+	if err := ValidateEmail(email); err != nil {
+		return UserData{}, err
+	}
+
+	normalizedEmail := NormalizeEmail(email)
+
+	if age < 0 || age > 150 {
+		return UserData{}, errors.New("age must be between 0 and 150")
+	}
+
+	return UserData{
+		Username: username,
+		Email:    normalizedEmail,
+		Age:      age,
+	}, nil
 }

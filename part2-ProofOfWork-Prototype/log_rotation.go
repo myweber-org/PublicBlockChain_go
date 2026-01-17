@@ -252,4 +252,95 @@ func main() {
     }
 
     fmt.Println("Log rotation test completed")
+}package main
+
+import (
+    "fmt"
+    "io"
+    "os"
+    "path/filepath"
+    "time"
+)
+
+type RotatingLogger struct {
+    basePath      string
+    maxSize       int64
+    currentSize   int64
+    currentFile   *os.File
+    fileIndex     int
+}
+
+func NewRotatingLogger(basePath string, maxSize int64) (*RotatingLogger, error) {
+    rl := &RotatingLogger{
+        basePath: basePath,
+        maxSize:  maxSize,
+    }
+    
+    if err := rl.openNewFile(); err != nil {
+        return nil, err
+    }
+    
+    return rl, nil
+}
+
+func (rl *RotatingLogger) openNewFile() error {
+    if rl.currentFile != nil {
+        rl.currentFile.Close()
+    }
+    
+    filename := fmt.Sprintf("%s_%d_%s.log", 
+        rl.basePath, 
+        rl.fileIndex, 
+        time.Now().Format("20060102_150405"))
+    
+    file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+    if err != nil {
+        return err
+    }
+    
+    rl.currentFile = file
+    rl.currentSize = 0
+    rl.fileIndex++
+    
+    return nil
+}
+
+func (rl *RotatingLogger) Write(p []byte) (int, error) {
+    if rl.currentSize+int64(len(p)) > rl.maxSize {
+        if err := rl.openNewFile(); err != nil {
+            return 0, err
+        }
+    }
+    
+    n, err := rl.currentFile.Write(p)
+    if err == nil {
+        rl.currentSize += int64(n)
+    }
+    
+    return n, err
+}
+
+func (rl *RotatingLogger) Close() error {
+    if rl.currentFile != nil {
+        return rl.currentFile.Close()
+    }
+    return nil
+}
+
+func main() {
+    logger, err := NewRotatingLogger("app_log", 1024*1024) // 1MB max size
+    if err != nil {
+        fmt.Printf("Failed to create logger: %v\n", err)
+        return
+    }
+    defer logger.Close()
+    
+    for i := 0; i < 1000; i++ {
+        logEntry := fmt.Sprintf("[%s] Log entry %d: Some sample data here\n", 
+            time.Now().Format(time.RFC3339), i)
+        logger.Write([]byte(logEntry))
+        time.Sleep(10 * time.Millisecond)
+    }
+    
+    fmt.Println("Log rotation test completed")
 }

@@ -127,3 +127,157 @@ func main() {
 		fmt.Println(jsonOutput)
 	}
 }
+package main
+
+import (
+	"errors"
+	"fmt"
+	"sync"
+	"time"
+)
+
+type DataRecord struct {
+	ID        int
+	Value     string
+	Timestamp time.Time
+	Valid     bool
+}
+
+type Processor struct {
+	records []DataRecord
+	mu      sync.RWMutex
+}
+
+func NewProcessor() *Processor {
+	return &Processor{
+		records: make([]DataRecord, 0),
+	}
+}
+
+func (p *Processor) AddRecord(id int, value string) error {
+	if id <= 0 {
+		return errors.New("invalid record ID")
+	}
+	if value == "" {
+		return errors.New("record value cannot be empty")
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	record := DataRecord{
+		ID:        id,
+		Value:     value,
+		Timestamp: time.Now(),
+		Valid:     true,
+	}
+
+	p.records = append(p.records, record)
+	return nil
+}
+
+func (p *Processor) ValidateRecords() {
+	var wg sync.WaitGroup
+	p.mu.RLock()
+	records := make([]DataRecord, len(p.records))
+	copy(records, p.records)
+	p.mu.RUnlock()
+
+	for i := range records {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			p.validateRecord(&records[idx])
+		}(i)
+	}
+	wg.Wait()
+
+	p.mu.Lock()
+	for i := range p.records {
+		p.records[i].Valid = records[i].Valid
+	}
+	p.mu.Unlock()
+}
+
+func (p *Processor) validateRecord(record *DataRecord) {
+	if record.ID <= 0 || record.Value == "" {
+		record.Valid = false
+		return
+	}
+
+	if time.Since(record.Timestamp) > 24*time.Hour {
+		record.Valid = false
+		return
+	}
+
+	record.Valid = true
+}
+
+func (p *Processor) GetValidRecords() []DataRecord {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	validRecords := make([]DataRecord, 0)
+	for _, record := range p.records {
+		if record.Valid {
+			validRecords = append(validRecords, record)
+		}
+	}
+	return validRecords
+}
+
+func (p *Processor) ProcessBatch(ids []int, values []string) error {
+	if len(ids) != len(values) {
+		return errors.New("ids and values length mismatch")
+	}
+
+	var wg sync.WaitGroup
+	errorsChan := make(chan error, len(ids))
+
+	for i := 0; i < len(ids); i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			if err := p.AddRecord(ids[idx], values[idx]); err != nil {
+				errorsChan <- fmt.Errorf("record %d: %v", ids[idx], err)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(errorsChan)
+
+	if len(errorsChan) > 0 {
+		var errMsg string
+		for err := range errorsChan {
+			if errMsg != "" {
+				errMsg += "; "
+			}
+			errMsg += err.Error()
+		}
+		return errors.New(errMsg)
+	}
+
+	return nil
+}
+
+func main() {
+	processor := NewProcessor()
+
+	ids := []int{1, 2, 3, 4, 5}
+	values := []string{"alpha", "beta", "gamma", "delta", "epsilon"}
+
+	if err := processor.ProcessBatch(ids, values); err != nil {
+		fmt.Printf("Processing error: %v\n", err)
+		return
+	}
+
+	processor.ValidateRecords()
+	validRecords := processor.GetValidRecords()
+
+	fmt.Printf("Successfully processed %d valid records\n", len(validRecords))
+	for _, record := range validRecords {
+		fmt.Printf("ID: %d, Value: %s, Time: %s\n",
+			record.ID, record.Value, record.Timestamp.Format(time.RFC3339))
+	}
+}

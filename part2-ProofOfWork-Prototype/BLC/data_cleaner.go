@@ -1,46 +1,73 @@
+
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
-func RemoveDuplicates(input []int) []int {
-	seen := make(map[int]bool)
-	result := []int{}
+type DataRecord struct {
+	ID    int
+	Name  string
+	Email string
+	Valid bool
+}
 
-	for _, value := range input {
-		if !seen[value] {
-			seen[value] = true
-			result = append(result, value)
+func DeduplicateRecords(records []DataRecord) []DataRecord {
+	seen := make(map[string]bool)
+	var unique []DataRecord
+
+	for _, record := range records {
+		key := fmt.Sprintf("%s|%s", record.Name, record.Email)
+		if !seen[key] {
+			seen[key] = true
+			unique = append(unique, record)
 		}
 	}
-	return result
+	return unique
+}
+
+func ValidateEmail(email string) bool {
+	if !strings.Contains(email, "@") {
+		return false
+	}
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return false
+	}
+	if len(parts[0]) == 0 || len(parts[1]) == 0 {
+		return false
+	}
+	return true
+}
+
+func CleanData(records []DataRecord) []DataRecord {
+	var cleaned []DataRecord
+	unique := DeduplicateRecords(records)
+
+	for _, record := range unique {
+		record.Valid = ValidateEmail(record.Email)
+		if record.Valid {
+			cleaned = append(cleaned, record)
+		}
+	}
+	return cleaned
 }
 
 func main() {
-	data := []int{1, 2, 2, 3, 4, 4, 5}
-	cleaned := RemoveDuplicates(data)
-	fmt.Println("Original:", data)
-	fmt.Println("Cleaned:", cleaned)
-}
-package main
-
-import "fmt"
-
-func RemoveDuplicates(input []string) []string {
-	seen := make(map[string]struct{})
-	result := []string{}
-
-	for _, item := range input {
-		if _, exists := seen[item]; !exists {
-			seen[item] = struct{}{}
-			result = append(result, item)
-		}
+	sampleData := []DataRecord{
+		{1, "John Doe", "john@example.com", false},
+		{2, "Jane Smith", "jane@example.com", false},
+		{3, "John Doe", "john@example.com", false},
+		{4, "Bob Wilson", "invalid-email", false},
+		{5, "Alice Brown", "alice@company.org", false},
 	}
-	return result
-}
 
-func main() {
-	data := []string{"apple", "banana", "apple", "orange", "banana", "grape"}
-	cleaned := RemoveDuplicates(data)
-	fmt.Println("Original:", data)
-	fmt.Println("Cleaned:", cleaned)
+	cleaned := CleanData(sampleData)
+	fmt.Printf("Original records: %d\n", len(sampleData))
+	fmt.Printf("Cleaned records: %d\n", len(cleaned))
+
+	for _, record := range cleaned {
+		fmt.Printf("ID: %d, Name: %s, Email: %s\n", record.ID, record.Name, record.Email)
+	}
 }

@@ -83,4 +83,42 @@ func overrideBool(field *bool, envVar string) {
     if val := os.Getenv(envVar); val != "" {
         *field = val == "true" || val == "1" || val == "yes"
     }
+}package config
+
+import (
+	"os"
+	"strings"
+)
+
+type Config struct {
+	DatabaseURL string `json:"database_url"`
+	APIKey      string `json:"api_key"`
+	DebugMode   bool   `json:"debug_mode"`
+}
+
+func LoadConfig(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	content := string(data)
+	content = expandEnvVars(content)
+
+	var cfg Config
+	err = json.Unmarshal([]byte(content), &cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return &cfg, nil
+}
+
+func expandEnvVars(s string) string {
+	return os.Expand(s, func(key string) string {
+		if val, exists := os.LookupEnv(key); exists {
+			return val
+		}
+		return ""
+	})
 }

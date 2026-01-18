@@ -1,24 +1,58 @@
 package middleware
 
 import (
-	"context"
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
+
+	"github.com/golang-jwt/jwt/v4"
 )
 
-type contextKey string
+var jwtSecret = []byte("your-secret-key-change-in-production")
 
-const userIDKey contextKey = "userID"
-
-type Authenticator struct {
-	secretKey []byte
+type Claims struct {
+	Username string `json:"username"`
+	Role     string `json:"role"`
+	jwt.RegisteredClaims
 }
 
-func NewAuthenticator(secretKey string) *Authenticator {
-	return &Authenticator{secretKey: []byte(secretKey)}
+func GenerateToken(username, role string) (string, error) {
+	expirationTime := time.Now().Add(24 * time.Hour)
+	claims := &Claims{
+		Username: username,
+		Role:     role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			Issuer:    "myapp",
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(jwtSecret)
 }
 
-func (a *Authenticator) Middleware(next http.Handler) http.Handler {
+func ValidateToken(tokenString string) (*Claims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return jwtSecret, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+		return claims, nil
+	}
+
+	return nil, fmt.Errorf("invalid token")
+}
+
+func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
@@ -28,80 +62,25 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != "Bearer" {
-			http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
+			http.Error(w, "Authorization header format must be Bearer {token}", http.StatusUnauthorized)
 			return
 		}
 
-		tokenString := parts[1]
-		userID, err := a.validateToken(tokenString)
+		tokenStr := parts[1]
+		claims, err := ValidateToken(tokenStr)
 		if err != nil {
-			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			http.Error(w, "Invalid token: "+err.Error(), http.StatusUnauthorized)
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), userIDKey, userID)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		if time.Until(claims.ExpiresAt.Time) < 0 {
+			http.Error(w, "Token expired", http.StatusUnauthorized)
+			return
+		}
+
+		r.Header.Set("X-Username", claims.Username)
+		r.Header.Set("X-User-Role", claims.Role)
+
+		next.ServeHTTP(w, r)
 	})
-}
-
-func (a *Authenticator) validateToken(tokenString string) (string, error) {
-	// Simplified token validation - in production use proper JWT library
-	// This is a placeholder implementation
-	if tokenString == "" {
-		return "", http.ErrNoCookie
-	}
-	
-	// Mock validation - replace with actual JWT validation
-	if strings.HasPrefix(tokenString, "valid_") {
-		return strings.TrimPrefix(tokenString, "valid_"), nil
-	}
-	
-	return "", http.ErrNoCookie
-}
-
-func GetUserID(ctx context.Context) (string, bool) {
-	userID, ok := ctx.Value(userIDKey).(string)
-	return userID, ok
-}package middleware
-
-import (
-    "net/http"
-    "strings"
-    "github.com/dgrijalva/jwt-go"
-)
-
-type Claims struct {
-    Username string `json:"username"`
-    Role     string `json:"role"`
-    jwt.StandardClaims
-}
-
-func AuthMiddleware(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        authHeader := r.Header.Get("Authorization")
-        if authHeader == "" {
-            http.Error(w, "Authorization header required", http.StatusUnauthorized)
-            return
-        }
-
-        tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-        if tokenString == authHeader {
-            http.Error(w, "Bearer token required", http.StatusUnauthorized)
-            return
-        }
-
-        claims := &Claims{}
-        token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-            return []byte("secret-key"), nil
-        })
-
-        if err != nil || !token.Valid {
-            http.Error(w, "Invalid token", http.StatusUnauthorized)
-            return
-        }
-
-        r.Header.Set("X-Username", claims.Username)
-        r.Header.Set("X-Role", claims.Role)
-        next.ServeHTTP(w, r)
-    })
 }

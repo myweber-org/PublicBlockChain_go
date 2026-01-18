@@ -261,4 +261,88 @@ func (a *Authenticator) validateToken(token string) (string, error) {
 func GetUserID(ctx context.Context) (string, bool) {
 	userID, ok := ctx.Value(userIDKey).(string)
 	return userID, ok
+}package middleware
+
+import (
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/golang-jwt/jwt/v4"
+)
+
+var jwtSecret = []byte("your-secret-key-change-in-production")
+
+type Claims struct {
+	Username string `json:"username"`
+	UserID   int    `json:"user_id"`
+	jwt.RegisteredClaims
+}
+
+func GenerateToken(username string, userID int) (string, error) {
+	expirationTime := time.Now().Add(24 * time.Hour)
+	claims := &Claims{
+		Username: username,
+		UserID:   userID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			Issuer:    "myapp",
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(jwtSecret)
+}
+
+func ValidateToken(tokenString string) (*Claims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return jwtSecret, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+		return claims, nil
+	}
+
+	return nil, fmt.Errorf("invalid token")
+}
+
+func AuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			http.Error(w, "Authorization header required", http.StatusUnauthorized)
+			return
+		}
+
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
+			return
+		}
+
+		claims, err := ValidateToken(parts[1])
+		if err != nil {
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			return
+		}
+
+		if time.Until(claims.ExpiresAt.Time) < 0 {
+			http.Error(w, "Token expired", http.StatusUnauthorized)
+			return
+		}
+
+		r.Header.Set("X-User-ID", fmt.Sprintf("%d", claims.UserID))
+		r.Header.Set("X-Username", claims.Username)
+
+		next.ServeHTTP(w, r)
+	})
 }

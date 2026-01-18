@@ -103,3 +103,42 @@ func (dp *DataProcessor) FilterRecords(predicate func([]string) bool) [][]string
 	}
 	return filtered
 }
+package data_processor
+
+import (
+	"regexp"
+	"strings"
+)
+
+func CleanInput(input string) string {
+	// Remove extra whitespace
+	re := regexp.MustCompile(`\s+`)
+	cleaned := re.ReplaceAllString(input, " ")
+	
+	// Trim spaces from beginning and end
+	cleaned = strings.TrimSpace(cleaned)
+	
+	// Convert to lowercase for normalization
+	cleaned = strings.ToLower(cleaned)
+	
+	return cleaned
+}
+
+func ValidateEmail(email string) bool {
+	// Simple email validation regex
+	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	return emailRegex.MatchString(email)
+}
+
+func ExtractDomain(email string) (string, bool) {
+	if !ValidateEmail(email) {
+		return "", false
+	}
+	
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return "", false
+	}
+	
+	return parts[1], true
+}

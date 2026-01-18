@@ -330,3 +330,129 @@ type ConfigError struct {
 func (e *ConfigError) Error() string {
     return "invalid configuration value for " + e.Field + ": " + e.Value
 }
+package config
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+type DatabaseConfig struct {
+	Host     string `json:"host" env:"DB_HOST"`
+	Port     int    `json:"port" env:"DB_PORT"`
+	Username string `json:"username" env:"DB_USER"`
+	Password string `json:"password" env:"DB_PASS"`
+	SSLMode  string `json:"ssl_mode" env:"DB_SSL_MODE"`
+}
+
+type ServerConfig struct {
+	Port         int    `json:"port" env:"SERVER_PORT"`
+	ReadTimeout  int    `json:"read_timeout" env:"SERVER_READ_TIMEOUT"`
+	WriteTimeout int    `json:"write_timeout" env:"SERVER_WRITE_TIMEOUT"`
+	DebugMode    bool   `json:"debug_mode" env:"SERVER_DEBUG"`
+}
+
+type AppConfig struct {
+	Database DatabaseConfig `json:"database"`
+	Server   ServerConfig   `json:"server"`
+	LogLevel string         `json:"log_level" env:"LOG_LEVEL"`
+}
+
+func LoadConfig(configPath string) (*AppConfig, error) {
+	var config AppConfig
+
+	if configPath != "" {
+		absPath, err := filepath.Abs(configPath)
+		if err != nil {
+			return nil, fmt.Errorf("invalid config path: %w", err)
+		}
+
+		data, err := os.ReadFile(absPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read config file: %w", err)
+		}
+
+		if err := json.Unmarshal(data, &config); err != nil {
+			return nil, fmt.Errorf("failed to parse config JSON: %w", err)
+		}
+	}
+
+	if err := loadEnvOverrides(&config); err != nil {
+		return nil, err
+	}
+
+	if err := validateConfig(&config); err != nil {
+		return nil, err
+	}
+
+	return &config, nil
+}
+
+func loadEnvOverrides(config *AppConfig) error {
+	overrideStringField(&config.LogLevel, "LOG_LEVEL")
+
+	overrideStringField(&config.Database.Host, "DB_HOST")
+	overrideIntField(&config.Database.Port, "DB_PORT")
+	overrideStringField(&config.Database.Username, "DB_USER")
+	overrideStringField(&config.Database.Password, "DB_PASS")
+	overrideStringField(&config.Database.SSLMode, "DB_SSL_MODE")
+
+	overrideIntField(&config.Server.Port, "SERVER_PORT")
+	overrideIntField(&config.Server.ReadTimeout, "SERVER_READ_TIMEOUT")
+	overrideIntField(&config.Server.WriteTimeout, "SERVER_WRITE_TIMEOUT")
+	overrideBoolField(&config.Server.DebugMode, "SERVER_DEBUG")
+
+	return nil
+}
+
+func overrideStringField(field *string, envVar string) {
+	if val := os.Getenv(envVar); val != "" {
+		*field = val
+	}
+}
+
+func overrideIntField(field *int, envVar string) {
+	if val := os.Getenv(envVar); val != "" {
+		var intVal int
+		if _, err := fmt.Sscanf(val, "%d", &intVal); err == nil {
+			*field = intVal
+		}
+	}
+}
+
+func overrideBoolField(field *bool, envVar string) {
+	if val := os.Getenv(envVar); val != "" {
+		lowerVal := strings.ToLower(val)
+		*field = lowerVal == "true" || lowerVal == "1" || lowerVal == "yes"
+	}
+}
+
+func validateConfig(config *AppConfig) error {
+	if config.Database.Host == "" {
+		return fmt.Errorf("database host is required")
+	}
+	if config.Database.Port <= 0 || config.Database.Port > 65535 {
+		return fmt.Errorf("database port must be between 1 and 65535")
+	}
+	if config.Server.Port <= 0 || config.Server.Port > 65535 {
+		return fmt.Errorf("server port must be between 1 and 65535")
+	}
+	if config.Server.ReadTimeout < 0 {
+		return fmt.Errorf("server read timeout cannot be negative")
+	}
+	if config.Server.WriteTimeout < 0 {
+		return fmt.Errorf("server write timeout cannot be negative")
+	}
+
+	validLogLevels := map[string]bool{
+		"debug": true, "info": true, "warn": true, "error": true,
+	}
+	if !validLogLevels[strings.ToLower(config.LogLevel)] {
+		return fmt.Errorf("invalid log level: %s", config.LogLevel)
+	}
+
+	return nil
+}

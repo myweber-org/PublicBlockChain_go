@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -15,27 +14,30 @@ type LogEntry struct {
 	Message   string
 }
 
-func parseLogLine(line string) (LogEntry, bool) {
-	pattern := regexp.MustCompile(`^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (.+)$`)
-	matches := pattern.FindStringSubmatch(line)
-	if matches == nil {
-		return LogEntry{}, false
+func parseLogLine(line string) (*LogEntry, error) {
+	pattern := `^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (.+)$`
+	re := regexp.MustCompile(pattern)
+	matches := re.FindStringSubmatch(line)
+
+	if len(matches) != 4 {
+		return nil, fmt.Errorf("invalid log format")
 	}
-	return LogEntry{
+
+	return &LogEntry{
 		Timestamp: matches[1],
 		Level:     matches[2],
 		Message:   matches[3],
-	}, true
+	}, nil
 }
 
-func filterErrors(entries []LogEntry) []LogEntry {
-	var errorEntries []LogEntry
+func filterLogsByLevel(entries []LogEntry, level string) []LogEntry {
+	var filtered []LogEntry
 	for _, entry := range entries {
-		if strings.ToUpper(entry.Level) == "ERROR" {
-			errorEntries = append(errorEntries, entry)
+		if strings.EqualFold(entry.Level, level) {
+			filtered = append(filtered, entry)
 		}
 	}
-	return errorEntries
+	return filtered
 }
 
 func readLogFile(filename string) ([]LogEntry, error) {
@@ -47,12 +49,31 @@ func readLogFile(filename string) ([]LogEntry, error) {
 
 	var entries []LogEntry
 	scanner := bufio.NewScanner(file)
+
 	for scanner.Scan() {
-		if entry, ok := parseLogLine(scanner.Text()); ok {
-			entries = append(entries, entry)
+		entry, err := parseLogLine(scanner.Text())
+		if err == nil {
+			entries = append(entries, *entry)
 		}
 	}
-	return entries, scanner.Err()
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return entries, nil
+}
+
+func displayLogSummary(entries []LogEntry) {
+	levelCount := make(map[string]int)
+	for _, entry := range entries {
+		levelCount[entry.Level]++
+	}
+
+	fmt.Println("Log Summary:")
+	for level, count := range levelCount {
+		fmt.Printf("  %s: %d entries\n", level, count)
+	}
 }
 
 func main() {
@@ -61,15 +82,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	entries, err := readLogFile(os.Args[1])
+	filename := os.Args[1]
+	entries, err := readLogFile(filename)
 	if err != nil {
 		fmt.Printf("Error reading log file: %v\n", err)
 		os.Exit(1)
 	}
 
-	errorEntries := filterErrors(entries)
-	fmt.Printf("Found %d error entries:\n", len(errorEntries))
-	for _, entry := range errorEntries {
-		fmt.Printf("[%s] %s\n", entry.Timestamp, entry.Message)
+	displayLogSummary(entries)
+
+	errorLogs := filterLogsByLevel(entries, "ERROR")
+	if len(errorLogs) > 0 {
+		fmt.Println("\nError Logs:")
+		for _, entry := range errorLogs {
+			fmt.Printf("[%s] %s\n", entry.Timestamp, entry.Message)
+		}
 	}
 }

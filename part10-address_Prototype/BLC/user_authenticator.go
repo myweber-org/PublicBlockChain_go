@@ -1,24 +1,12 @@
 package middleware
 
 import (
-	"context"
+	"fmt"
 	"net/http"
 	"strings"
 )
 
-type contextKey string
-
-const userIDKey contextKey = "userID"
-
-type Authenticator struct {
-	jwtSecret []byte
-}
-
-func NewAuthenticator(secret string) *Authenticator {
-	return &Authenticator{jwtSecret: []byte(secret)}
-}
-
-func (a *Authenticator) Middleware(next http.Handler) http.Handler {
+func Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
@@ -32,28 +20,16 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		tokenString := parts[1]
-		userID, err := validateToken(tokenString, a.jwtSecret)
-		if err != nil {
-			http.Error(w, "Invalid token", http.StatusUnauthorized)
+		token := parts[1]
+		if !isValidToken(token) {
+			http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), userIDKey, userID)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		next.ServeHTTP(w, r)
 	})
 }
 
-func GetUserID(ctx context.Context) (string, bool) {
-	userID, ok := ctx.Value(userIDKey).(string)
-	return userID, ok
-}
-
-func validateToken(tokenString string, secret []byte) (string, error) {
-	// Simplified token validation - in production use a proper JWT library
-	// This is a placeholder implementation
-	if tokenString == "valid_token_example" {
-		return "user123", nil
-	}
-	return "", http.ErrNoCookie
+func isValidToken(token string) bool {
+	return len(token) > 10 && strings.HasPrefix(token, "valid_")
 }

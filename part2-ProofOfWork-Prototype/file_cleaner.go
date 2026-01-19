@@ -32,4 +32,52 @@ func main() {
 	}
 
 	fmt.Printf("Cleaned up %d old temporary files\n", removedCount)
+}package main
+
+import (
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+const (
+	retentionDays = 7
+	tempDir       = "/tmp/myapp"
+)
+
+func main() {
+	err := cleanOldFiles(tempDir)
+	if err != nil {
+		fmt.Printf("Error cleaning files: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Cleanup completed successfully")
+}
+
+func cleanOldFiles(dirPath string) error {
+	cutoffTime := time.Now().AddDate(0, 0, -retentionDays)
+
+	return filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if d.IsDir() {
+			return nil
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+
+		if info.ModTime().Before(cutoffTime) {
+			fmt.Printf("Removing old file: %s (modified: %v)\n", path, info.ModTime())
+			return os.Remove(path)
+		}
+
+		return nil
+	})
 }

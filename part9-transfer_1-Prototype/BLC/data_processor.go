@@ -1,48 +1,37 @@
-package main
+package data
 
 import (
-	"fmt"
+	"errors"
+	"regexp"
 	"strings"
 )
 
-type UserData struct {
-	Username string
-	Email    string
-	Age      int
-}
-
-func ValidateAndTransform(data UserData) (UserData, error) {
-	if strings.TrimSpace(data.Username) == "" {
-		return data, fmt.Errorf("username cannot be empty")
-	}
-	if !strings.Contains(data.Email, "@") {
-		return data, fmt.Errorf("invalid email format")
-	}
-	if data.Age < 0 || data.Age > 150 {
-		return data, fmt.Errorf("age must be between 0 and 150")
-	}
-
-	transformed := UserData{
-		Username: strings.ToLower(strings.TrimSpace(data.Username)),
-		Email:    strings.ToLower(strings.TrimSpace(data.Email)),
-		Age:      data.Age,
-	}
-	return transformed, nil
-}
-
-func main() {
-	sample := UserData{
-		Username: "  TestUser  ",
-		Email:    "EXAMPLE@DOMAIN.COM",
-		Age:      25,
-	}
-
-	result, err := ValidateAndTransform(sample)
+// ValidateEmail checks if the provided string is a valid email address.
+func ValidateEmail(email string) bool {
+	pattern := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
+	matched, err := regexp.MatchString(pattern, email)
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
+		return false
 	}
+	return matched
+}
 
-	fmt.Printf("Original: %+v\n", sample)
-	fmt.Printf("Processed: %+v\n", result)
+// SanitizeInput removes leading and trailing whitespace from a string.
+func SanitizeInput(input string) string {
+	return strings.TrimSpace(input)
+}
+
+// TransformToUpper converts all letters in the string to uppercase.
+func TransformToUpper(input string) string {
+	return strings.ToUpper(input)
+}
+
+// ParseInteger safely parses a string to an integer.
+func ParseInteger(s string) (int, error) {
+	var result int
+	_, err := fmt.Sscanf(s, "%d", &result)
+	if err != nil {
+		return 0, errors.New("failed to parse integer")
+	}
+	return result, nil
 }

@@ -1,104 +1,10 @@
-package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLogger struct {
-	Logger *log.Logger
-}
-
-func NewActivityLogger(logger *log.Logger) *ActivityLogger {
-	return &ActivityLogger{Logger: logger}
-}
-
-func (al *ActivityLogger) LogActivity(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		userAgent := r.UserAgent()
-		clientIP := r.RemoteAddr
-		method := r.Method
-		path := r.URL.Path
-
-		recorder := &responseRecorder{
-			ResponseWriter: w,
-			statusCode:     http.StatusOK,
-		}
-
-		next.ServeHTTP(recorder, r)
-
-		duration := time.Since(start)
-		status := recorder.statusCode
-
-		al.Logger.Printf(
-			"IP: %s | Method: %s | Path: %s | Status: %d | Duration: %v | Agent: %s",
-			clientIP,
-			method,
-			path,
-			status,
-			duration,
-			userAgent,
-		)
-	})
-}
-
-type responseRecorder struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (rr *responseRecorder) WriteHeader(code int) {
-	rr.statusCode = code
-	rr.ResponseWriter.WriteHeader(code)
-}package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLogger struct {
-	handler http.Handler
-}
-
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	writer := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
-
-	al.handler.ServeHTTP(writer, r)
-
-	duration := time.Since(start)
-	log.Printf(
-		"%s %s %d %s %s",
-		r.Method,
-		r.URL.Path,
-		writer.statusCode,
-		duration,
-		r.RemoteAddr,
-	)
-}
-
-type responseWriter struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (rw *responseWriter) WriteHeader(code int) {
-	rw.statusCode = code
-	rw.ResponseWriter.WriteHeader(code)
-}package main
+package main
 
 import (
     "encoding/json"
     "log"
-    "os"
+    "net/http"
+    "sync"
     "time"
 )
 
@@ -106,36 +12,113 @@ type ActivityLog struct {
     Timestamp time.Time `json:"timestamp"`
     UserID    string    `json:"user_id"`
     Action    string    `json:"action"`
-    Details   string    `json:"details,omitempty"`
+    Endpoint  string    `json:"endpoint"`
+    IPAddress string    `json:"ip_address"`
 }
 
-func logActivity(userID, action, details string) error {
-    logEntry := ActivityLog{
-        Timestamp: time.Now().UTC(),
-        UserID:    userID,
-        Action:    action,
-        Details:   details,
+type RateLimiter struct {
+    requests map[string][]time.Time
+    mu       sync.RWMutex
+    limit    int
+    window   time.Duration
+}
+
+func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
+    return &RateLimiter{
+        requests: make(map[string][]time.Time),
+        limit:    limit,
+        window:   window,
+    }
+}
+
+func (rl *RateLimiter) Allow(key string) bool {
+    rl.mu.Lock()
+    defer rl.mu.Unlock()
+
+    now := time.Now()
+    windowStart := now.Add(-rl.window)
+
+    timestamps := rl.requests[key]
+    validRequests := []time.Time{}
+
+    for _, ts := range timestamps {
+        if ts.After(windowStart) {
+            validRequests = append(validRequests, ts)
+        }
     }
 
-    file, err := os.OpenFile("activity.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-    if err != nil {
-        return err
+    if len(validRequests) >= rl.limit {
+        return false
     }
-    defer file.Close()
 
-    encoder := json.NewEncoder(file)
-    encoder.SetIndent("", "  ")
-    return encoder.Encode(logEntry)
+    validRequests = append(validRequests, now)
+    rl.requests[key] = validRequests
+    return true
+}
+
+func loggingMiddleware(next http.Handler, logger *log.Logger, limiter *RateLimiter) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        clientIP := r.RemoteAddr
+        if !limiter.Allow(clientIP) {
+            http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+            return
+        }
+
+        start := time.Now()
+        userID := r.Header.Get("X-User-ID")
+        if userID == "" {
+            userID = "anonymous"
+        }
+
+        activity := ActivityLog{
+            Timestamp: time.Now(),
+            UserID:    userID,
+            Action:    r.Method,
+            Endpoint:  r.URL.Path,
+            IPAddress: clientIP,
+        }
+
+        logData, err := json.Marshal(activity)
+        if err != nil {
+            logger.Printf("Failed to marshal activity log: %v", err)
+        } else {
+            logger.Println(string(logData))
+        }
+
+        next.ServeHTTP(w, r)
+
+        duration := time.Since(start)
+        logger.Printf("Request completed in %v", duration)
+    })
+}
+
+func mainHandler(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    response := map[string]string{
+        "status":  "success",
+        "message": "Request processed successfully",
+    }
+    json.NewEncoder(w).Encode(response)
 }
 
 func main() {
-    err := logActivity("user123", "login", "Successful authentication")
-    if err != nil {
-        log.Printf("Failed to log activity: %v", err)
+    logger := log.New(log.Writer(), "ACTIVITY: ", log.LstdFlags)
+    limiter := NewRateLimiter(100, time.Minute)
+
+    mux := http.NewServeMux()
+    mux.HandleFunc("/", mainHandler)
+
+    wrappedHandler := loggingMiddleware(mux, logger, limiter)
+
+    server := &http.Server{
+        Addr:         ":8080",
+        Handler:      wrappedHandler,
+        ReadTimeout:  10 * time.Second,
+        WriteTimeout: 10 * time.Second,
     }
 
-    err = logActivity("user456", "file_upload", "Uploaded profile picture")
-    if err != nil {
-        log.Printf("Failed to log activity: %v", err)
+    logger.Println("Starting server on :8080")
+    if err := server.ListenAndServe(); err != nil {
+        logger.Fatal(err)
     }
 }

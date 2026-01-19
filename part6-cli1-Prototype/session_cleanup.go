@@ -124,4 +124,58 @@ func main() {
 	go job.Run(ctx)
 
 	<-ctx.Done()
+}package main
+
+import (
+	"context"
+	"log"
+	"time"
+)
+
+const (
+	cleanupInterval = 1 * time.Hour
+	sessionTTL      = 24 * time.Hour
+)
+
+type SessionStore interface {
+	DeleteExpiredSessions(ctx context.Context, olderThan time.Time) error
+}
+
+type CleanupJob struct {
+	store SessionStore
+}
+
+func NewCleanupJob(store SessionStore) *CleanupJob {
+	return &CleanupJob{store: store}
+}
+
+func (j *CleanupJob) Run() {
+	ticker := time.NewTicker(cleanupInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			j.cleanup()
+		}
+	}
+}
+
+func (j *CleanupJob) cleanup() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cutoff := time.Now().Add(-sessionTTL)
+	if err := j.store.DeleteExpiredSessions(ctx, cutoff); err != nil {
+		log.Printf("Failed to clean up expired sessions: %v", err)
+	} else {
+		log.Printf("Successfully cleaned up sessions older than %v", cutoff)
+	}
+}
+
+func main() {
+	// In a real application, initialize your session store here
+	// store := NewDatabaseSessionStore()
+	// job := NewCleanupJob(store)
+	// job.Run()
 }

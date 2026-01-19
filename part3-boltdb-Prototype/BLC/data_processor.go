@@ -133,4 +133,45 @@ func (dp *DataProcessor) ProcessUserData(name, email string) (string, string, bo
 	sanitizedEmail := dp.SanitizeString(email)
 	isValid := dp.ValidateEmail(sanitizedEmail)
 	return sanitizedName, sanitizedEmail, isValid
+}package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+type DataProcessor struct {
+	filters []func(string) string
+}
+
+func NewDataProcessor() *DataProcessor {
+	return &DataProcessor{
+		filters: []func(string) string{
+			strings.TrimSpace,
+			func(s string) string { return strings.ToLower(s) },
+		},
+	}
+}
+
+func (dp *DataProcessor) AddFilter(filter func(string) string) {
+	dp.filters = append(dp.filters, filter)
+}
+
+func (dp *DataProcessor) Process(input string) string {
+	result := input
+	for _, filter := range dp.filters {
+		result = filter(result)
+	}
+	return result
+}
+
+func main() {
+	processor := NewDataProcessor()
+	processor.AddFilter(func(s string) string {
+		return strings.ReplaceAll(s, "test", "example")
+	})
+
+	input := "  TEST Data Processing Function  "
+	output := processor.Process(input)
+	fmt.Printf("Processed: '%s'\n", output)
 }

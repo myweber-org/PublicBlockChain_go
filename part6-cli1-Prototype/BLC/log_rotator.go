@@ -123,3 +123,141 @@ func main() {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+package main
+
+import (
+	"compress/gzip"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+)
+
+type LogRotator struct {
+	mu          sync.Mutex
+	currentFile *os.File
+	filePath    string
+	maxSize     int64
+	backupCount int
+}
+
+func NewLogRotator(filePath string, maxSizeMB int, backupCount int) (*LogRotator, error) {
+	maxSize := int64(maxSizeMB) * 1024 * 1024
+
+	rotator := &LogRotator{
+		filePath:    filePath,
+		maxSize:     maxSize,
+		backupCount: backupCount,
+	}
+
+	if err := rotator.openCurrentFile(); err != nil {
+		return nil, err
+	}
+
+	return rotator, nil
+}
+
+func (lr *LogRotator) Write(p []byte) (int, error) {
+	lr.mu.Lock()
+	defer lr.mu.Unlock()
+
+	stat, err := lr.currentFile.Stat()
+	if err != nil {
+		return 0, err
+	}
+
+	if stat.Size()+int64(len(p)) > lr.maxSize {
+		if err := lr.rotate(); err != nil {
+			return 0, err
+		}
+	}
+
+	return lr.currentFile.Write(p)
+}
+
+func (lr *LogRotator) rotate() error {
+	if err := lr.currentFile.Close(); err != nil {
+		return err
+	}
+
+	timestamp := time.Now().Format("20060102_150405")
+	backupPath := fmt.Sprintf("%s.%s.gz", lr.filePath, timestamp)
+
+	if err := compressFile(lr.filePath, backupPath); err != nil {
+		return err
+	}
+
+	if err := os.Remove(lr.filePath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	if err := lr.cleanOldBackups(); err != nil {
+		return err
+	}
+
+	return lr.openCurrentFile()
+}
+
+func compressFile(source, target string) error {
+	srcFile, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	destFile, err := os.Create(target)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	gzWriter := gzip.NewWriter(destFile)
+	defer gzWriter.Close()
+
+	_, err = io.Copy(gzWriter, srcFile)
+	return err
+}
+
+func (lr *LogRotator) cleanOldBackups() error {
+	pattern := fmt.Sprintf("%s.*.gz", lr.filePath)
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return err
+	}
+
+	if len(matches) <= lr.backupCount {
+		return nil
+	}
+
+	backups := make([]string, len(matches))
+	copy(backups, matches)
+
+	for i := 0; i < len(backups)-lr.backupCount; i++ {
+		if err := os.Remove(backups[i]); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (lr *LogRotator) openCurrentFile() error {
+	file, err := os.OpenFile(lr.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	lr.currentFile = file
+	return nil
+}
+
+func (lr *LogRotator) Close() error {
+	lr.mu.Lock()
+	defer lr.mu.Unlock()
+
+	if lr.currentFile != nil {
+		return lr.currentFile.Close()
+	}
+	return nil
+}

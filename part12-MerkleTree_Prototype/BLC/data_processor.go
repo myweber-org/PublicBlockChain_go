@@ -1,235 +1,34 @@
+
 package main
 
 import (
-	"errors"
-	"strings"
-)
-
-type UserData struct {
-	ID    int
-	Name  string
-	Email string
-}
-
-func ValidateUserData(data UserData) error {
-	if data.ID <= 0 {
-		return errors.New("invalid user ID")
-	}
-	if strings.TrimSpace(data.Name) == "" {
-		return errors.New("name cannot be empty")
-	}
-	if !strings.Contains(data.Email, "@") {
-		return errors.New("invalid email format")
-	}
-	return nil
-}
-
-func TransformUserName(data UserData) UserData {
-	data.Name = strings.ToUpper(strings.TrimSpace(data.Name))
-	return data
-}
-
-func ProcessUserInput(rawName, rawEmail string, id int) (UserData, error) {
-	user := UserData{
-		ID:    id,
-		Name:  rawName,
-		Email: rawEmail,
-	}
-
-	if err := ValidateUserData(user); err != nil {
-		return UserData{}, err
-	}
-
-	user = TransformUserName(user)
-	return user, nil
-}package main
-
-import (
-	"encoding/csv"
 	"fmt"
-	"io"
-	"os"
-	"strconv"
 )
 
-type Record struct {
-	ID    int
-	Name  string
-	Value float64
-}
-
-func ReadCSVFile(filename string) ([]Record, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	reader := csv.NewReader(file)
-	var records []Record
-
-	// Skip header
-	_, err = reader.Read()
-	if err != nil {
-		return nil, err
+// CalculateMovingAverage computes the moving average of a slice of float64 values.
+// It takes a slice of data and a window size, returning a slice of averages.
+// If window size is invalid (<=0 or > len(data)), it returns nil.
+func CalculateMovingAverage(data []float64, window int) []float64 {
+	if window <= 0 || window > len(data) {
+		return nil
 	}
 
-	for {
-		row, err := reader.Read()
-		if err == io.EOF {
-			break
+	result := make([]float64, len(data)-window+1)
+	for i := 0; i <= len(data)-window; i++ {
+		sum := 0.0
+		for j := i; j < i+window; j++ {
+			sum += data[j]
 		}
-		if err != nil {
-			return nil, err
-		}
-
-		if len(row) < 3 {
-			continue
-		}
-
-		id, err := strconv.Atoi(row[0])
-		if err != nil {
-			continue
-		}
-
-		name := row[1]
-
-		value, err := strconv.ParseFloat(row[2], 64)
-		if err != nil {
-			continue
-		}
-
-		records = append(records, Record{
-			ID:    id,
-			Name:  name,
-			Value: value,
-		})
+		result[i] = sum / float64(window)
 	}
-
-	return records, nil
-}
-
-func CalculateAverage(records []Record) float64 {
-	if len(records) == 0 {
-		return 0
-	}
-
-	var sum float64
-	for _, record := range records {
-		sum += record.Value
-	}
-
-	return sum / float64(len(records))
-}
-
-func FilterByThreshold(records []Record, threshold float64) []Record {
-	var filtered []Record
-	for _, record := range records {
-		if record.Value >= threshold {
-			filtered = append(filtered, record)
-		}
-	}
-	return filtered
+	return result
 }
 
 func main() {
-	records, err := ReadCSVFile("data.csv")
-	if err != nil {
-		fmt.Printf("Error reading file: %v\n", err)
-		return
-	}
-
-	fmt.Printf("Total records: %d\n", len(records))
-	fmt.Printf("Average value: %.2f\n", CalculateAverage(records))
-
-	threshold := 50.0
-	filtered := FilterByThreshold(records, threshold)
-	fmt.Printf("Records above %.1f: %d\n", threshold, len(filtered))
-}package main
-
-import (
-	"encoding/csv"
-	"fmt"
-	"io"
-	"os"
-	"strings"
-)
-
-type DataRecord struct {
-	ID      string
-	Name    string
-	Value   string
-	IsValid bool
-}
-
-func ProcessCSVFile(filePath string) ([]DataRecord, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open file: %w", err)
-	}
-	defer file.Close()
-
-	reader := csv.NewReader(file)
-	reader.TrimLeadingSpace = true
-
-	var records []DataRecord
-	lineNumber := 0
-
-	for {
-		lineNumber++
-		row, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("csv read error at line %d: %w", lineNumber, err)
-		}
-
-		if len(row) < 3 {
-			continue
-		}
-
-		record := DataRecord{
-			ID:    strings.TrimSpace(row[0]),
-			Name:  strings.TrimSpace(row[1]),
-			Value: strings.TrimSpace(row[2]),
-		}
-		record.IsValid = validateRecord(record)
-
-		records = append(records, record)
-	}
-
-	return records, nil
-}
-
-func validateRecord(record DataRecord) bool {
-	if record.ID == "" || record.Name == "" {
-		return false
-	}
-	if len(record.Value) > 100 {
-		return false
-	}
-	return true
-}
-
-func FilterValidRecords(records []DataRecord) []DataRecord {
-	var valid []DataRecord
-	for _, r := range records {
-		if r.IsValid {
-			valid = append(valid, r)
-		}
-	}
-	return valid
-}
-
-func GenerateReport(records []DataRecord) {
-	validCount := 0
-	for _, r := range records {
-		if r.IsValid {
-			validCount++
-		}
-	}
-	fmt.Printf("Total records: %d\n", len(records))
-	fmt.Printf("Valid records: %d\n", validCount)
-	fmt.Printf("Invalid records: %d\n", len(records)-validCount)
+	// Example usage
+	data := []float64{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0}
+	window := 3
+	averages := CalculateMovingAverage(data, window)
+	fmt.Printf("Data: %v\n", data)
+	fmt.Printf("Moving Average (window=%d): %v\n", window, averages)
 }

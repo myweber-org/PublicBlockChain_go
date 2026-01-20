@@ -17,23 +17,25 @@ func NewActivityLogger(logger *log.Logger) *ActivityLogger {
 func (al *ActivityLogger) LogActivity(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		
+		userAgent := r.UserAgent()
+		clientIP := r.RemoteAddr
+
 		recorder := &responseRecorder{
 			ResponseWriter: w,
 			statusCode:     http.StatusOK,
 		}
-		
+
 		next.ServeHTTP(recorder, r)
-		
+
 		duration := time.Since(start)
-		
 		al.Logger.Printf(
-			"%s %s %d %s %s",
+			"Method=%s Path=%s Status=%d Duration=%s UserAgent=%s IP=%s",
 			r.Method,
 			r.URL.Path,
 			recorder.statusCode,
-			duration.String(),
-			r.RemoteAddr,
+			duration,
+			userAgent,
+			clientIP,
 		)
 	})
 }

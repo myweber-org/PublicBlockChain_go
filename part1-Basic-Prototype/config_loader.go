@@ -130,4 +130,79 @@ func setFieldValue(field reflect.Value, value string) error {
 func (c *Config) String() string {
 	data, _ := json.MarshalIndent(c, "", "  ")
 	return string(data)
+}package config
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+
+	"gopkg.in/yaml.v3"
+)
+
+type Config struct {
+	Server struct {
+		Host string `yaml:"host" env:"SERVER_HOST"`
+		Port int    `yaml:"port" env:"SERVER_PORT"`
+	} `yaml:"server"`
+	Database struct {
+		Driver   string `yaml:"driver" env:"DB_DRIVER"`
+		Host     string `yaml:"host" env:"DB_HOST"`
+		Port     int    `yaml:"port" env:"DB_PORT"`
+		Name     string `yaml:"name" env:"DB_NAME"`
+		Username string `yaml:"username" env:"DB_USERNAME"`
+		Password string `yaml:"password" env:"DB_PASSWORD"`
+	} `yaml:"database"`
+	Logging struct {
+		Level  string `yaml:"level" env:"LOG_LEVEL"`
+		Output string `yaml:"output" env:"LOG_OUTPUT"`
+	} `yaml:"logging"`
+}
+
+func LoadConfig(configPath string) (*Config, error) {
+	absPath, err := filepath.Abs(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+
+	overrideFromEnv(&cfg)
+	return &cfg, nil
+}
+
+func overrideFromEnv(cfg *Config) {
+	overrideString(&cfg.Server.Host, "SERVER_HOST")
+	overrideInt(&cfg.Server.Port, "SERVER_PORT")
+	overrideString(&cfg.Database.Driver, "DB_DRIVER")
+	overrideString(&cfg.Database.Host, "DB_HOST")
+	overrideInt(&cfg.Database.Port, "DB_PORT")
+	overrideString(&cfg.Database.Name, "DB_NAME")
+	overrideString(&cfg.Database.Username, "DB_USERNAME")
+	overrideString(&cfg.Database.Password, "DB_PASSWORD")
+	overrideString(&cfg.Logging.Level, "LOG_LEVEL")
+	overrideString(&cfg.Logging.Output, "LOG_OUTPUT")
+}
+
+func overrideString(field *string, envVar string) {
+	if val := os.Getenv(envVar); val != "" {
+		*field = strings.TrimSpace(val)
+	}
+}
+
+func overrideInt(field *int, envVar string) {
+	if val := os.Getenv(envVar); val != "" {
+		var temp int
+		if _, err := fmt.Sscanf(val, "%d", &temp); err == nil {
+			*field = temp
+		}
+	}
 }

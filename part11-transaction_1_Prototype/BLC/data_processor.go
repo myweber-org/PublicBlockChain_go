@@ -326,3 +326,94 @@ func GenerateSummary(records []DataRecord) {
 	fmt.Printf("Valid records: %d\n", validCount)
 	fmt.Printf("Invalid records: %d\n", len(records)-validCount)
 }
+package data
+
+import (
+	"errors"
+	"strings"
+	"time"
+)
+
+var (
+	ErrInvalidInput = errors.New("invalid input data")
+	ErrEmptyField   = errors.New("required field is empty")
+)
+
+type DataRecord struct {
+	ID        string
+	Timestamp time.Time
+	Value     float64
+	Tags      []string
+	Validated bool
+}
+
+func ValidateRecord(record DataRecord) error {
+	if record.ID == "" {
+		return ErrEmptyField
+	}
+	if record.Timestamp.IsZero() {
+		return errors.New("timestamp is required")
+	}
+	if record.Value < 0 {
+		return errors.New("value cannot be negative")
+	}
+	return nil
+}
+
+func NormalizeTags(tags []string) []string {
+	uniqueTags := make(map[string]bool)
+	var result []string
+	
+	for _, tag := range tags {
+		normalized := strings.ToLower(strings.TrimSpace(tag))
+		if normalized != "" && !uniqueTags[normalized] {
+			uniqueTags[normalized] = true
+			result = append(result, normalized)
+		}
+	}
+	return result
+}
+
+func TransformValue(value float64, multiplier float64) (float64, error) {
+	if multiplier <= 0 {
+		return 0, errors.New("multiplier must be positive")
+	}
+	return value * multiplier, nil
+}
+
+func ProcessRecord(record DataRecord, multiplier float64) (DataRecord, error) {
+	if err := ValidateRecord(record); err != nil {
+		return DataRecord{}, err
+	}
+	
+	transformedValue, err := TransformValue(record.Value, multiplier)
+	if err != nil {
+		return DataRecord{}, err
+	}
+	
+	normalizedTags := NormalizeTags(record.Tags)
+	
+	return DataRecord{
+		ID:        record.ID,
+		Timestamp: record.Timestamp,
+		Value:     transformedValue,
+		Tags:      normalizedTags,
+		Validated: true,
+	}, nil
+}
+
+func BatchProcess(records []DataRecord, multiplier float64) ([]DataRecord, []error) {
+	var processed []DataRecord
+	var errs []error
+	
+	for i, record := range records {
+		processedRecord, err := ProcessRecord(record, multiplier)
+		if err != nil {
+			errs = append(errs, errors.New("record "+record.ID+" at index "+string(rune(i))+" failed: "+err.Error()))
+			continue
+		}
+		processed = append(processed, processedRecord)
+	}
+	
+	return processed, errs
+}

@@ -344,4 +344,58 @@ func DefaultConfigPath() string {
         return "./config.yaml"
     }
     return filepath.Join(homeDir, ".app", "config.yaml")
+}package config
+
+import (
+    "os"
+    "strconv"
+    "strings"
+)
+
+type Config struct {
+    ServerPort int
+    DebugMode  bool
+    DatabaseURL string
+    AllowedHosts []string
+}
+
+func Load() (*Config, error) {
+    cfg := &Config{
+        ServerPort:  getEnvAsInt("SERVER_PORT", 8080),
+        DebugMode:   getEnvAsBool("DEBUG_MODE", false),
+        DatabaseURL: getEnv("DATABASE_URL", "postgres://localhost:5432/app"),
+        AllowedHosts: getEnvAsSlice("ALLOWED_HOSTS", []string{"localhost", "127.0.0.1"}, ","),
+    }
+    return cfg, nil
+}
+
+func getEnv(key, defaultValue string) string {
+    if value, exists := os.LookupEnv(key); exists {
+        return value
+    }
+    return defaultValue
+}
+
+func getEnvAsInt(key string, defaultValue int) int {
+    valueStr := getEnv(key, "")
+    if value, err := strconv.Atoi(valueStr); err == nil {
+        return value
+    }
+    return defaultValue
+}
+
+func getEnvAsBool(key string, defaultValue bool) bool {
+    valueStr := getEnv(key, "")
+    if val, err := strconv.ParseBool(valueStr); err == nil {
+        return val
+    }
+    return defaultValue
+}
+
+func getEnvAsSlice(key string, defaultValue []string, sep string) []string {
+    valueStr := getEnv(key, "")
+    if valueStr == "" {
+        return defaultValue
+    }
+    return strings.Split(valueStr, sep)
 }

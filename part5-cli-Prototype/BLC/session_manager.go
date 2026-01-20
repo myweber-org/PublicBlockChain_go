@@ -31,25 +31,38 @@ func (sm *SessionManager) CreateSession(userID int) *Session {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
+	sessionID := generateSessionID()
 	session := &Session{
-		ID:        generateSessionID(),
+		ID:        sessionID,
 		UserID:    userID,
 		Data:      make(map[string]interface{}),
 		ExpiresAt: time.Now().Add(sm.ttl),
 	}
-	sm.sessions[session.ID] = session
+	sm.sessions[sessionID] = session
 	return session
 }
 
-func (sm *SessionManager) GetSession(id string) *Session {
+func (sm *SessionManager) GetSession(sessionID string) *Session {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
 
-	session, exists := sm.sessions[id]
+	session, exists := sm.sessions[sessionID]
 	if !exists || time.Now().After(session.ExpiresAt) {
 		return nil
 	}
 	return session
+}
+
+func (sm *SessionManager) RefreshSession(sessionID string) bool {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	session, exists := sm.sessions[sessionID]
+	if !exists {
+		return false
+	}
+	session.ExpiresAt = time.Now().Add(sm.ttl)
+	return true
 }
 
 func (sm *SessionManager) cleanupWorker() {
@@ -69,5 +82,14 @@ func (sm *SessionManager) cleanupWorker() {
 }
 
 func generateSessionID() string {
-	return "session_" + time.Now().Format("20060102150405")
+	return "sess_" + time.Now().Format("20060102150405") + "_" + randomString(16)
+}
+
+func randomString(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[time.Now().UnixNano()%int64(len(charset))]
+	}
+	return string(b)
 }

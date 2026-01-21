@@ -257,3 +257,71 @@ func main() {
 
 	fmt.Println("Data cleaning completed successfully")
 }
+package main
+
+import (
+    "fmt"
+    "strings"
+)
+
+type DataRecord struct {
+    ID    int
+    Email string
+    Phone string
+}
+
+type DataCleaner struct {
+    records []DataRecord
+    seen    map[string]bool
+}
+
+func NewDataCleaner() *DataCleaner {
+    return &DataCleaner{
+        seen: make(map[string]bool),
+    }
+}
+
+func (dc *DataCleaner) AddRecord(record DataRecord) bool {
+    key := fmt.Sprintf("%s|%s", strings.ToLower(record.Email), record.Phone)
+    if dc.seen[key] {
+        return false
+    }
+    dc.seen[key] = true
+    dc.records = append(dc.records, record)
+    return true
+}
+
+func (dc *DataCleaner) ValidateRecords() []DataRecord {
+    var valid []DataRecord
+    for _, r := range dc.records {
+        if strings.Contains(r.Email, "@") && len(r.Phone) >= 10 {
+            valid = append(valid, r)
+        }
+    }
+    return valid
+}
+
+func (dc *DataCleaner) GetUniqueCount() int {
+    return len(dc.records)
+}
+
+func main() {
+    cleaner := NewDataCleaner()
+    
+    records := []DataRecord{
+        {1, "user@example.com", "1234567890"},
+        {2, "user@example.com", "1234567890"},
+        {3, "invalid-email", "9876543210"},
+        {4, "another@test.com", "5551234567"},
+    }
+    
+    for _, r := range records {
+        added := cleaner.AddRecord(r)
+        fmt.Printf("Record %d added: %v\n", r.ID, added)
+    }
+    
+    fmt.Printf("Total unique records: %d\n", cleaner.GetUniqueCount())
+    
+    valid := cleaner.ValidateRecords()
+    fmt.Printf("Valid records: %d\n", len(valid))
+}

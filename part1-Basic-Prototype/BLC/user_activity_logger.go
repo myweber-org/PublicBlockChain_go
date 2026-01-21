@@ -69,4 +69,45 @@ func main() {
 	}
 
 	fmt.Println("Activity logging completed")
+}package middleware
+
+import (
+	"log"
+	"net/http"
+	"time"
+)
+
+type ActivityLogger struct {
+	handler http.Handler
+}
+
+func NewActivityLogger(handler http.Handler) *ActivityLogger {
+	return &ActivityLogger{handler: handler}
+}
+
+func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	userID := extractUserID(r)
+	ipAddress := r.RemoteAddr
+
+	al.handler.ServeHTTP(w, r)
+
+	duration := time.Since(start)
+	log.Printf("User %s from %s accessed %s %s - Duration: %v",
+		userID, ipAddress, r.Method, r.URL.Path, duration)
+}
+
+func extractUserID(r *http.Request) string {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return "anonymous"
+	}
+	return authHeader[:min(8, len(authHeader))]
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

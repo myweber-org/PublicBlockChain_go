@@ -3,138 +3,78 @@ package middleware
 import (
 	"log"
 	"net/http"
+	"sync"
 	"time"
 )
 
 type ActivityLogger struct {
-	handler http.Handler
+	mu          sync.RWMutex
+	userLimits  map[string]time.Time
+	rateLimit   time.Duration
+	logFilePath string
 }
 
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	
-	al.handler.ServeHTTP(w, r)
-	
-	duration := time.Since(start)
-	
-	log.Printf("Activity: %s %s from %s took %v",
-		r.Method,
-		r.URL.Path,
-		r.RemoteAddr,
-		duration,
-	)
-}package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLogger struct {
-	handler http.Handler
-}
-
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	al.handler.ServeHTTP(w, r)
-	duration := time.Since(start)
-
-	log.Printf(
-		"Method: %s | Path: %s | RemoteAddr: %s | Duration: %v",
-		r.Method,
-		r.URL.Path,
-		r.RemoteAddr,
-		duration,
-	)
-}package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLogger struct {
-	handler http.Handler
-}
-
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	userID := extractUserID(r)
-	ip := r.RemoteAddr
-	method := r.Method
-	path := r.URL.Path
-
-	al.handler.ServeHTTP(w, r)
-
-	duration := time.Since(start)
-	log.Printf("User %s from IP %s performed %s %s in %v", userID, ip, method, path, duration)
-}
-
-func extractUserID(r *http.Request) string {
-	if userID := r.Header.Get("X-User-ID"); userID != "" {
-		return userID
+func NewActivityLogger(limit time.Duration, logFile string) *ActivityLogger {
+	return &ActivityLogger{
+		userLimits:  make(map[string]time.Time),
+		rateLimit:   limit,
+		logFilePath: logFile,
 	}
-	return "anonymous"
-}package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLogger struct {
-	Logger *log.Logger
-}
-
-func NewActivityLogger(logger *log.Logger) *ActivityLogger {
-	return &ActivityLogger{Logger: logger}
 }
 
 func (al *ActivityLogger) LogActivity(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		
-		recorder := &responseRecorder{
-			ResponseWriter: w,
-			statusCode:     http.StatusOK,
+		userID := r.Header.Get("X-User-ID")
+		if userID == "" {
+			userID = "anonymous"
 		}
-		
-		next.ServeHTTP(recorder, r)
-		
-		duration := time.Since(start)
-		
-		al.Logger.Printf(
-			"%s %s %d %s %s",
-			r.Method,
-			r.URL.Path,
-			recorder.statusCode,
-			duration,
-			r.RemoteAddr,
-		)
+
+		now := time.Now()
+		al.mu.RLock()
+		lastLog, exists := al.userLimits[userID]
+		al.mu.RUnlock()
+
+		if exists && now.Sub(lastLog) < al.rateLimit {
+			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+			return
+		}
+
+		al.mu.Lock()
+		al.userLimits[userID] = now
+		al.mu.Unlock()
+
+		logEntry := struct {
+			Timestamp time.Time `json:"timestamp"`
+			UserID    string    `json:"user_id"`
+			Method    string    `json:"method"`
+			Path      string    `json:"path"`
+			IP        string    `json:"ip"`
+		}{
+			Timestamp: now,
+			UserID:    userID,
+			Method:    r.Method,
+			Path:      r.URL.Path,
+			IP:        r.RemoteAddr,
+		}
+
+		log.Printf("Activity: %s %s by %s from %s", logEntry.Method, logEntry.Path, logEntry.UserID, logEntry.IP)
+
+		next.ServeHTTP(w, r)
 	})
 }
 
-type responseRecorder struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (rr *responseRecorder) WriteHeader(code int) {
-	rr.statusCode = code
-	rr.ResponseWriter.WriteHeader(code)
+func (al *ActivityLogger) CleanupOldEntries() {
+	ticker := time.NewTicker(time.Hour)
+	go func() {
+		for range ticker.C {
+			al.mu.Lock()
+			cutoff := time.Now().Add(-24 * time.Hour)
+			for userID, lastLog := range al.userLimits {
+				if lastLog.Before(cutoff) {
+					delete(al.userLimits, userID)
+				}
+			}
+			al.mu.Unlock()
+		}
+	}()
 }

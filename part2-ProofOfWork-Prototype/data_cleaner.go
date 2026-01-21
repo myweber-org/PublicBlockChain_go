@@ -1,79 +1,61 @@
+
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"os"
 	"strings"
 )
 
-func cleanData(input []string) []string {
+type DataRecord struct {
+	ID    int
+	Email string
+	Valid bool
+}
+
+func deduplicateEmails(emails []string) []string {
 	seen := make(map[string]bool)
-	var result []string
-	for _, line := range input {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-		if !seen[trimmed] {
-			seen[trimmed] = true
-			result = append(result, trimmed)
+	result := []string{}
+	for _, email := range emails {
+		email = strings.ToLower(strings.TrimSpace(email))
+		if !seen[email] {
+			seen[email] = true
+			result = append(result, email)
 		}
 	}
 	return result
 }
 
-func readLines(filename string) ([]string, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	var lines []string
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-	return lines, scanner.Err()
+func validateEmail(email string) bool {
+	return strings.Contains(email, "@") && strings.Contains(email, ".")
 }
 
-func writeLines(filename string, lines []string) error {
-	file, err := os.Create(filename)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
+func processRecords(records []DataRecord) []DataRecord {
+	emailMap := make(map[string]bool)
+	var cleanRecords []DataRecord
 
-	writer := bufio.NewWriter(file)
-	for _, line := range lines {
-		fmt.Fprintln(writer, line)
+	for _, record := range records {
+		cleanEmail := strings.ToLower(strings.TrimSpace(record.Email))
+		if validateEmail(cleanEmail) && !emailMap[cleanEmail] {
+			emailMap[cleanEmail] = true
+			record.Email = cleanEmail
+			record.Valid = true
+			cleanRecords = append(cleanRecords, record)
+		}
 	}
-	return writer.Flush()
+	return cleanRecords
 }
 
 func main() {
-	if len(os.Args) != 3 {
-		fmt.Println("Usage: data_cleaner <input_file> <output_file>")
-		os.Exit(1)
+	emails := []string{"test@example.com", "TEST@example.com", "invalid", "another@test.org"}
+	uniqueEmails := deduplicateEmails(emails)
+	fmt.Println("Deduplicated emails:", uniqueEmails)
+
+	records := []DataRecord{
+		{1, "user@domain.com", false},
+		{2, "USER@domain.com", false},
+		{3, "bad-email", false},
+		{4, "new@test.net", false},
 	}
-
-	inputFile := os.Args[1]
-	outputFile := os.Args[2]
-
-	lines, err := readLines(inputFile)
-	if err != nil {
-		fmt.Printf("Error reading file: %v\n", err)
-		os.Exit(1)
-	}
-
-	cleaned := cleanData(lines)
-
-	err = writeLines(outputFile, cleaned)
-	if err != nil {
-		fmt.Printf("Error writing file: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Cleaned %d lines to %d unique lines\n", len(lines), len(cleaned))
+	cleanRecords := processRecords(records)
+	fmt.Printf("Cleaned records: %+v\n", cleanRecords)
 }

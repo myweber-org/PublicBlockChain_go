@@ -236,3 +236,84 @@ func getEnvAsSlice(key string, defaultValue []string, sep string) []string {
     }
     return strings.Split(valueStr, sep)
 }
+package config
+
+import (
+    "fmt"
+    "io/ioutil"
+    "os"
+    "path/filepath"
+    "strings"
+
+    "gopkg.in/yaml.v2"
+)
+
+type Config struct {
+    Server struct {
+        Host string `yaml:"host"`
+        Port int    `yaml:"port"`
+    } `yaml:"server"`
+    Database struct {
+        Host     string `yaml:"host"`
+        Port     int    `yaml:"port"`
+        Name     string `yaml:"name"`
+        Username string `yaml:"username"`
+        Password string `yaml:"password"`
+    } `yaml:"database"`
+    Logging struct {
+        Level  string `yaml:"level"`
+        Output string `yaml:"output"`
+    } `yaml:"logging"`
+}
+
+func LoadConfig(configPath string) (*Config, error) {
+    var config Config
+
+    absPath, err := filepath.Abs(configPath)
+    if err != nil {
+        return nil, fmt.Errorf("invalid config path: %v", err)
+    }
+
+    data, err := ioutil.ReadFile(absPath)
+    if err != nil {
+        return nil, fmt.Errorf("failed to read config file: %v", err)
+    }
+
+    if err := yaml.Unmarshal(data, &config); err != nil {
+        return nil, fmt.Errorf("failed to parse YAML: %v", err)
+    }
+
+    overrideFromEnv(&config)
+
+    return &config, nil
+}
+
+func overrideFromEnv(config *Config) {
+    if val := os.Getenv("SERVER_HOST"); val != "" {
+        config.Server.Host = val
+    }
+    if val := os.Getenv("SERVER_PORT"); val != "" {
+        fmt.Sscanf(val, "%d", &config.Server.Port)
+    }
+    if val := os.Getenv("DB_HOST"); val != "" {
+        config.Database.Host = val
+    }
+    if val := os.Getenv("DB_PORT"); val != "" {
+        fmt.Sscanf(val, "%d", &config.Database.Port)
+    }
+    if val := os.Getenv("DB_NAME"); val != "" {
+        config.Database.Name = val
+    }
+    if val := os.Getenv("DB_USERNAME"); val != "" {
+        config.Database.Username = val
+    }
+    if val := os.Getenv("DB_PASSWORD"); val != "" {
+        config.Database.Password = val
+    }
+    if val := os.Getenv("LOG_LEVEL"); val != "" {
+        config.Logging.Level = strings.ToUpper(val)
+    }
+    if val := os.Getenv("LOG_OUTPUT"); val != "" {
+        config.Logging.Output = val
+    }
+}

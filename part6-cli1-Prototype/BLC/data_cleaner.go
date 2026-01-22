@@ -100,4 +100,164 @@ func main() {
 	uniqueStrings := RemoveDuplicates(strings)
 	fmt.Println("Original:", strings)
 	fmt.Println("Unique:", uniqueStrings)
+}package main
+
+import (
+	"encoding/csv"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+	"strings"
+)
+
+type Record struct {
+	ID        int
+	Name      string
+	Email     string
+	Age       int
+	Active    bool
+	Timestamp string
+}
+
+func parseCSVFile(filename string) ([]Record, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	records := []Record{}
+	lineNum := 0
+
+	for {
+		line, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("csv read error at line %d: %w", lineNum, err)
+		}
+
+		if lineNum == 0 {
+			lineNum++
+			continue
+		}
+
+		record, err := parseRecord(line)
+		if err != nil {
+			return nil, fmt.Errorf("parse error at line %d: %w", lineNum, err)
+		}
+
+		records = append(records, record)
+		lineNum++
+	}
+
+	return records, nil
+}
+
+func parseRecord(fields []string) (Record, error) {
+	if len(fields) != 6 {
+		return Record{}, fmt.Errorf("invalid field count: %d", len(fields))
+	}
+
+	id, err := strconv.Atoi(fields[0])
+	if err != nil {
+		return Record{}, fmt.Errorf("invalid ID: %v", err)
+	}
+
+	name := strings.TrimSpace(fields[1])
+	if name == "" {
+		return Record{}, fmt.Errorf("name cannot be empty")
+	}
+
+	email := strings.TrimSpace(fields[2])
+	if !strings.Contains(email, "@") {
+		return Record{}, fmt.Errorf("invalid email format")
+	}
+
+	age, err := strconv.Atoi(fields[3])
+	if err != nil || age < 0 || age > 150 {
+		return Record{}, fmt.Errorf("invalid age: %v", err)
+	}
+
+	active := false
+	if fields[4] == "true" {
+		active = true
+	} else if fields[4] != "false" {
+		return Record{}, fmt.Errorf("invalid active flag: %s", fields[4])
+	}
+
+	timestamp := strings.TrimSpace(fields[5])
+	if timestamp == "" {
+		return Record{}, fmt.Errorf("timestamp cannot be empty")
+	}
+
+	return Record{
+		ID:        id,
+		Name:      name,
+		Email:     email,
+		Age:       age,
+		Active:    active,
+		Timestamp: timestamp,
+	}, nil
+}
+
+func validateRecords(records []Record) ([]Record, []string) {
+	validRecords := []Record{}
+	errors := []string{}
+
+	for _, record := range records {
+		if record.Age < 18 {
+			errors = append(errors, fmt.Sprintf("record ID %d: age must be 18 or older", record.ID))
+			continue
+		}
+
+		if !record.Active {
+			errors = append(errors, fmt.Sprintf("record ID %d: user is inactive", record.ID))
+			continue
+		}
+
+		validRecords = append(validRecords, record)
+	}
+
+	return validRecords, errors
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: data_cleaner <csv_file>")
+		os.Exit(1)
+	}
+
+	filename := os.Args[1]
+	records, err := parseCSVFile(filename)
+	if err != nil {
+		fmt.Printf("Error parsing CSV: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Parsed %d records from %s\n", len(records), filename)
+
+	validRecords, errors := validateRecords(records)
+
+	fmt.Printf("\nValidation Results:\n")
+	fmt.Printf("Valid records: %d\n", len(validRecords))
+	fmt.Printf("Validation errors: %d\n", len(errors))
+
+	if len(errors) > 0 {
+		fmt.Println("\nErrors:")
+		for _, err := range errors {
+			fmt.Printf("  - %s\n", err)
+		}
+	}
+
+	if len(validRecords) > 0 {
+		fmt.Println("\nValid Records:")
+		for _, record := range validRecords {
+			fmt.Printf("  ID: %d, Name: %s, Email: %s, Age: %d\n",
+				record.ID, record.Name, record.Email, record.Age)
+		}
+	}
 }

@@ -1,85 +1,76 @@
 
 package main
 
-import "fmt"
-
-func RemoveDuplicates[T comparable](slice []T) []T {
-	seen := make(map[T]bool)
-	result := []T{}
-
-	for _, item := range slice {
-		if !seen[item] {
-			seen[item] = true
-			result = append(result, item)
-		}
-	}
-	return result
-}
-
-func main() {
-	numbers := []int{1, 2, 2, 3, 4, 4, 5, 5}
-	uniqueNumbers := RemoveDuplicates(numbers)
-	fmt.Println("Original:", numbers)
-	fmt.Println("Unique:", uniqueNumbers)
-
-	strings := []string{"apple", "banana", "apple", "orange", "banana"}
-	uniqueStrings := RemoveDuplicates(strings)
-	fmt.Println("Original:", strings)
-	fmt.Println("Unique:", uniqueStrings)
-}
-package main
-
 import (
-    "fmt"
-    "strings"
+	"fmt"
+	"strings"
 )
 
 type DataRecord struct {
-    ID    int
-    Email string
-    Valid bool
+	ID    int
+	Email string
+	Name  string
 }
 
-func RemoveDuplicates(records []DataRecord) []DataRecord {
-    seen := make(map[string]bool)
-    result := []DataRecord{}
-    for _, record := range records {
-        normalizedEmail := strings.ToLower(strings.TrimSpace(record.Email))
-        if !seen[normalizedEmail] {
-            seen[normalizedEmail] = true
-            result = append(result, record)
-        }
-    }
-    return result
+type DataCleaner struct {
+	records []DataRecord
 }
 
-func ValidateEmails(records []DataRecord) []DataRecord {
-    for i := range records {
-        email := records[i].Email
-        records[i].Valid = strings.Contains(email, "@") && strings.Contains(email, ".")
-    }
-    return records
+func NewDataCleaner() *DataCleaner {
+	return &DataCleaner{
+		records: make([]DataRecord, 0),
+	}
+}
+
+func (dc *DataCleaner) AddRecord(record DataRecord) {
+	dc.records = append(dc.records, record)
+}
+
+func (dc *DataCleaner) RemoveDuplicates() []DataRecord {
+	seen := make(map[string]bool)
+	result := make([]DataRecord, 0)
+
+	for _, record := range dc.records {
+		key := fmt.Sprintf("%d|%s", record.ID, strings.ToLower(record.Email))
+		if !seen[key] {
+			seen[key] = true
+			result = append(result, record)
+		}
+	}
+
+	dc.records = result
+	return result
+}
+
+func (dc *DataCleaner) ValidateEmails() []DataRecord {
+	validRecords := make([]DataRecord, 0)
+
+	for _, record := range dc.records {
+		if strings.Contains(record.Email, "@") && strings.Contains(record.Email, ".") {
+			validRecords = append(validRecords, record)
+		}
+	}
+
+	return validRecords
+}
+
+func (dc *DataCleaner) GetRecordCount() int {
+	return len(dc.records)
 }
 
 func main() {
-    sampleData := []DataRecord{
-        {1, "user@example.com", false},
-        {2, "USER@example.com", false},
-        {3, "test.user@domain.org", false},
-        {4, "invalid-email", false},
-        {5, "user@example.com", false},
-    }
+	cleaner := NewDataCleaner()
 
-    fmt.Println("Original records:", len(sampleData))
-    unique := RemoveDuplicates(sampleData)
-    fmt.Println("After deduplication:", len(unique))
-    
-    validated := ValidateEmails(unique)
-    validCount := 0
-    for _, r := range validated {
-        if r.Valid {
-            validCount++
-        }
-    }
-    fmt.Println("Valid email records:", validCount)
+	cleaner.AddRecord(DataRecord{ID: 1, Email: "user@example.com", Name: "John"})
+	cleaner.AddRecord(DataRecord{ID: 2, Email: "user@example.com", Name: "John"})
+	cleaner.AddRecord(DataRecord{ID: 3, Email: "invalid-email", Name: "Jane"})
+	cleaner.AddRecord(DataRecord{ID: 4, Email: "another@test.org", Name: "Bob"})
+
+	fmt.Printf("Initial records: %d\n", cleaner.GetRecordCount())
+
+	cleaner.RemoveDuplicates()
+	fmt.Printf("After deduplication: %d\n", cleaner.GetRecordCount())
+
+	valid := cleaner.ValidateEmails()
+	fmt.Printf("Valid email records: %d\n", len(valid))
 }

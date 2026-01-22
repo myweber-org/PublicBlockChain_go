@@ -1,124 +1,69 @@
+
 package main
 
 import (
-	"encoding/csv"
 	"fmt"
-	"io"
-	"os"
 	"strings"
 )
 
-func cleanCSV(inputPath, outputPath string) error {
-	inFile, err := os.Open(inputPath)
-	if err != nil {
-		return fmt.Errorf("failed to open input file: %w", err)
-	}
-	defer inFile.Close()
+type DataRecord struct {
+	ID    int
+	Email string
+	Valid bool
+}
 
-	outFile, err := os.Create(outputPath)
-	if err != nil {
-		return fmt.Errorf("failed to create output file: %w", err)
-	}
-	defer outFile.Close()
+func DeduplicateEmails(records []DataRecord) []DataRecord {
+	seen := make(map[string]bool)
+	var unique []DataRecord
 
-	reader := csv.NewReader(inFile)
-	writer := csv.NewWriter(outFile)
-	defer writer.Flush()
-
-	for {
-		record, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("error reading CSV: %w", err)
-		}
-
-		cleanedRecord := make([]string, len(record))
-		for i, field := range record {
-			cleanedRecord[i] = strings.TrimSpace(field)
-		}
-
-		if err := writer.Write(cleanedRecord); err != nil {
-			return fmt.Errorf("error writing CSV: %w", err)
+	for _, record := range records {
+		email := strings.ToLower(strings.TrimSpace(record.Email))
+		if !seen[email] && email != "" {
+			seen[email] = true
+			record.Email = email
+			unique = append(unique, record)
 		}
 	}
+	return unique
+}
 
-	return nil
+func ValidateEmailFormat(email string) bool {
+	if len(email) < 3 || !strings.Contains(email, "@") {
+		return false
+	}
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return false
+	}
+	return strings.Contains(parts[1], ".")
+}
+
+func CleanDataset(records []DataRecord) []DataRecord {
+	records = DeduplicateEmails(records)
+	var cleaned []DataRecord
+	for _, record := range records {
+		record.Valid = ValidateEmailFormat(record.Email)
+		if record.Valid {
+			cleaned = append(cleaned, record)
+		}
+	}
+	return cleaned
 }
 
 func main() {
-	if len(os.Args) != 3 {
-		fmt.Println("Usage: data_cleaner <input.csv> <output.csv>")
-		os.Exit(1)
+	dataset := []DataRecord{
+		{1, "user@example.com", false},
+		{2, "USER@example.com", false},
+		{3, "invalid-email", false},
+		{4, "test@domain", false},
+		{5, "user@example.com", false},
+		{6, "new@test.org", false},
 	}
 
-	err := cleanCSV(os.Args[1], os.Args[2])
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
+	cleaned := CleanDataset(dataset)
+	fmt.Printf("Original: %d records\n", len(dataset))
+	fmt.Printf("Cleaned: %d records\n", len(cleaned))
+	for _, record := range cleaned {
+		fmt.Printf("ID: %d, Email: %s\n", record.ID, record.Email)
 	}
-
-	fmt.Println("CSV cleaning completed successfully")
-}package main
-
-import (
-    "encoding/csv"
-    "fmt"
-    "io"
-    "os"
-    "strings"
-)
-
-func cleanCSV(inputPath, outputPath string) error {
-    inputFile, err := os.Open(inputPath)
-    if err != nil {
-        return fmt.Errorf("failed to open input file: %w", err)
-    }
-    defer inputFile.Close()
-
-    outputFile, err := os.Create(outputPath)
-    if err != nil {
-        return fmt.Errorf("failed to create output file: %w", err)
-    }
-    defer outputFile.Close()
-
-    reader := csv.NewReader(inputFile)
-    writer := csv.NewWriter(outputFile)
-    defer writer.Flush()
-
-    for {
-        record, err := reader.Read()
-        if err == io.EOF {
-            break
-        }
-        if err != nil {
-            return fmt.Errorf("failed to read CSV record: %w", err)
-        }
-
-        cleanedRecord := make([]string, len(record))
-        for i, field := range record {
-            cleanedRecord[i] = strings.TrimSpace(field)
-        }
-
-        if err := writer.Write(cleanedRecord); err != nil {
-            return fmt.Errorf("failed to write CSV record: %w", err)
-        }
-    }
-
-    return nil
-}
-
-func main() {
-    if len(os.Args) != 3 {
-        fmt.Println("Usage: data_cleaner <input.csv> <output.csv>")
-        os.Exit(1)
-    }
-
-    if err := cleanCSV(os.Args[1], os.Args[2]); err != nil {
-        fmt.Printf("Error: %v\n", err)
-        os.Exit(1)
-    }
-
-    fmt.Println("CSV cleaning completed successfully")
 }

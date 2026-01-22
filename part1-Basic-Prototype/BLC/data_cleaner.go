@@ -110,4 +110,30 @@ func main() {
 	cleaned := RemoveDuplicates(data)
 	fmt.Println("Original:", data)
 	fmt.Println("Cleaned:", cleaned)
+}package main
+
+import (
+	"regexp"
+	"strings"
+)
+
+func SanitizeInput(input string) string {
+	// Remove leading and trailing whitespace
+	trimmed := strings.TrimSpace(input)
+
+	// Remove any HTML tags
+	re := regexp.MustCompile(`<[^>]*>`)
+	cleaned := re.ReplaceAllString(trimmed, "")
+
+	// Escape potentially dangerous characters
+	re = regexp.MustCompile(`[;&|$]`)
+	escaped := re.ReplaceAllString(cleaned, `\$0`)
+
+	return escaped
+}
+
+func ValidateEmail(email string) bool {
+	pattern := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
+	matched, _ := regexp.MatchString(pattern, email)
+	return matched
 }

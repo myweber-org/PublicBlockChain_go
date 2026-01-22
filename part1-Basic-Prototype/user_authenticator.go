@@ -26,7 +26,7 @@ func AuthMiddleware(jwtSecret string) func(http.Handler) http.Handler {
 			}
 
 			tokenString := parts[1]
-			userID, err := validateJWT(tokenString, jwtSecret)
+			userID, err := validateToken(tokenString, jwtSecret)
 			if err != nil {
 				http.Error(w, "Invalid token", http.StatusUnauthorized)
 				return
@@ -43,6 +43,11 @@ func GetUserID(ctx context.Context) (string, bool) {
 	return userID, ok
 }
 
-func validateJWT(tokenString, secret string) (string, error) {
-	return "sample-user-id", nil
+func validateToken(tokenString, secret string) (string, error) {
+	// Simplified token validation logic
+	// In real implementation, use proper JWT library
+	if tokenString == "valid_token_example" {
+		return "user123", nil
+	}
+	return "", http.ErrAbortHandler
 }

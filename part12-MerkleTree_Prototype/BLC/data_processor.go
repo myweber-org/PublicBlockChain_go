@@ -1,34 +1,66 @@
 
-package main
+package data_processor
 
 import (
+	"encoding/json"
 	"fmt"
 )
 
-// CalculateMovingAverage computes the moving average of a slice of float64 values.
-// It takes a slice of data and a window size, returning a slice of averages.
-// If window size is invalid (<=0 or > len(data)), it returns nil.
-func CalculateMovingAverage(data []float64, window int) []float64 {
-	if window <= 0 || window > len(data) {
-		return nil
-	}
-
-	result := make([]float64, len(data)-window+1)
-	for i := 0; i <= len(data)-window; i++ {
-		sum := 0.0
-		for j := i; j < i+window; j++ {
-			sum += data[j]
-		}
-		result[i] = sum / float64(window)
-	}
-	return result
+type ValidationError struct {
+	Field   string `json:"field"`
+	Message string `json:"message"`
 }
 
-func main() {
-	// Example usage
-	data := []float64{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0}
-	window := 3
-	averages := CalculateMovingAverage(data, window)
-	fmt.Printf("Data: %v\n", data)
-	fmt.Printf("Moving Average (window=%d): %v\n", window, averages)
+func (e ValidationError) Error() string {
+	return fmt.Sprintf("validation error on field '%s': %s", e.Field, e.Message)
+}
+
+type UserData struct {
+	ID       int    `json:"id"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Active   bool   `json:"active"`
+}
+
+func ParseAndValidateUserData(rawData []byte) (*UserData, error) {
+	var user UserData
+	if err := json.Unmarshal(rawData, &user); err != nil {
+		return nil, fmt.Errorf("failed to parse JSON: %w", err)
+	}
+
+	if user.ID <= 0 {
+		return nil, ValidationError{Field: "id", Message: "must be positive integer"}
+	}
+
+	if user.Username == "" {
+		return nil, ValidationError{Field: "username", Message: "cannot be empty"}
+	}
+
+	if !isValidEmail(user.Email) {
+		return nil, ValidationError{Field: "email", Message: "invalid email format"}
+	}
+
+	return &user, nil
+}
+
+func isValidEmail(email string) bool {
+	const minEmailLength = 5
+	if len(email) < minEmailLength {
+		return false
+	}
+
+	hasAt := false
+	hasDot := false
+	for i, char := range email {
+		if char == '@' {
+			if hasAt || i == 0 || i == len(email)-1 {
+				return false
+			}
+			hasAt = true
+		}
+		if char == '.' && hasAt && i > 0 && i < len(email)-1 {
+			hasDot = true
+		}
+	}
+	return hasAt && hasDot
 }

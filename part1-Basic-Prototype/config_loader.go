@@ -205,4 +205,98 @@ func overrideInt(field *int, envVar string) {
 			*field = temp
 		}
 	}
+}package config
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"reflect"
+	"strconv"
+	"strings"
+)
+
+type Config struct {
+	ServerPort int    `env:"SERVER_PORT" default:"8080"`
+	LogLevel   string `env:"LOG_LEVEL" default:"info"`
+	DBHost     string `env:"DB_HOST" default:"localhost"`
+	DBPort     int    `env:"DB_PORT" default:"5432"`
+	EnableSSL  bool   `env:"ENABLE_SSL" default:"false"`
+}
+
+func Load() (*Config, error) {
+	cfg := &Config{}
+	v := reflect.ValueOf(cfg).Elem()
+	t := v.Type()
+
+	for i := 0; i < v.NumField(); i++ {
+		field := v.Field(i)
+		structField := t.Field(i)
+
+		envKey := structField.Tag.Get("env")
+		if envKey == "" {
+			continue
+		}
+
+		defaultVal := structField.Tag.Get("default")
+		envVal := os.Getenv(envKey)
+		if envVal == "" {
+			envVal = defaultVal
+		}
+
+		if err := setFieldValue(field, envVal); err != nil {
+			return nil, fmt.Errorf("failed to set field %s: %w", structField.Name, err)
+		}
+	}
+
+	return cfg, nil
+}
+
+func setFieldValue(field reflect.Value, value string) error {
+	if value == "" {
+		return nil
+	}
+
+	switch field.Kind() {
+	case reflect.String:
+		field.SetString(value)
+	case reflect.Int:
+		intVal, err := strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+		field.SetInt(int64(intVal))
+	case reflect.Bool:
+		boolVal, err := strconv.ParseBool(value)
+		if err != nil {
+			return err
+		}
+		field.SetBool(boolVal)
+	default:
+		return fmt.Errorf("unsupported field type: %s", field.Kind())
+	}
+	return nil
+}
+
+func (c *Config) String() string {
+	data, _ := json.MarshalIndent(c, "", "  ")
+	return string(data)
+}
+
+func Validate(cfg *Config) error {
+	if cfg.ServerPort < 1 || cfg.ServerPort > 65535 {
+		return fmt.Errorf("invalid server port: %d", cfg.ServerPort)
+	}
+
+	validLogLevels := map[string]bool{
+		"debug": true,
+		"info":  true,
+		"warn":  true,
+		"error": true,
+	}
+	if !validLogLevels[strings.ToLower(cfg.LogLevel)] {
+		return fmt.Errorf("invalid log level: %s", cfg.LogLevel)
+	}
+
+	return nil
 }

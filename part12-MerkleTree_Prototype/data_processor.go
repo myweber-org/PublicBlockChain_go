@@ -154,3 +154,61 @@ func main() {
 	fmt.Printf("Average value: %.2f\n", avg)
 	fmt.Printf("Maximum value: %.2f\n", max)
 }
+package main
+
+import (
+	"errors"
+	"strings"
+	"unicode"
+)
+
+type UserData struct {
+	Username string
+	Email    string
+	Age      int
+}
+
+func ValidateAndNormalize(data *UserData) error {
+	if data == nil {
+		return errors.New("user data cannot be nil")
+	}
+
+	data.Username = strings.TrimSpace(data.Username)
+	if len(data.Username) < 3 {
+		return errors.New("username must be at least 3 characters")
+	}
+
+	data.Email = strings.ToLower(strings.TrimSpace(data.Email))
+	if !strings.Contains(data.Email, "@") {
+		return errors.New("invalid email format")
+	}
+
+	if data.Age < 0 || data.Age > 150 {
+		return errors.New("age must be between 0 and 150")
+	}
+
+	return nil
+}
+
+func SanitizeString(input string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, input)
+}
+
+func ProcessUserInput(username, email string, age int) (*UserData, error) {
+	user := &UserData{
+		Username: SanitizeString(username),
+		Email:    email,
+		Age:      age,
+	}
+
+	if err := ValidateAndNormalize(user); err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}

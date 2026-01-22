@@ -1,46 +1,43 @@
 package main
 
-import "fmt"
+import (
+	"strings"
+)
 
-func removeDuplicates(input []int) []int {
-	seen := make(map[int]bool)
-	result := []int{}
+// CleanString removes duplicate spaces and trims leading/trailing whitespace
+func CleanString(input string) string {
+	// Trim spaces from start and end
+	trimmed := strings.TrimSpace(input)
+	
+	// Split by spaces and filter out empty strings
+	words := strings.Fields(trimmed)
+	
+	// Join back with single spaces
+	return strings.Join(words, " ")
+}
 
-	for _, value := range input {
-		if !seen[value] {
-			seen[value] = true
-			result = append(result, value)
+// RemoveDuplicates removes duplicate entries from a slice of strings
+func RemoveDuplicates(items []string) []string {
+	seen := make(map[string]bool)
+	result := []string{}
+	
+	for _, item := range items {
+		if !seen[item] {
+			seen[item] = true
+			result = append(result, item)
 		}
 	}
+	
 	return result
 }
 
-func main() {
-	data := []int{1, 2, 2, 3, 4, 4, 5, 6, 6, 7}
-	cleaned := removeDuplicates(data)
-	fmt.Println("Original:", data)
-	fmt.Println("Cleaned:", cleaned)
-}
-package main
-
-import "fmt"
-
-func RemoveDuplicates(input []int) []int {
-	seen := make(map[int]bool)
-	result := []int{}
-
-	for _, value := range input {
-		if !seen[value] {
-			seen[value] = true
-			result = append(result, value)
-		}
+// CleanSlice applies CleanString to each element and removes duplicates
+func CleanSlice(items []string) []string {
+	cleaned := make([]string, len(items))
+	
+	for i, item := range items {
+		cleaned[i] = CleanString(item)
 	}
-	return result
-}
-
-func main() {
-	data := []int{1, 2, 2, 3, 4, 4, 5, 1, 6}
-	cleaned := RemoveDuplicates(data)
-	fmt.Println("Original:", data)
-	fmt.Println("Cleaned:", cleaned)
+	
+	return RemoveDuplicates(cleaned)
 }

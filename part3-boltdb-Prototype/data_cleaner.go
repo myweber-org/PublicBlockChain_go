@@ -1,71 +1,31 @@
 
 package main
 
-import "fmt"
+import (
+	"fmt"
+)
 
-func RemoveDuplicates(input []string) []string {
-	seen := make(map[string]bool)
-	result := []string{}
+func RemoveDuplicates[T comparable](slice []T) []T {
+	encountered := make(map[T]bool)
+	result := []T{}
 
-	for _, value := range input {
-		if !seen[value] {
-			seen[value] = true
-			result = append(result, value)
+	for _, v := range slice {
+		if !encountered[v] {
+			encountered[v] = true
+			result = append(result, v)
 		}
 	}
 	return result
 }
 
 func main() {
-	data := []string{"apple", "banana", "apple", "cherry", "banana", "date"}
-	cleaned := RemoveDuplicates(data)
-	fmt.Println("Original:", data)
-	fmt.Println("Cleaned:", cleaned)
-}
-package main
+	numbers := []int{1, 2, 2, 3, 4, 4, 5}
+	uniqueNumbers := RemoveDuplicates(numbers)
+	fmt.Println("Original:", numbers)
+	fmt.Println("Unique:", uniqueNumbers)
 
-import (
-	"fmt"
-	"strings"
-)
-
-type DataCleaner struct {
-	seen map[string]bool
-}
-
-func NewDataCleaner() *DataCleaner {
-	return &DataCleaner{
-		seen: make(map[string]bool),
-	}
-}
-
-func (dc *DataCleaner) Normalize(input string) string {
-	return strings.ToLower(strings.TrimSpace(input))
-}
-
-func (dc *DataCleaner) IsDuplicate(raw string) bool {
-	normalized := dc.Normalize(raw)
-	if dc.seen[normalized] {
-		return true
-	}
-	dc.seen[normalized] = true
-	return false
-}
-
-func (dc *DataCleaner) CleanList(items []string) []string {
-	dc.seen = make(map[string]bool)
-	var cleaned []string
-	for _, item := range items {
-		if !dc.IsDuplicate(item) {
-			cleaned = append(cleaned, dc.Normalize(item))
-		}
-	}
-	return cleaned
-}
-
-func main() {
-	cleaner := NewDataCleaner()
-	data := []string{"  Apple ", "banana", "APPLE", " Banana ", "Cherry"}
-	result := cleaner.CleanList(data)
-	fmt.Println("Cleaned data:", result)
+	strings := []string{"apple", "banana", "apple", "orange", "banana"}
+	uniqueStrings := RemoveDuplicates(strings)
+	fmt.Println("Original:", strings)
+	fmt.Println("Unique:", uniqueStrings)
 }

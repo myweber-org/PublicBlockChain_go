@@ -1,109 +1,46 @@
-package middleware
+package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"log"
-	"net/http"
+	"os"
 	"time"
 )
 
-type ActivityLogger struct {
-	handler http.Handler
+type ActivityLog struct {
+	Timestamp time.Time `json:"timestamp"`
+	UserID    string    `json:"user_id"`
+	Action    string    `json:"action"`
+	Details   string    `json:"details"`
 }
 
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
+func logActivity(userID, action, details string) {
+	activity := ActivityLog{
+		Timestamp: time.Now(),
+		UserID:    userID,
+		Action:    action,
+		Details:   details,
+	}
 
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	userAgent := r.UserAgent()
-	clientIP := r.RemoteAddr
-	requestPath := r.URL.Path
+	file, err := os.OpenFile("activity.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Printf("Failed to open log file: %v", err)
+		return
+	}
+	defer file.Close()
 
-	al.handler.ServeHTTP(w, r)
+	encoder := json.NewEncoder(file)
+	if err := encoder.Encode(activity); err != nil {
+		log.Printf("Failed to encode activity: %v", err)
+		return
+	}
 
-	duration := time.Since(start)
-	log.Printf("Activity: %s %s %s %v", clientIP, requestPath, userAgent, duration)
-}package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLogger struct {
-	handler http.Handler
-}
-
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	
-	al.handler.ServeHTTP(w, r)
-	
-	duration := time.Since(start)
-	
-	log.Printf("Activity: %s %s from %s took %v",
-		r.Method,
-		r.URL.Path,
-		r.RemoteAddr,
-		duration,
-	)
-}package main
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLogger struct {
-	handler http.Handler
-}
-
-func (a *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	userAgent := r.UserAgent()
-	ipAddress := r.RemoteAddr
-	requestPath := r.URL.Path
-
-	log.Printf("Request started: %s %s from %s (User-Agent: %s)", r.Method, requestPath, ipAddress, userAgent)
-
-	a.handler.ServeHTTP(w, r)
-
-	duration := time.Since(start)
-	log.Printf("Request completed: %s %s took %v", r.Method, requestPath, duration)
-}
-
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func apiHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status": "success", "message": "API endpoint reached"}`))
+	fmt.Printf("Logged activity: %s performed %s\n", userID, action)
 }
 
 func main() {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/data", apiHandler)
-
-	loggedMux := NewActivityLogger(mux)
-
-	server := &http.Server{
-		Addr:         ":8080",
-		Handler:      loggedMux,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-	}
-
-	log.Println("Server starting on port 8080")
-	if err := server.ListenAndServe(); err != nil {
-		log.Fatal(err)
-	}
+	logActivity("user123", "login", "User logged in from web browser")
+	logActivity("user456", "file_upload", "Uploaded document.pdf")
+	logActivity("user123", "logout", "Session expired after 30 minutes")
 }

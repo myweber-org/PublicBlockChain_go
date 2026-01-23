@@ -72,4 +72,105 @@ func main() {
 	
 	currencies := converter.GetSupportedCurrencies()
 	fmt.Println("Supported currencies:", currencies)
+}package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"time"
+)
+
+type ExchangeRates struct {
+	Base  string             `json:"base"`
+	Rates map[string]float64 `json:"rates"`
+	Date  string             `json:"date"`
+}
+
+type CurrencyConverter struct {
+	client     *http.Client
+	apiBaseURL string
+	cache      map[string]ExchangeRates
+	lastUpdate time.Time
+}
+
+func NewCurrencyConverter() *CurrencyConverter {
+	return &CurrencyConverter{
+		client:     &http.Client{Timeout: 10 * time.Second},
+		apiBaseURL: "https://api.exchangerate.host/latest",
+		cache:      make(map[string]ExchangeRates),
+	}
+}
+
+func (c *CurrencyConverter) fetchRates(baseCurrency string) (*ExchangeRates, error) {
+	if cached, exists := c.cache[baseCurrency]; exists {
+		if time.Since(c.lastUpdate) < 30*time.Minute {
+			return &cached, nil
+		}
+	}
+
+	url := fmt.Sprintf("%s?base=%s", c.apiBaseURL, baseCurrency)
+	resp, err := c.client.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var rates ExchangeRates
+	if err := json.NewDecoder(resp.Body).Decode(&rates); err != nil {
+		return nil, err
+	}
+
+	c.cache[baseCurrency] = rates
+	c.lastUpdate = time.Now()
+	return &rates, nil
+}
+
+func (c *CurrencyConverter) Convert(amount float64, from, to string) (float64, error) {
+	rates, err := c.fetchRates(from)
+	if err != nil {
+		return 0, err
+	}
+
+	rate, exists := rates.Rates[to]
+	if !exists {
+		return 0, fmt.Errorf("currency %s not found in exchange rates", to)
+	}
+
+	return amount * rate, nil
+}
+
+func (c *CurrencyConverter) GetSupportedCurrencies() ([]string, error) {
+	rates, err := c.fetchRates("USD")
+	if err != nil {
+		return nil, err
+	}
+
+	currencies := make([]string, 0, len(rates.Rates)+1)
+	currencies = append(currencies, rates.Base)
+	for currency := range rates.Rates {
+		currencies = append(currencies, currency)
+	}
+	return currencies, nil
+}
+
+func main() {
+	converter := NewCurrencyConverter()
+
+	amount := 100.0
+	converted, err := converter.Convert(amount, "USD", "EUR")
+	if err != nil {
+		fmt.Printf("Conversion error: %v\n", err)
+		return
+	}
+
+	fmt.Printf("%.2f USD = %.2f EUR\n", amount, converted)
+
+	currencies, err := converter.GetSupportedCurrencies()
+	if err != nil {
+		fmt.Printf("Error fetching currencies: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Supported currencies: %v\n", currencies[:10])
 }

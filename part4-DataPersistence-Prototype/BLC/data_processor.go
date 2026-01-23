@@ -1,105 +1,22 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
 	"regexp"
 	"strings"
 )
 
-type UserData struct {
-	Email    string `json:"email"`
-	Username string `json:"username"`
-	Age      int    `json:"age"`
+func SanitizeUsername(input string) string {
+	re := regexp.MustCompile(`[^a-zA-Z0-9_-]`)
+	sanitized := re.ReplaceAllString(input, "")
+	return strings.TrimSpace(sanitized)
 }
 
 func ValidateEmail(email string) bool {
-	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
-	return emailRegex.MatchString(email)
-}
-
-func SanitizeUsername(username string) string {
-	return strings.TrimSpace(username)
-}
-
-func ProcessUserData(rawData []byte) (*UserData, error) {
-	var data UserData
-	err := json.Unmarshal(rawData, &data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
-	}
-
-	if !ValidateEmail(data.Email) {
-		return nil, fmt.Errorf("invalid email format: %s", data.Email)
-	}
-
-	data.Username = SanitizeUsername(data.Username)
-
-	if data.Age < 0 || data.Age > 150 {
-		return nil, fmt.Errorf("age out of valid range: %d", data.Age)
-	}
-
-	return &data, nil
-}
-
-func main() {
-	jsonData := []byte(`{"email":"test@example.com","username":"  john_doe  ","age":25}`)
-	processedData, err := ProcessUserData(jsonData)
-	if err != nil {
-		fmt.Printf("Error processing data: %v\n", err)
-		return
-	}
-	fmt.Printf("Processed data: %+v\n", processedData)
-}package main
-
-import (
-	"encoding/json"
-	"fmt"
-	"regexp"
-	"strings"
-)
-
-type UserData struct {
-	Email    string `json:"email"`
-	Username string `json:"username"`
-	Age      int    `json:"age"`
-}
-
-func validateEmail(email string) bool {
 	pattern := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
 	matched, _ := regexp.MatchString(pattern, email)
 	return matched
 }
 
-func sanitizeUsername(username string) string {
-	return strings.TrimSpace(username)
-}
-
-func processUserData(rawData []byte) (*UserData, error) {
-	var data UserData
-	if err := json.Unmarshal(rawData, &data); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
-	}
-
-	data.Username = sanitizeUsername(data.Username)
-
-	if !validateEmail(data.Email) {
-		return nil, fmt.Errorf("invalid email format: %s", data.Email)
-	}
-
-	if data.Age < 0 || data.Age > 150 {
-		return nil, fmt.Errorf("age out of valid range: %d", data.Age)
-	}
-
-	return &data, nil
-}
-
-func main() {
-	rawJSON := `{"email":"test@example.com","username":"  john_doe  ","age":25}`
-	processedData, err := processUserData([]byte(rawJSON))
-	if err != nil {
-		fmt.Printf("Error processing data: %v\n", err)
-		return
-	}
-	fmt.Printf("Processed data: %+v\n", processedData)
+func TrimAndLower(input string) string {
+	return strings.ToLower(strings.TrimSpace(input))
 }

@@ -1,31 +1,24 @@
 
 package main
 
-import (
-	"fmt"
-)
+import "fmt"
 
-func RemoveDuplicates[T comparable](slice []T) []T {
-	encountered := make(map[T]bool)
-	result := []T{}
+func RemoveDuplicates(input []string) []string {
+	seen := make(map[string]struct{})
+	result := make([]string, 0, len(input))
 
-	for _, v := range slice {
-		if !encountered[v] {
-			encountered[v] = true
-			result = append(result, v)
+	for _, item := range input {
+		if _, exists := seen[item]; !exists {
+			seen[item] = struct{}{}
+			result = append(result, item)
 		}
 	}
 	return result
 }
 
 func main() {
-	numbers := []int{1, 2, 2, 3, 4, 4, 5}
-	uniqueNumbers := RemoveDuplicates(numbers)
-	fmt.Println("Original:", numbers)
-	fmt.Println("Unique:", uniqueNumbers)
-
-	strings := []string{"apple", "banana", "apple", "orange", "banana"}
-	uniqueStrings := RemoveDuplicates(strings)
-	fmt.Println("Original:", strings)
-	fmt.Println("Unique:", uniqueStrings)
+	data := []string{"apple", "banana", "apple", "cherry", "banana", "date"}
+	cleaned := RemoveDuplicates(data)
+	fmt.Println("Original:", data)
+	fmt.Println("Cleaned:", cleaned)
 }

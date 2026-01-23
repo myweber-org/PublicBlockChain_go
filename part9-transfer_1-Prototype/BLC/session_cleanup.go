@@ -41,4 +41,39 @@ func cleanupExpiredSessions(db *database.Connection) {
 
 	rows, _ := result.RowsAffected()
 	log.Printf("Cleaned up %d expired sessions", rows)
+}package main
+
+import (
+    "context"
+    "log"
+    "time"
+
+    "github.com/yourproject/internal/database"
+)
+
+func main() {
+    ctx := context.Background()
+    db := database.NewConnection()
+
+    ticker := time.NewTicker(24 * time.Hour)
+    defer ticker.Stop()
+
+    for {
+        select {
+        case <-ticker.C:
+            cleanupExpiredSessions(ctx, db)
+        }
+    }
+}
+
+func cleanupExpiredSessions(ctx context.Context, db *database.DB) {
+    query := `DELETE FROM user_sessions WHERE expires_at < NOW()`
+    result, err := db.ExecContext(ctx, query)
+    if err != nil {
+        log.Printf("Failed to clean sessions: %v", err)
+        return
+    }
+
+    rows, _ := result.RowsAffected()
+    log.Printf("Cleaned %d expired sessions", rows)
 }

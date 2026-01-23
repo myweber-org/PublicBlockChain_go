@@ -302,4 +302,86 @@ func Authenticate(next http.HandlerFunc) http.HandlerFunc {
         r.Header.Set("X-Role", claims.Role)
         next.ServeHTTP(w, r)
     }
+}package auth
+
+import (
+	"errors"
+	"time"
+
+	"github.com/golang-jwt/jwt/v4"
+)
+
+var (
+	ErrInvalidToken = errors.New("invalid token")
+	ErrExpiredToken = errors.New("token has expired")
+)
+
+type Claims struct {
+	UserID   string `json:"user_id"`
+	Username string `json:"username"`
+	jwt.RegisteredClaims
+}
+
+type Authenticator struct {
+	secretKey []byte
+	duration  time.Duration
+}
+
+func NewAuthenticator(secretKey string, duration time.Duration) *Authenticator {
+	return &Authenticator{
+		secretKey: []byte(secretKey),
+		duration:  duration,
+	}
+}
+
+func (a *Authenticator) GenerateToken(userID, username string) (string, error) {
+	expirationTime := time.Now().Add(a.duration)
+	claims := &Claims{
+		UserID:   userID,
+		Username: username,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			Issuer:    "auth_service",
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(a.secretKey)
+}
+
+func (a *Authenticator) ValidateToken(tokenString string) (*Claims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, ErrInvalidToken
+		}
+		return a.secretKey, nil
+	})
+
+	if err != nil {
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			return nil, ErrExpiredToken
+		}
+		return nil, ErrInvalidToken
+	}
+
+	claims, ok := token.Claims.(*Claims)
+	if !ok || !token.Valid {
+		return nil, ErrInvalidToken
+	}
+
+	return claims, nil
+}
+
+func (a *Authenticator) RefreshToken(tokenString string) (string, error) {
+	claims, err := a.ValidateToken(tokenString)
+	if err != nil {
+		return "", err
+	}
+
+	if time.Until(claims.ExpiresAt.Time) > 30*time.Second {
+		return "", errors.New("token cannot be refreshed yet")
+	}
+
+	return a.GenerateToken(claims.UserID, claims.Username)
 }

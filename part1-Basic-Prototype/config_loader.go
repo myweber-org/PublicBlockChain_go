@@ -299,4 +299,53 @@ func Validate(cfg *Config) error {
 	}
 
 	return nil
+}package config
+
+import (
+	"errors"
+	"io"
+	"os"
+
+	"gopkg.in/yaml.v3"
+)
+
+type Config struct {
+	Server struct {
+		Host string `yaml:"host"`
+		Port int    `yaml:"port"`
+	} `yaml:"server"`
+	Database struct {
+		Host     string `yaml:"host"`
+		Username string `yaml:"username"`
+		Password string `yaml:"password"`
+		Name     string `yaml:"name"`
+	} `yaml:"database"`
+	LogLevel string `yaml:"log_level"`
+}
+
+func LoadConfig(path string) (*Config, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+
+	var config Config
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, err
+	}
+
+	if config.Server.Host == "" {
+		return nil, errors.New("server host is required")
+	}
+	if config.Server.Port == 0 {
+		return nil, errors.New("server port is required")
+	}
+
+	return &config, nil
 }

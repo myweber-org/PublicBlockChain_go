@@ -1,117 +1,58 @@
-
 package main
 
 import (
 	"errors"
-	"fmt"
 	"strings"
-	"time"
-)
-
-type DataRecord struct {
-	ID        string
-	Value     float64
-	Timestamp time.Time
-	Tags      []string
-}
-
-func ValidateRecord(record DataRecord) error {
-	if record.ID == "" {
-		return errors.New("ID cannot be empty")
-	}
-	if record.Value < 0 {
-		return errors.New("value must be non-negative")
-	}
-	if record.Timestamp.IsZero() {
-		return errors.New("timestamp must be set")
-	}
-	return nil
-}
-
-func TransformRecord(record DataRecord) DataRecord {
-	transformed := record
-	transformed.Value = record.Value * 1.1
-	transformed.Tags = append(record.Tags, "processed")
-	return transformed
-}
-
-func ProcessRecords(records []DataRecord) ([]DataRecord, error) {
-	var processed []DataRecord
-	for _, record := range records {
-		if err := ValidateRecord(record); err != nil {
-			return nil, fmt.Errorf("validation failed for record %s: %w", record.ID, err)
-		}
-		processed = append(processed, TransformRecord(record))
-	}
-	return processed, nil
-}
-
-func GenerateSummary(records []DataRecord) string {
-	if len(records) == 0 {
-		return "No records to summarize"
-	}
-	
-	var total float64
-	var tagCount int
-	for _, record := range records {
-		total += record.Value
-		tagCount += len(record.Tags)
-	}
-	
-	avg := total / float64(len(records))
-	return fmt.Sprintf("Processed %d records. Average value: %.2f, Total tags: %d", 
-		len(records), avg, tagCount)
-}
-
-func FilterByTag(records []DataRecord, tag string) []DataRecord {
-	var filtered []DataRecord
-	for _, record := range records {
-		for _, t := range record.Tags {
-			if strings.EqualFold(t, tag) {
-				filtered = append(filtered, record)
-				break
-			}
-		}
-	}
-	return filtered
-}package main
-
-import (
-	"encoding/json"
-	"fmt"
-	"log"
+	"unicode"
 )
 
 type UserData struct {
-	ID    int    `json:"id"`
-	Name  string `json:"name"`
-	Email string `json:"email"`
+	Username string
+	Email    string
+	Age      int
 }
 
-func ValidateAndParseJSON(rawData []byte) (*UserData, error) {
-	var user UserData
-	if err := json.Unmarshal(rawData, &user); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
+func ValidateUserData(data UserData) error {
+	if strings.TrimSpace(data.Username) == "" {
+		return errors.New("username cannot be empty")
+	}
+	if len(data.Username) < 3 || len(data.Username) > 20 {
+		return errors.New("username must be between 3 and 20 characters")
+	}
+	for _, r := range data.Username {
+		if !unicode.IsLetter(r) && !unicode.IsNumber(r) && r != '_' {
+			return errors.New("username can only contain letters, numbers, and underscores")
+		}
 	}
 
-	if user.ID <= 0 {
-		return nil, fmt.Errorf("invalid user ID: %d", user.ID)
-	}
-	if user.Name == "" {
-		return nil, fmt.Errorf("user name cannot be empty")
-	}
-	if user.Email == "" {
-		return nil, fmt.Errorf("user email cannot be empty")
+	if !strings.Contains(data.Email, "@") || !strings.Contains(data.Email, ".") {
+		return errors.New("invalid email format")
 	}
 
-	return &user, nil
+	if data.Age < 0 || data.Age > 150 {
+		return errors.New("age must be between 0 and 150")
+	}
+
+	return nil
 }
 
-func main() {
-	jsonStr := `{"id": 123, "name": "John Doe", "email": "john@example.com"}`
-	userData, err := ValidateAndParseJSON([]byte(jsonStr))
+func TransformUsername(username string) string {
+	return strings.ToLower(strings.TrimSpace(username))
+}
+
+func ProcessUserInput(rawUsername string, rawEmail string, rawAge int) (UserData, error) {
+	transformedUsername := TransformUsername(rawUsername)
+
+	userData := UserData{
+		Username: transformedUsername,
+		Email:    strings.TrimSpace(rawEmail),
+		Age:      rawAge,
+	}
+
+	err := ValidateUserData(userData)
 	if err != nil {
-		log.Fatalf("Error processing JSON: %v", err)
+		return UserData{}, err
 	}
-	fmt.Printf("Processed user: %+v\n", userData)
+
+	return userData, nil
 }

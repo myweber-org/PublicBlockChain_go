@@ -1,62 +1,56 @@
 package config
 
 import (
-	"io/ioutil"
-	"log"
-
-	"gopkg.in/yaml.v2"
+    "os"
+    "strconv"
+    "strings"
 )
 
-type AppConfig struct {
-	Server struct {
-		Port    int    `yaml:"port"`
-		Host    string `yaml:"host"`
-		Timeout int    `yaml:"timeout"`
-	} `yaml:"server"`
-	Database struct {
-		Host     string `yaml:"host"`
-		Port     int    `yaml:"port"`
-		Username string `yaml:"username"`
-		Password string `yaml:"password"`
-		Name     string `yaml:"name"`
-	} `yaml:"database"`
-	Logging struct {
-		Level  string `yaml:"level"`
-		Output string `yaml:"output"`
-	} `yaml:"logging"`
+type Config struct {
+    ServerPort int
+    DatabaseURL string
+    DebugMode bool
+    AllowedOrigins []string
 }
 
-func LoadConfig(filename string) (*AppConfig, error) {
-	data, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return nil, err
-	}
-
-	var config AppConfig
-	err = yaml.Unmarshal(data, &config)
-	if err != nil {
-		return nil, err
-	}
-
-	return &config, nil
+func LoadConfig() (*Config, error) {
+    cfg := &Config{
+        ServerPort: getEnvAsInt("SERVER_PORT", 8080),
+        DatabaseURL: getEnv("DATABASE_URL", "postgres://localhost:5432/app"),
+        DebugMode: getEnvAsBool("DEBUG_MODE", false),
+        AllowedOrigins: getEnvAsSlice("ALLOWED_ORIGINS", []string{"*"}, ","),
+    }
+    
+    return cfg, nil
 }
 
-func ValidateConfig(config *AppConfig) bool {
-	if config.Server.Port <= 0 || config.Server.Port > 65535 {
-		log.Printf("Invalid server port: %d", config.Server.Port)
-		return false
-	}
+func getEnv(key, defaultValue string) string {
+    if value, exists := os.LookupEnv(key); exists {
+        return value
+    }
+    return defaultValue
+}
 
-	if config.Database.Host == "" {
-		log.Print("Database host cannot be empty")
-		return false
-	}
+func getEnvAsInt(key string, defaultValue int) int {
+    valueStr := getEnv(key, "")
+    if value, err := strconv.Atoi(valueStr); err == nil {
+        return value
+    }
+    return defaultValue
+}
 
-	if config.Logging.Level != "debug" && config.Logging.Level != "info" &&
-		config.Logging.Level != "warn" && config.Logging.Level != "error" {
-		log.Printf("Invalid logging level: %s", config.Logging.Level)
-		return false
-	}
+func getEnvAsBool(key string, defaultValue bool) bool {
+    valueStr := getEnv(key, "")
+    if value, err := strconv.ParseBool(valueStr); err == nil {
+        return value
+    }
+    return defaultValue
+}
 
-	return true
+func getEnvAsSlice(key string, defaultValue []string, sep string) []string {
+    valueStr := getEnv(key, "")
+    if valueStr == "" {
+        return defaultValue
+    }
+    return strings.Split(valueStr, sep)
 }

@@ -8,7 +8,7 @@ import (
 
 type contextKey string
 
-const UserIDKey contextKey = "userID"
+const userIDKey contextKey = "userID"
 
 func Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -31,11 +31,23 @@ func Authenticate(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), UserIDKey, userID)
+		ctx := context.WithValue(r.Context(), userIDKey, userID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
 func validateToken(tokenString string) (string, error) {
-	return "sample-user-id", nil
+	// Simplified token validation logic
+	// In production, use proper JWT validation library
+	if tokenString == "" || len(tokenString) < 10 {
+		return "", http.ErrAbortHandler
+	}
+	return "user_" + tokenString[:5], nil
+}
+
+func GetUserID(ctx context.Context) string {
+	if userID, ok := ctx.Value(userIDKey).(string); ok {
+		return userID
+	}
+	return ""
 }

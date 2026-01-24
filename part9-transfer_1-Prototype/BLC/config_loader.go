@@ -239,4 +239,93 @@ func validateConfig(cfg *Config) error {
     }
     
     return nil
+}package config
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"reflect"
+	"strconv"
+	"strings"
+)
+
+type Config struct {
+	ServerPort int    `env:"SERVER_PORT" default:"8080"`
+	DBHost     string `env:"DB_HOST" default:"localhost"`
+	DBPort     int    `env:"DB_PORT" default:"5432"`
+	DBName     string `env:"DB_NAME" default:"appdb"`
+	DebugMode  bool   `env:"DEBUG_MODE" default:"false"`
+}
+
+func LoadConfig() (*Config, error) {
+	cfg := &Config{}
+	t := reflect.TypeOf(cfg).Elem()
+	v := reflect.ValueOf(cfg).Elem()
+
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		fieldValue := v.Field(i)
+
+		envKey := field.Tag.Get("env")
+		defaultVal := field.Tag.Get("default")
+
+		envVal := os.Getenv(envKey)
+		if envVal == "" {
+			envVal = defaultVal
+		}
+
+		if err := setFieldValue(fieldValue, envVal); err != nil {
+			return nil, fmt.Errorf("failed to set field %s: %w", field.Name, err)
+		}
+	}
+
+	if err := validateConfig(cfg); err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
+}
+
+func setFieldValue(field reflect.Value, value string) error {
+	switch field.Kind() {
+	case reflect.String:
+		field.SetString(value)
+	case reflect.Int:
+		intVal, err := strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+		field.SetInt(int64(intVal))
+	case reflect.Bool:
+		boolVal, err := strconv.ParseBool(strings.ToLower(value))
+		if err != nil {
+			return err
+		}
+		field.SetBool(boolVal)
+	default:
+		return fmt.Errorf("unsupported field type: %s", field.Kind())
+	}
+	return nil
+}
+
+func validateConfig(cfg *Config) error {
+	if cfg.ServerPort <= 0 || cfg.ServerPort > 65535 {
+		return fmt.Errorf("invalid server port: %d", cfg.ServerPort)
+	}
+	if cfg.DBPort <= 0 || cfg.DBPort > 65535 {
+		return fmt.Errorf("invalid database port: %d", cfg.DBPort)
+	}
+	if strings.TrimSpace(cfg.DBHost) == "" {
+		return fmt.Errorf("database host cannot be empty")
+	}
+	if strings.TrimSpace(cfg.DBName) == "" {
+		return fmt.Errorf("database name cannot be empty")
+	}
+	return nil
+}
+
+func (c *Config) String() string {
+	data, _ := json.MarshalIndent(c, "", "  ")
+	return string(data)
 }

@@ -2,57 +2,103 @@
 package main
 
 import (
-	"errors"
-	"strings"
-	"time"
+	"encoding/csv"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
 )
 
-type DataRecord struct {
-	ID        string
-	Value     float64
-	Timestamp time.Time
-	Tags      []string
+type Record struct {
+	ID    int
+	Name  string
+	Value float64
 }
 
-func ValidateRecord(record DataRecord) error {
-	if record.ID == "" {
-		return errors.New("record ID cannot be empty")
+func processCSV(filename string) ([]Record, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
-	if record.Value < 0 {
-		return errors.New("record value must be non-negative")
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	records := []Record{}
+	line := 0
+
+	for {
+		row, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("csv read error at line %d: %w", line, err)
+		}
+
+		if len(row) != 3 {
+			return nil, fmt.Errorf("invalid column count at line %d", line)
+		}
+
+		id, err := strconv.Atoi(row[0])
+		if err != nil {
+			return nil, fmt.Errorf("invalid ID at line %d: %w", line, err)
+		}
+
+		name := row[1]
+		if name == "" {
+			return nil, fmt.Errorf("empty name at line %d", line)
+		}
+
+		value, err := strconv.ParseFloat(row[2], 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid value at line %d: %w", line, err)
+		}
+
+		records = append(records, Record{
+			ID:    id,
+			Name:  name,
+			Value: value,
+		})
+		line++
 	}
-	if record.Timestamp.IsZero() {
-		return errors.New("record timestamp must be set")
-	}
-	return nil
+
+	return records, nil
 }
 
-func TransformRecord(record DataRecord, multiplier float64) DataRecord {
-	return DataRecord{
-		ID:        strings.ToUpper(record.ID),
-		Value:     record.Value * multiplier,
-		Timestamp: record.Timestamp.UTC(),
-		Tags:      append(record.Tags, "processed"),
+func calculateStats(records []Record) (float64, float64) {
+	if len(records) == 0 {
+		return 0, 0
 	}
-}
 
-func FilterRecords(records []DataRecord, minValue float64) []DataRecord {
-	var filtered []DataRecord
-	for _, record := range records {
-		if record.Value >= minValue {
-			filtered = append(filtered, record)
+	var sum float64
+	var max float64 = records[0].Value
+
+	for _, r := range records {
+		sum += r.Value
+		if r.Value > max {
+			max = r.Value
 		}
 	}
-	return filtered
+
+	average := sum / float64(len(records))
+	return average, max
 }
 
-func CalculateAverage(records []DataRecord) float64 {
-	if len(records) == 0 {
-		return 0
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: data_processor <csv_file>")
+		os.Exit(1)
 	}
-	var sum float64
-	for _, record := range records {
-		sum += record.Value
+
+	records, err := processCSV(os.Args[1])
+	if err != nil {
+		fmt.Printf("Error processing file: %v\n", err)
+		os.Exit(1)
 	}
-	return sum / float64(len(records))
+
+	fmt.Printf("Successfully processed %d records\n", len(records))
+	
+	avg, max := calculateStats(records)
+	fmt.Printf("Average value: %.2f\n", avg)
+	fmt.Printf("Maximum value: %.2f\n", max)
 }

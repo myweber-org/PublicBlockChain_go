@@ -1,66 +1,40 @@
-
-package data_processor
+package main
 
 import (
-	"encoding/json"
-	"fmt"
+	"regexp"
+	"strings"
 )
 
-type ValidationError struct {
-	Field   string `json:"field"`
-	Message string `json:"message"`
+type DataProcessor struct {
+	emailRegex *regexp.Regexp
 }
 
-func (e ValidationError) Error() string {
-	return fmt.Sprintf("validation error on field '%s': %s", e.Field, e.Message)
+func NewDataProcessor() *DataProcessor {
+	return &DataProcessor{
+		emailRegex: regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`),
+	}
 }
 
-type UserData struct {
-	ID       int    `json:"id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Active   bool   `json:"active"`
+func (dp *DataProcessor) SanitizeInput(input string) string {
+	trimmed := strings.TrimSpace(input)
+	return strings.ToLower(trimmed)
 }
 
-func ParseAndValidateUserData(rawData []byte) (*UserData, error) {
-	var user UserData
-	if err := json.Unmarshal(rawData, &user); err != nil {
-		return nil, fmt.Errorf("failed to parse JSON: %w", err)
-	}
-
-	if user.ID <= 0 {
-		return nil, ValidationError{Field: "id", Message: "must be positive integer"}
-	}
-
-	if user.Username == "" {
-		return nil, ValidationError{Field: "username", Message: "cannot be empty"}
-	}
-
-	if !isValidEmail(user.Email) {
-		return nil, ValidationError{Field: "email", Message: "invalid email format"}
-	}
-
-	return &user, nil
+func (dp *DataProcessor) ValidateEmail(email string) bool {
+	return dp.emailRegex.MatchString(email)
 }
 
-func isValidEmail(email string) bool {
-	const minEmailLength = 5
-	if len(email) < minEmailLength {
-		return false
+func (dp *DataProcessor) ProcessUserData(name, email string) (string, bool) {
+	sanitizedName := dp.SanitizeInput(name)
+	sanitizedEmail := dp.SanitizeInput(email)
+
+	if sanitizedName == "" {
+		return "Name cannot be empty", false
 	}
 
-	hasAt := false
-	hasDot := false
-	for i, char := range email {
-		if char == '@' {
-			if hasAt || i == 0 || i == len(email)-1 {
-				return false
-			}
-			hasAt = true
-		}
-		if char == '.' && hasAt && i > 0 && i < len(email)-1 {
-			hasDot = true
-		}
+	if !dp.ValidateEmail(sanitizedEmail) {
+		return "Invalid email format", false
 	}
-	return hasAt && hasDot
+
+	return "Data processed successfully", true
 }

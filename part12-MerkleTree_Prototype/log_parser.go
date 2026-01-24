@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -15,16 +14,16 @@ type LogEntry struct {
 	Message   string
 }
 
-func parseLogLine(line string) (*LogEntry, error) {
+func parseLogLine(line string) (LogEntry, error) {
 	pattern := `^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (.+)$`
 	re := regexp.MustCompile(pattern)
 	matches := re.FindStringSubmatch(line)
 
-	if matches == nil {
-		return nil, fmt.Errorf("invalid log format")
+	if len(matches) != 4 {
+		return LogEntry{}, fmt.Errorf("invalid log format")
 	}
 
-	return &LogEntry{
+	return LogEntry{
 		Timestamp: matches[1],
 		Level:     matches[2],
 		Message:   matches[3],
@@ -54,7 +53,7 @@ func readLogFile(filename string) ([]LogEntry, error) {
 	for scanner.Scan() {
 		entry, err := parseLogLine(scanner.Text())
 		if err == nil {
-			entries = append(entries, *entry)
+			entries = append(entries, entry)
 		}
 	}
 
@@ -80,7 +79,7 @@ func main() {
 	errorEntries := filterErrors(entries)
 
 	fmt.Printf("Total log entries: %d\n", len(entries))
-	fmt.Printf("Error entries found: %d\n\n", len(errorEntries))
+	fmt.Printf("Error entries: %d\n\n", len(errorEntries))
 
 	for _, entry := range errorEntries {
 		fmt.Printf("[%s] %s: %s\n", entry.Timestamp, entry.Level, entry.Message)

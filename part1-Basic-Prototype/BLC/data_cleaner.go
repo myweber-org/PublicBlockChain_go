@@ -232,4 +232,26 @@ func main() {
 	cleaned := removeDuplicates(data)
 	fmt.Printf("Original: %v\n", data)
 	fmt.Printf("Cleaned: %v\n", cleaned)
+}package main
+
+import "fmt"
+
+func RemoveDuplicates(slice []int) []int {
+	seen := make(map[int]bool)
+	result := []int{}
+
+	for _, val := range slice {
+		if !seen[val] {
+			seen[val] = true
+			result = append(result, val)
+		}
+	}
+	return result
+}
+
+func main() {
+	data := []int{1, 2, 2, 3, 4, 4, 5}
+	cleaned := RemoveDuplicates(data)
+	fmt.Println("Original:", data)
+	fmt.Println("Cleaned:", cleaned)
 }

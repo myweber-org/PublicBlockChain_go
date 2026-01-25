@@ -272,4 +272,47 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}package middleware
+
+import (
+	"net/http"
+	"strings"
+)
+
+type Authenticator struct {
+	secretKey []byte
+}
+
+func NewAuthenticator(secretKey string) *Authenticator {
+	return &Authenticator{secretKey: []byte(secretKey)}
+}
+
+func (a *Authenticator) ValidateToken(tokenString string) (bool, error) {
+	// Token validation logic would go here
+	// For now, just check if token exists and has correct prefix
+	if tokenString == "" {
+		return false, nil
+	}
+	
+	// Simple validation for demonstration
+	return strings.HasPrefix(tokenString, "Bearer "), nil
+}
+
+func (a *Authenticator) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		
+		valid, err := a.ValidateToken(authHeader)
+		if err != nil {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		
+		if !valid {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		
+		next.ServeHTTP(w, r)
+	})
 }

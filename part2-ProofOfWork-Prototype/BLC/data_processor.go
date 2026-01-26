@@ -70,4 +70,62 @@ func main() {
 	for _, err := range errs {
 		fmt.Println(err)
 	}
+}package main
+
+import (
+	"errors"
+	"regexp"
+	"strings"
+)
+
+type UserData struct {
+	Email     string
+	Username  string
+	Age       int
+}
+
+func ValidateUserData(data UserData) error {
+	if data.Age < 13 || data.Age > 120 {
+		return errors.New("age must be between 13 and 120")
+	}
+
+	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	if !emailRegex.MatchString(data.Email) {
+		return errors.New("invalid email format")
+	}
+
+	if len(data.Username) < 3 || len(data.Username) > 20 {
+		return errors.New("username must be between 3 and 20 characters")
+	}
+
+	usernameRegex := regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+	if !usernameRegex.MatchString(data.Username) {
+		return errors.New("username can only contain letters, numbers, and underscores")
+	}
+
+	return nil
+}
+
+func NormalizeUserData(data UserData) UserData {
+	return UserData{
+		Email:    strings.ToLower(strings.TrimSpace(data.Email)),
+		Username: strings.TrimSpace(data.Username),
+		Age:      data.Age,
+	}
+}
+
+func ProcessUserInput(email, username string, age int) (UserData, error) {
+	data := UserData{
+		Email:    email,
+		Username: username,
+		Age:      age,
+	}
+
+	normalizedData := NormalizeUserData(data)
+	err := ValidateUserData(normalizedData)
+	if err != nil {
+		return UserData{}, err
+	}
+
+	return normalizedData, nil
 }

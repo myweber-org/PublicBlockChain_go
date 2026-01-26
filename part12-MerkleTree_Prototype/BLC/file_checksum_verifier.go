@@ -1,3 +1,4 @@
+
 package main
 
 import (
@@ -20,7 +21,8 @@ func calculateFileChecksum(filePath string) (string, error) {
 		return "", err
 	}
 
-	return hex.EncodeToString(hash.Sum(nil)), nil
+	checksum := hash.Sum(nil)
+	return hex.EncodeToString(checksum), nil
 }
 
 func verifyFileIntegrity(filePath, expectedChecksum string) (bool, error) {
@@ -33,7 +35,8 @@ func verifyFileIntegrity(filePath, expectedChecksum string) (bool, error) {
 
 func main() {
 	if len(os.Args) < 3 {
-		fmt.Println("Usage: go run file_checksum_verifier.go <filepath> <expected_checksum>")
+		fmt.Println("Usage: go run file_checksum_verifier.go <file_path> <expected_checksum>")
+		fmt.Println("Example: go run file_checksum_verifier.go document.pdf a1b2c3...")
 		os.Exit(1)
 	}
 
@@ -47,9 +50,9 @@ func main() {
 	}
 
 	if isValid {
-		fmt.Println("File integrity verified successfully")
+		fmt.Println("File integrity verified: checksum matches")
 	} else {
-		fmt.Println("File integrity check failed")
+		fmt.Println("WARNING: File integrity check failed - checksum mismatch")
 		os.Exit(1)
 	}
 }

@@ -1,67 +1,72 @@
-package main
-
-import "fmt"
-
-func RemoveDuplicates[T comparable](slice []T) []T {
-    seen := make(map[T]bool)
-    result := []T{}
-    
-    for _, item := range slice {
-        if !seen[item] {
-            seen[item] = true
-            result = append(result, item)
-        }
-    }
-    return result
-}
-
-func main() {
-    numbers := []int{1, 2, 2, 3, 4, 4, 5}
-    uniqueNumbers := RemoveDuplicates(numbers)
-    fmt.Println("Original:", numbers)
-    fmt.Println("Unique:", uniqueNumbers)
-    
-    strings := []string{"apple", "banana", "apple", "orange"}
-    uniqueStrings := RemoveDuplicates(strings)
-    fmt.Println("Original:", strings)
-    fmt.Println("Unique:", uniqueStrings)
-}
-package main
+package csvutils
 
 import (
-	"fmt"
+	"encoding/csv"
+	"io"
 	"strings"
+	"unicode"
 )
 
-type DataCleaner struct{}
+type Cleaner struct {
+	TrimSpaces  bool
+	RemoveEmpty bool
+	ToLowercase bool
+}
 
-func (dc DataCleaner) RemoveDuplicates(items []string) []string {
-	seen := make(map[string]struct{})
-	result := []string{}
-	for _, item := range items {
-		if _, exists := seen[item]; !exists {
-			seen[item] = struct{}{}
-			result = append(result, item)
+func NewCleaner() *Cleaner {
+	return &Cleaner{
+		TrimSpaces:  true,
+		RemoveEmpty: true,
+		ToLowercase: false,
+	}
+}
+
+func (c *Cleaner) CleanRecord(record []string) []string {
+	var cleaned []string
+
+	for _, field := range record {
+		processed := field
+
+		if c.TrimSpaces {
+			processed = strings.TrimSpace(processed)
+		}
+
+		if c.ToLowercase {
+			processed = strings.ToLower(processed)
+		}
+
+		processed = strings.Map(func(r rune) rune {
+			if unicode.IsControl(r) && r != '\n' && r != '\t' {
+				return -1
+			}
+			return r
+		}, processed)
+
+		if !c.RemoveEmpty || processed != "" {
+			cleaned = append(cleaned, processed)
 		}
 	}
-	return result
+
+	return cleaned
 }
 
-func (dc DataCleaner) TrimWhitespace(items []string) []string {
-	result := make([]string, len(items))
-	for i, item := range items {
-		result[i] = strings.TrimSpace(item)
+func (c *Cleaner) ProcessCSV(reader *csv.Reader, writer *csv.Writer) error {
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		cleaned := c.CleanRecord(record)
+		if len(cleaned) > 0 {
+			if err := writer.Write(cleaned); err != nil {
+				return err
+			}
+		}
 	}
-	return result
-}
 
-func main() {
-	cleaner := DataCleaner{}
-	data := []string{"  apple ", "banana", "  apple ", " cherry", "banana "}
-
-	fmt.Println("Original:", data)
-	trimmed := cleaner.TrimWhitespace(data)
-	fmt.Println("Trimmed:", trimmed)
-	unique := cleaner.RemoveDuplicates(trimmed)
-	fmt.Println("Cleaned:", unique)
+	return writer.Flush()
 }

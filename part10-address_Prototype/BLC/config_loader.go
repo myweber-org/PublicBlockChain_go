@@ -326,3 +326,72 @@ func getEnvOrDefault(key, defaultValue string) string {
     }
     return value
 }
+package config
+
+import (
+	"os"
+	"strconv"
+	"strings"
+)
+
+type AppConfig struct {
+	ServerPort int
+	DBHost     string
+	DBPort     int
+	DebugMode  bool
+	AllowedIPs []string
+}
+
+func LoadConfig() (*AppConfig, error) {
+	config := &AppConfig{}
+	var err error
+
+	config.ServerPort, err = getEnvInt("SERVER_PORT", 8080)
+	if err != nil {
+		return nil, err
+	}
+
+	config.DBHost = getEnvString("DB_HOST", "localhost")
+	
+	config.DBPort, err = getEnvInt("DB_PORT", 5432)
+	if err != nil {
+		return nil, err
+	}
+
+	config.DebugMode, err = getEnvBool("DEBUG_MODE", false)
+	if err != nil {
+		return nil, err
+	}
+
+	config.AllowedIPs = getEnvStringSlice("ALLOWED_IPS", []string{"127.0.0.1"})
+
+	return config, nil
+}
+
+func getEnvString(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+func getEnvInt(key string, defaultValue int) (int, error) {
+	if value := os.Getenv(key); value != "" {
+		return strconv.Atoi(value)
+	}
+	return defaultValue, nil
+}
+
+func getEnvBool(key string, defaultValue bool) (bool, error) {
+	if value := os.Getenv(key); value != "" {
+		return strconv.ParseBool(value)
+	}
+	return defaultValue, nil
+}
+
+func getEnvStringSlice(key string, defaultValue []string) []string {
+	if value := os.Getenv(key); value != "" {
+		return strings.Split(value, ",")
+	}
+	return defaultValue
+}

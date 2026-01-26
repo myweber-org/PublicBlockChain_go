@@ -1,184 +1,141 @@
 package main
 
 import (
-    "bufio"
-    "fmt"
-    "os"
-    "path/filepath"
-    "sync"
-)
-
-type FileProcessor struct {
-    inputDir  string
-    outputDir string
-    workers   int
-}
-
-func NewFileProcessor(input, output string, workers int) *FileProcessor {
-    return &FileProcessor{
-        inputDir:  input,
-        outputDir: output,
-        workers:   workers,
-    }
-}
-
-func (fp *FileProcessor) Process() error {
-    files, err := os.ReadDir(fp.inputDir)
-    if err != nil {
-        return fmt.Errorf("failed to read input directory: %w", err)
-    }
-
-    jobs := make(chan string, len(files))
-    results := make(chan error, len(files))
-    var wg sync.WaitGroup
-
-    for w := 0; w < fp.workers; w++ {
-        wg.Add(1)
-        go fp.worker(jobs, results, &wg)
-    }
-
-    for _, file := range files {
-        if !file.IsDir() {
-            jobs <- file.Name()
-        }
-    }
-    close(jobs)
-
-    wg.Wait()
-    close(results)
-
-    for err := range results {
-        if err != nil {
-            return err
-        }
-    }
-    return nil
-}
-
-func (fp *FileProcessor) worker(jobs <-chan string, results chan<- error, wg *sync.WaitGroup) {
-    defer wg.Done()
-    for filename := range jobs {
-        err := fp.processFile(filename)
-        results <- err
-    }
-}
-
-func (fp *FileProcessor) processFile(filename string) error {
-    inputPath := filepath.Join(fp.inputDir, filename)
-    outputPath := filepath.Join(fp.outputDir, "processed_"+filename)
-
-    inputFile, err := os.Open(inputPath)
-    if err != nil {
-        return fmt.Errorf("failed to open input file: %w", err)
-    }
-    defer inputFile.Close()
-
-    outputFile, err := os.Create(outputPath)
-    if err != nil {
-        return fmt.Errorf("failed to create output file: %w", err)
-    }
-    defer outputFile.Close()
-
-    scanner := bufio.NewScanner(inputFile)
-    writer := bufio.NewWriter(outputFile)
-
-    for scanner.Scan() {
-        line := scanner.Text()
-        processed := transformLine(line)
-        if _, err := writer.WriteString(processed + "\n"); err != nil {
-            return fmt.Errorf("failed to write line: %w", err)
-        }
-    }
-
-    if err := scanner.Err(); err != nil {
-        return fmt.Errorf("error reading file: %w", err)
-    }
-
-    if err := writer.Flush(); err != nil {
-        return fmt.Errorf("failed to flush writer: %w", err)
-    }
-
-    return nil
-}
-
-func transformLine(line string) string {
-    var result []rune
-    for _, r := range line {
-        if r >= 'a' && r <= 'z' {
-            result = append(result, r-32)
-        } else if r >= 'A' && r <= 'Z' {
-            result = append(result, r+32)
-        } else {
-            result = append(result, r)
-        }
-    }
-    return string(result)
-}
-
-func main() {
-    processor := NewFileProcessor("./input", "./output", 4)
-    if err := processor.Process(); err != nil {
-        fmt.Printf("Processing failed: %v\n", err)
-        os.Exit(1)
-    }
-    fmt.Println("File processing completed successfully")
-}package main
-
-import (
-	"encoding/json"
+	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
+	"sync"
+	"time"
 )
 
-// ReadJSONFile reads a JSON file and unmarshals it into the provided interface.
-func ReadJSONFile(filename string, v interface{}) error {
-	file, err := os.Open(filename)
-	if err != nil {
-		return fmt.Errorf("failed to open file: %w", err)
-	}
-	defer file.Close()
-
-	decoder := json.NewDecoder(file)
-	if err := decoder.Decode(v); err != nil {
-		return fmt.Errorf("failed to decode JSON: %w", err)
-	}
-	return nil
+type FileStats struct {
+	Path      string
+	Size      int64
+	LineCount int
+	Processed bool
+	Error     error
 }
 
-// WriteJSONFile marshals the provided data and writes it to a file.
-func WriteJSONFile(filename string, v interface{}) error {
-	file, err := os.Create(filename)
+func processFile(path string, results chan<- FileStats, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	stats := FileStats{Path: path, Processed: false}
+
+	file, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
+		stats.Error = err
+		results <- stats
+		return
 	}
 	defer file.Close()
 
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(v); err != nil {
-		return fmt.Errorf("failed to encode JSON: %w", err)
+	info, err := file.Stat()
+	if err != nil {
+		stats.Error = err
+		results <- stats
+		return
 	}
-	return nil
+	stats.Size = info.Size()
+
+	scanner := bufio.NewScanner(file)
+	lineCount := 0
+	for scanner.Scan() {
+		lineCount++
+	}
+	if err := scanner.Err(); err != nil {
+		stats.Error = err
+		results <- stats
+		return
+	}
+	stats.LineCount = lineCount
+	stats.Processed = true
+
+	results <- stats
+}
+
+func collectFiles(dir string, extensions []string) ([]string, error) {
+	var files []string
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		for _, ext := range extensions {
+			if filepath.Ext(path) == ext {
+				files = append(files, path)
+				break
+			}
+		}
+		return nil
+	})
+	return files, err
 }
 
 func main() {
-	// Example usage
-	type Config struct {
-		Host string `json:"host"`
-		Port int    `json:"port"`
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: file_processor <directory>")
+		os.Exit(1)
 	}
 
-	config := Config{Host: "localhost", Port: 8080}
-	if err := WriteJSONFile("config.json", config); err != nil {
-		fmt.Printf("Error writing file: %v\n", err)
-		return
-	}
-	fmt.Println("File written successfully")
+	startTime := time.Now()
+	dir := os.Args[1]
+	extensions := []string{".txt", ".go", ".md", ".json"}
 
-	var loadedConfig Config
-	if err := ReadJSONFile("config.json", &loadedConfig); err != nil {
-		fmt.Printf("Error reading file: %v\n", err)
+	files, err := collectFiles(dir, extensions)
+	if err != nil {
+		fmt.Printf("Error collecting files: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(files) == 0 {
+		fmt.Println("No matching files found")
 		return
 	}
-	fmt.Printf("Loaded config: %+v\n", loadedConfig)
+
+	results := make(chan FileStats, len(files))
+	var wg sync.WaitGroup
+
+	for _, file := range files {
+		wg.Add(1)
+		go processFile(file, results, &wg)
+	}
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	totalSize := int64(0)
+	totalLines := 0
+	processedCount := 0
+	errorCount := 0
+
+	for stats := range results {
+		if stats.Error != nil {
+			fmt.Printf("Error processing %s: %v\n", stats.Path, stats.Error)
+			errorCount++
+			continue
+		}
+		if stats.Processed {
+			fmt.Printf("Processed: %s | Size: %d bytes | Lines: %d\n",
+				stats.Path, stats.Size, stats.LineCount)
+			totalSize += stats.Size
+			totalLines += stats.LineCount
+			processedCount++
+		}
+	}
+
+	duration := time.Since(startTime)
+	fmt.Printf("\nSummary:\n")
+	fmt.Printf("Files found: %d\n", len(files))
+	fmt.Printf("Successfully processed: %d\n", processedCount)
+	fmt.Printf("Errors: %d\n", errorCount)
+	fmt.Printf("Total size: %d bytes\n", totalSize)
+	fmt.Printf("Total lines: %d\n", totalLines)
+	fmt.Printf("Processing time: %v\n", duration)
 }

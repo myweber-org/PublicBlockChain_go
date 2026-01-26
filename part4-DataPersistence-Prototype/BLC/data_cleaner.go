@@ -1,108 +1,80 @@
 package main
 
 import (
-	"strings"
-)
-
-// CleanString removes duplicate spaces and trims leading/trailing whitespace
-func CleanString(input string) string {
-	// Trim spaces from start and end
-	trimmed := strings.TrimSpace(input)
-	
-	// Split by spaces and filter out empty strings
-	words := strings.Fields(trimmed)
-	
-	// Join back with single spaces
-	return strings.Join(words, " ")
-}
-
-// RemoveDuplicates removes duplicate entries from a slice of strings
-func RemoveDuplicates(items []string) []string {
-	seen := make(map[string]bool)
-	result := []string{}
-	
-	for _, item := range items {
-		if !seen[item] {
-			seen[item] = true
-			result = append(result, item)
-		}
-	}
-	
-	return result
-}
-
-// CleanSlice applies CleanString to each element and removes duplicates
-func CleanSlice(items []string) []string {
-	cleaned := make([]string, len(items))
-	
-	for i, item := range items {
-		cleaned[i] = CleanString(item)
-	}
-	
-	return RemoveDuplicates(cleaned)
-}package main
-
-import (
+	"encoding/csv"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 )
 
-type DataRecord struct {
-	ID    int
-	Email string
-	Valid bool
-}
+func cleanCSV(inputPath, outputPath string) error {
+	inFile, err := os.Open(inputPath)
+	if err != nil {
+		return fmt.Errorf("failed to open input file: %w", err)
+	}
+	defer inFile.Close()
 
-func DeduplicateRecords(records []DataRecord) []DataRecord {
-	seen := make(map[string]bool)
-	var unique []DataRecord
+	outFile, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
+	}
+	defer outFile.Close()
 
-	for _, record := range records {
-		key := strings.ToLower(strings.TrimSpace(record.Email))
-		if !seen[key] {
-			seen[key] = true
-			unique = append(unique, record)
+	reader := csv.NewReader(inFile)
+	writer := csv.NewWriter(outFile)
+	defer writer.Flush()
+
+	headers, err := reader.Read()
+	if err != nil {
+		return fmt.Errorf("failed to read headers: %w", err)
+	}
+
+	trimmedHeaders := make([]string, len(headers))
+	for i, h := range headers {
+		trimmedHeaders[i] = strings.TrimSpace(h)
+	}
+	if err := writer.Write(trimmedHeaders); err != nil {
+		return fmt.Errorf("failed to write headers: %w", err)
+	}
+
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read record: %w", err)
+		}
+
+		cleanedRecord := make([]string, len(record))
+		for i, field := range record {
+			cleanedField := strings.TrimSpace(field)
+			cleanedField = strings.ToLower(cleanedField)
+			cleanedRecord[i] = cleanedField
+		}
+
+		if err := writer.Write(cleanedRecord); err != nil {
+			return fmt.Errorf("failed to write record: %w", err)
 		}
 	}
-	return unique
-}
 
-func ValidateEmail(email string) bool {
-	if len(email) < 3 || !strings.Contains(email, "@") {
-		return false
-	}
-	parts := strings.Split(email, "@")
-	if len(parts) != 2 || len(parts[0]) == 0 || len(parts[1]) == 0 {
-		return false
-	}
-	return true
-}
-
-func CleanData(records []DataRecord) []DataRecord {
-	deduped := DeduplicateRecords(records)
-	var cleaned []DataRecord
-
-	for _, record := range deduped {
-		record.Valid = ValidateEmail(record.Email)
-		cleaned = append(cleaned, record)
-	}
-	return cleaned
+	return nil
 }
 
 func main() {
-	sampleData := []DataRecord{
-		{1, "user@example.com", false},
-		{2, "user@example.com", false},
-		{3, "invalid-email", false},
-		{4, "another@test.org", false},
-		{5, "ANOTHER@test.org", false},
+	if len(os.Args) != 3 {
+		fmt.Println("Usage: data_cleaner <input.csv> <output.csv>")
+		os.Exit(1)
 	}
 
-	cleaned := CleanData(sampleData)
-	fmt.Printf("Original: %d records\n", len(sampleData))
-	fmt.Printf("Cleaned: %d records\n", len(cleaned))
+	inputFile := os.Args[1]
+	outputFile := os.Args[2]
 
-	for _, record := range cleaned {
-		fmt.Printf("ID: %d, Email: %s, Valid: %v\n", record.ID, record.Email, record.Valid)
+	if err := cleanCSV(inputFile, outputFile); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
 	}
+
+	fmt.Printf("Successfully cleaned data. Output saved to %s\n", outputFile)
 }

@@ -522,4 +522,74 @@ func validateConfig(config *AppConfig) error {
 	}
 
 	return nil
+}package config
+
+import (
+    "fmt"
+    "os"
+    "strconv"
+    "strings"
+)
+
+type AppConfig struct {
+    Port        int
+    DatabaseURL string
+    DebugMode   bool
+    AllowedHosts []string
+}
+
+func LoadConfig() (*AppConfig, error) {
+    cfg := &AppConfig{}
+
+    portStr := getEnvWithDefault("APP_PORT", "8080")
+    port, err := strconv.Atoi(portStr)
+    if err != nil {
+        return nil, fmt.Errorf("invalid port value: %v", err)
+    }
+    cfg.Port = port
+
+    dbURL := getEnvWithDefault("DATABASE_URL", "postgres://localhost:5432/appdb")
+    if !strings.HasPrefix(dbURL, "postgres://") {
+        return nil, fmt.Errorf("invalid database URL format")
+    }
+    cfg.DatabaseURL = dbURL
+
+    debugStr := getEnvWithDefault("DEBUG_MODE", "false")
+    debug, err := strconv.ParseBool(debugStr)
+    if err != nil {
+        return nil, fmt.Errorf("invalid debug mode value: %v", err)
+    }
+    cfg.DebugMode = debug
+
+    hostsStr := getEnvWithDefault("ALLOWED_HOSTS", "localhost,127.0.0.1")
+    cfg.AllowedHosts = strings.Split(hostsStr, ",")
+
+    if err := validateConfig(cfg); err != nil {
+        return nil, err
+    }
+
+    return cfg, nil
+}
+
+func getEnvWithDefault(key, defaultValue string) string {
+    if value := os.Getenv(key); value != "" {
+        return value
+    }
+    return defaultValue
+}
+
+func validateConfig(cfg *AppConfig) error {
+    if cfg.Port < 1 || cfg.Port > 65535 {
+        return fmt.Errorf("port must be between 1 and 65535")
+    }
+
+    if len(cfg.DatabaseURL) == 0 {
+        return fmt.Errorf("database URL cannot be empty")
+    }
+
+    if len(cfg.AllowedHosts) == 0 {
+        return fmt.Errorf("at least one allowed host must be specified")
+    }
+
+    return nil
 }

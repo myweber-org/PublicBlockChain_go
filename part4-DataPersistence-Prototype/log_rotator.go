@@ -111,3 +111,117 @@ func main() {
     
     fmt.Println("Log rotation completed")
 }
+package main
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sync"
+)
+
+type RotatingFile struct {
+	mu          sync.Mutex
+	file        *os.File
+	basePath    string
+	maxSize     int64
+	currentSize int64
+	rotation    int
+}
+
+func NewRotatingFile(basePath string, maxSize int64) (*RotatingFile, error) {
+	rf := &RotatingFile{
+		basePath: basePath,
+		maxSize:  maxSize,
+	}
+
+	if err := rf.openCurrentFile(); err != nil {
+		return nil, err
+	}
+
+	return rf, nil
+}
+
+func (rf *RotatingFile) openCurrentFile() error {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	if rf.file != nil {
+		rf.file.Close()
+	}
+
+	filename := rf.basePath
+	if rf.rotation > 0 {
+		filename = fmt.Sprintf("%s.%d", rf.basePath, rf.rotation)
+	}
+
+	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return err
+	}
+
+	rf.file = file
+	rf.currentSize = info.Size()
+	return nil
+}
+
+func (rf *RotatingFile) Write(p []byte) (int, error) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	if rf.currentSize+int64(len(p)) > rf.maxSize {
+		rf.rotation++
+		if err := rf.openCurrentFile(); err != nil {
+			return 0, err
+		}
+	}
+
+	n, err := rf.file.Write(p)
+	if err == nil {
+		rf.currentSize += int64(n)
+	}
+	return n, err
+}
+
+func (rf *RotatingFile) Close() error {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	if rf.file != nil {
+		return rf.file.Close()
+	}
+	return nil
+}
+
+func (rf *RotatingFile) Rotate() error {
+	rf.mu.Lock()
+	rf.rotation++
+	rf.mu.Unlock()
+	return rf.openCurrentFile()
+}
+
+func main() {
+	logFile, err := NewRotatingFile("app.log", 1024*1024)
+	if err != nil {
+		fmt.Printf("Failed to create log file: %v\n", err)
+		return
+	}
+	defer logFile.Close()
+
+	for i := 0; i < 1000; i++ {
+		message := fmt.Sprintf("Log entry %d: This is a sample log message.\n", i)
+		if _, err := logFile.Write([]byte(message)); err != nil {
+			fmt.Printf("Write error: %v\n", err)
+			break
+		}
+	}
+
+	fmt.Println("Log rotation test completed")
+}

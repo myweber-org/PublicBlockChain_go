@@ -288,4 +288,53 @@ func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.RemoteAddr,
 		duration,
 	)
+}package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "os"
+    "time"
+)
+
+type ActivityLog struct {
+    UserID    string    `json:"user_id"`
+    Action    string    `json:"action"`
+    Timestamp time.Time `json:"timestamp"`
+    Details   string    `json:"details,omitempty"`
+}
+
+func logActivity(userID, action, details string) ActivityLog {
+    logEntry := ActivityLog{
+        UserID:    userID,
+        Action:    action,
+        Timestamp: time.Now().UTC(),
+        Details:   details,
+    }
+    return logEntry
+}
+
+func saveLogToFile(logEntry ActivityLog, filename string) error {
+    file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        return err
+    }
+    defer file.Close()
+
+    encoder := json.NewEncoder(file)
+    encoder.SetIndent("", "  ")
+    return encoder.Encode(logEntry)
+}
+
+func main() {
+    logEntry := logActivity("user123", "login", "Successful authentication")
+    
+    err := saveLogToFile(logEntry, "activity_log.json")
+    if err != nil {
+        fmt.Printf("Error saving log: %v\n", err)
+        return
+    }
+    
+    fmt.Printf("Activity logged: %s performed %s at %s\n", 
+        logEntry.UserID, logEntry.Action, logEntry.Timestamp.Format(time.RFC3339))
 }

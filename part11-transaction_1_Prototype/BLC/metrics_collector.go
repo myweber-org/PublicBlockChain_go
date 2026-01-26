@@ -1,60 +1,59 @@
-
 package main
 
 import (
-	"fmt"
-	"runtime"
-	"time"
+    "fmt"
+    "runtime"
+    "time"
 )
 
 type SystemMetrics struct {
-	Timestamp    time.Time
-	CPUUsage     float64
-	MemoryAlloc  uint64
-	MemoryTotal  uint64
-	GoroutineCount int
+    Timestamp   time.Time
+    CPUPercent  float64
+    MemoryUsed  uint64
+    MemoryTotal uint64
+    Goroutines  int
 }
 
 func collectMetrics() SystemMetrics {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
+    var m runtime.MemStats
+    runtime.ReadMemStats(&m)
 
-	return SystemMetrics{
-		Timestamp:     time.Now(),
-		CPUUsage:      calculateCPUUsage(),
-		MemoryAlloc:   m.Alloc,
-		MemoryTotal:   m.Sys,
-		GoroutineCount: runtime.NumGoroutine(),
-	}
+    metrics := SystemMetrics{
+        Timestamp:   time.Now(),
+        MemoryUsed:  m.Alloc,
+        MemoryTotal: m.Sys,
+        Goroutines:  runtime.NumGoroutine(),
+    }
+
+    // Simulate CPU usage calculation
+    metrics.CPUPercent = calculateCPUUsage()
+    return metrics
 }
 
 func calculateCPUUsage() float64 {
-	start := time.Now()
-	runtime.Gosched()
-	time.Sleep(50 * time.Millisecond)
-	elapsed := time.Since(start)
-
-	return float64(elapsed) / float64(time.Second) * 100
+    // Placeholder for actual CPU calculation logic
+    // In production, use gopsutil or similar library
+    return 45.7 // Simulated value
 }
 
-func printMetrics(metrics SystemMetrics) {
-	fmt.Printf("Timestamp: %s\n", metrics.Timestamp.Format(time.RFC3339))
-	fmt.Printf("CPU Usage: %.2f%%\n", metrics.CPUUsage)
-	fmt.Printf("Memory Allocated: %d bytes\n", metrics.MemoryAlloc)
-	fmt.Printf("Total Memory: %d bytes\n", metrics.MemoryTotal)
-	fmt.Printf("Goroutines: %d\n", metrics.GoroutineCount)
-	fmt.Println("---")
+func displayMetrics(metrics SystemMetrics) {
+    fmt.Printf("Timestamp: %s\n", metrics.Timestamp.Format(time.RFC3339))
+    fmt.Printf("CPU Usage: %.2f%%\n", metrics.CPUPercent)
+    fmt.Printf("Memory Used: %v MB\n", metrics.MemoryUsed/1024/1024)
+    fmt.Printf("Memory Total: %v MB\n", metrics.MemoryTotal/1024/1024)
+    fmt.Printf("Active Goroutines: %d\n", metrics.Goroutines)
+    fmt.Println("---")
 }
 
 func main() {
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
+    ticker := time.NewTicker(5 * time.Second)
+    defer ticker.Stop()
 
-	for i := 0; i < 5; i++ {
-		select {
-		case <-ticker.C:
-			metrics := collectMetrics()
-			printMetrics(metrics)
-		}
-	}
+    for {
+        select {
+        case <-ticker.C:
+            metrics := collectMetrics()
+            displayMetrics(metrics)
+        }
+    }
 }

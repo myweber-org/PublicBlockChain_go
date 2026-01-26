@@ -499,3 +499,155 @@ func main() {
 		fmt.Println("  ", match)
 	}
 }
+package main
+
+import (
+	"compress/gzip"
+	"fmt"
+	"io"
+	"log"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+)
+
+const (
+	maxFileSize = 10 * 1024 * 1024
+	maxBackups  = 5
+	logDir      = "./logs"
+)
+
+type RotatingLogger struct {
+	mu         sync.Mutex
+	current    *os.File
+	size       int64
+	baseName   string
+	sequence   int
+}
+
+func NewRotatingLogger(name string) (*RotatingLogger, error) {
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		return nil, err
+	}
+
+	rl := &RotatingLogger{
+		baseName: filepath.Join(logDir, name),
+	}
+
+	if err := rl.openNew(); err != nil {
+		return nil, err
+	}
+
+	return rl, nil
+}
+
+func (rl *RotatingLogger) Write(p []byte) (int, error) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	if rl.size+int64(len(p)) > maxFileSize {
+		if err := rl.rotate(); err != nil {
+			return 0, err
+		}
+	}
+
+	n, err := rl.current.Write(p)
+	rl.size += int64(n)
+	return n, err
+}
+
+func (rl *RotatingLogger) rotate() error {
+	if rl.current != nil {
+		rl.current.Close()
+		rl.compressCurrent()
+	}
+
+	rl.sequence++
+	if rl.sequence > maxBackups {
+		rl.cleanOld()
+	}
+
+	return rl.openNew()
+}
+
+func (rl *RotatingLogger) openNew() error {
+	filename := fmt.Sprintf("%s.%d.log", rl.baseName, rl.sequence)
+	f, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return err
+	}
+
+	rl.current = f
+	if info, err := f.Stat(); err == nil {
+		rl.size = info.Size()
+	} else {
+		rl.size = 0
+	}
+
+	return nil
+}
+
+func (rl *RotatingLogger) compressCurrent() {
+	oldName := fmt.Sprintf("%s.%d.log", rl.baseName, rl.sequence)
+	newName := oldName + ".gz"
+
+	oldFile, err := os.Open(oldName)
+	if err != nil {
+		log.Printf("Failed to open for compression: %v", err)
+		return
+	}
+	defer oldFile.Close()
+
+	newFile, err := os.Create(newName)
+	if err != nil {
+		log.Printf("Failed to create compressed file: %v", err)
+		return
+	}
+	defer newFile.Close()
+
+	gz := gzip.NewWriter(newFile)
+	defer gz.Close()
+
+	if _, err := io.Copy(gz, oldFile); err != nil {
+		log.Printf("Compression failed: %v", err)
+		return
+	}
+
+	os.Remove(oldName)
+}
+
+func (rl *RotatingLogger) cleanOld() {
+	for i := rl.sequence - maxBackups; i > 0; i-- {
+		pattern := fmt.Sprintf("%s.%d.log*", rl.baseName, i)
+		matches, _ := filepath.Glob(pattern)
+		for _, match := range matches {
+			os.Remove(match)
+		}
+	}
+}
+
+func (rl *RotatingLogger) Close() error {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	if rl.current != nil {
+		return rl.current.Close()
+	}
+	return nil
+}
+
+func main() {
+	logger, err := NewRotatingLogger("app")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer logger.Close()
+
+	log.SetOutput(logger)
+
+	for i := 0; i < 1000; i++ {
+		log.Printf("Log entry %d at %s", i, time.Now().Format(time.RFC3339))
+		time.Sleep(10 * time.Millisecond)
+	}
+}

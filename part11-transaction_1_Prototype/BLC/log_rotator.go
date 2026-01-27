@@ -144,3 +144,147 @@ func main() {
 		time.Sleep(100 * time.Millisecond)
 	}
 }
+package main
+
+import (
+    "compress/gzip"
+    "fmt"
+    "io"
+    "os"
+    "path/filepath"
+    "sync"
+    "time"
+)
+
+type RotatingLog struct {
+    mu          sync.Mutex
+    filePath    string
+    maxSize     int64
+    currentSize int64
+    file        *os.File
+    rotationNum int
+}
+
+func NewRotatingLog(filePath string, maxSizeMB int) (*RotatingLog, error) {
+    maxSize := int64(maxSizeMB) * 1024 * 1024
+
+    file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        return nil, err
+    }
+
+    info, err := file.Stat()
+    if err != nil {
+        file.Close()
+        return nil, err
+    }
+
+    return &RotatingLog{
+        filePath:    filePath,
+        maxSize:     maxSize,
+        currentSize: info.Size(),
+        file:        file,
+        rotationNum: 0,
+    }, nil
+}
+
+func (rl *RotatingLog) Write(p []byte) (int, error) {
+    rl.mu.Lock()
+    defer rl.mu.Unlock()
+
+    if rl.currentSize+int64(len(p)) > rl.maxSize {
+        if err := rl.rotate(); err != nil {
+            return 0, err
+        }
+    }
+
+    n, err := rl.file.Write(p)
+    if err == nil {
+        rl.currentSize += int64(n)
+    }
+    return n, err
+}
+
+func (rl *RotatingLog) rotate() error {
+    if rl.file != nil {
+        rl.file.Close()
+    }
+
+    timestamp := time.Now().Format("20060102_150405")
+    archivedName := fmt.Sprintf("%s.%s.%d.gz", rl.filePath, timestamp, rl.rotationNum)
+
+    if err := rl.compressCurrentLog(archivedName); err != nil {
+        return err
+    }
+
+    if err := os.Truncate(rl.filePath, 0); err != nil {
+        return err
+    }
+
+    file, err := os.OpenFile(rl.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        return err
+    }
+
+    rl.file = file
+    rl.currentSize = 0
+    rl.rotationNum++
+
+    return nil
+}
+
+func (rl *RotatingLog) compressCurrentLog(destPath string) error {
+    src, err := os.Open(rl.filePath)
+    if err != nil {
+        return err
+    }
+    defer src.Close()
+
+    dest, err := os.Create(destPath)
+    if err != nil {
+        return err
+    }
+    defer dest.Close()
+
+    gz := gzip.NewWriter(dest)
+    defer gz.Close()
+
+    _, err = io.Copy(gz, src)
+    return err
+}
+
+func (rl *RotatingLog) Close() error {
+    rl.mu.Lock()
+    defer rl.mu.Unlock()
+
+    if rl.file != nil {
+        return rl.file.Close()
+    }
+    return nil
+}
+
+func (rl *RotatingLog) CleanupOldLogs(maxAgeDays int) error {
+    rl.mu.Lock()
+    defer rl.mu.Unlock()
+
+    cutoffTime := time.Now().AddDate(0, 0, -maxAgeDays)
+    pattern := filepath.Join(filepath.Dir(rl.filePath), filepath.Base(rl.filePath)+".*.gz")
+
+    matches, err := filepath.Glob(pattern)
+    if err != nil {
+        return err
+    }
+
+    for _, match := range matches {
+        info, err := os.Stat(match)
+        if err != nil {
+            continue
+        }
+
+        if info.ModTime().Before(cutoffTime) {
+            os.Remove(match)
+        }
+    }
+
+    return nil
+}

@@ -37,4 +37,33 @@ func (dp *DataProcessor) ProcessUserData(name, email string) (string, bool) {
 	}
 
 	return "Data processed successfully", true
+}package main
+
+import (
+	"errors"
+	"strings"
+)
+
+func ValidateUsername(username string) error {
+	if len(username) < 3 {
+		return errors.New("username must be at least 3 characters long")
+	}
+	if len(username) > 20 {
+		return errors.New("username must not exceed 20 characters")
+	}
+	if strings.Contains(username, " ") {
+		return errors.New("username cannot contain spaces")
+	}
+	return nil
+}
+
+func NormalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func TransformToSlug(input string) string {
+	slug := strings.ToLower(input)
+	slug = strings.ReplaceAll(slug, " ", "-")
+	slug = strings.ReplaceAll(slug, "_", "-")
+	return slug
 }

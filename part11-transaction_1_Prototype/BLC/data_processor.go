@@ -1,49 +1,34 @@
 
-package data_processor
+package main
 
 import (
-	"encoding/json"
-	"fmt"
+	"errors"
+	"regexp"
 	"strings"
 )
 
-type ValidationError struct {
-	Field   string
-	Message string
+func ValidateEmail(email string) error {
+	pattern := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
+	matched, err := regexp.MatchString(pattern, email)
+	if err != nil {
+		return err
+	}
+	if !matched {
+		return errors.New("invalid email format")
+	}
+	return nil
 }
 
-func (e ValidationError) Error() string {
-	return fmt.Sprintf("validation error on field '%s': %s", e.Field, e.Message)
+func SanitizeInput(input string) string {
+	input = strings.TrimSpace(input)
+	input = strings.ReplaceAll(input, "<", "&lt;")
+	input = strings.ReplaceAll(input, ">", "&gt;")
+	return input
 }
 
-func ParseAndValidateJSON(rawData []byte, requiredFields []string) (map[string]interface{}, error) {
-	var data map[string]interface{}
-	if err := json.Unmarshal(rawData, &data); err != nil {
-		return nil, fmt.Errorf("failed to parse JSON: %w", err)
-	}
-
-	var missingFields []string
-	for _, field := range requiredFields {
-		if _, exists := data[field]; !exists {
-			missingFields = append(missingFields, field)
-		}
-	}
-
-	if len(missingFields) > 0 {
-		return nil, ValidationError{
-			Field:   "required_fields",
-			Message: fmt.Sprintf("missing required fields: %s", strings.Join(missingFields, ", ")),
-		}
-	}
-
-	for key, value := range data {
-		if strVal, ok := value.(string); ok && strings.TrimSpace(strVal) == "" {
-			return nil, ValidationError{
-				Field:   key,
-				Message: "field cannot be empty",
-			}
-		}
-	}
-
-	return data, nil
+func TransformToSlug(text string) string {
+	text = strings.ToLower(text)
+	text = regexp.MustCompile(`[^a-z0-9]+`).ReplaceAllString(text, "-")
+	text = strings.Trim(text, "-")
+	return text
 }

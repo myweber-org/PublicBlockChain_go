@@ -85,3 +85,57 @@ func GenerateReport(records []DataRecord) {
         fmt.Printf("  - %s (%s)\n", user.Name, user.Email)
     }
 }
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"regexp"
+	"strings"
+)
+
+type UserData struct {
+	Email    string `json:"email"`
+	Username string `json:"username"`
+	Age      int    `json:"age"`
+}
+
+func validateEmail(email string) bool {
+	pattern := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
+	matched, _ := regexp.MatchString(pattern, email)
+	return matched
+}
+
+func sanitizeUsername(username string) string {
+	return strings.TrimSpace(username)
+}
+
+func transformUserData(rawData []byte) (*UserData, error) {
+	var user UserData
+	err := json.Unmarshal(rawData, &user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse JSON: %v", err)
+	}
+
+	if !validateEmail(user.Email) {
+		return nil, fmt.Errorf("invalid email format")
+	}
+
+	user.Username = sanitizeUsername(user.Username)
+
+	if user.Age < 0 || user.Age > 150 {
+		return nil, fmt.Errorf("age out of valid range")
+	}
+
+	return &user, nil
+}
+
+func main() {
+	jsonData := []byte(`{"email":"test@example.com","username":"  john_doe  ","age":25}`)
+	processedUser, err := transformUserData(jsonData)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	fmt.Printf("Processed user: %+v\n", processedUser)
+}

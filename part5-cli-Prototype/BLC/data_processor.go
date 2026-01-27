@@ -1,55 +1,65 @@
+
 package main
 
 import (
 	"errors"
+	"fmt"
 	"strings"
-	"unicode"
+	"time"
 )
 
-type UserData struct {
-	Username string
-	Email    string
-	Age      int
+type DataRecord struct {
+	ID        string
+	Value     float64
+	Timestamp time.Time
+	Category  string
 }
 
-func ValidateUserData(data UserData) error {
-	if strings.TrimSpace(data.Username) == "" {
-		return errors.New("username cannot be empty")
+func ValidateRecord(record DataRecord) error {
+	if record.ID == "" {
+		return errors.New("ID cannot be empty")
 	}
-
-	if len(data.Username) < 3 || len(data.Username) > 20 {
-		return errors.New("username must be between 3 and 20 characters")
+	if record.Value < 0 {
+		return errors.New("value must be non-negative")
 	}
-
-	for _, r := range data.Username {
-		if !unicode.IsLetter(r) && !unicode.IsNumber(r) && r != '_' && r != '-' {
-			return errors.New("username contains invalid characters")
-		}
+	if record.Category == "" {
+		return errors.New("category cannot be empty")
 	}
-
-	if !strings.Contains(data.Email, "@") || !strings.Contains(data.Email, ".") {
-		return errors.New("invalid email format")
-	}
-
-	if data.Age < 0 || data.Age > 150 {
-		return errors.New("age must be between 0 and 150")
-	}
-
 	return nil
 }
 
-func NormalizeUsername(username string) string {
-	return strings.ToLower(strings.TrimSpace(username))
+func TransformRecord(record DataRecord) DataRecord {
+	transformed := record
+	transformed.Category = strings.ToUpper(record.Category)
+	transformed.Value = record.Value * 1.1
+	return transformed
 }
 
-func TransformUserData(data UserData) (UserData, error) {
-	if err := ValidateUserData(data); err != nil {
-		return UserData{}, err
+func ProcessRecords(records []DataRecord) ([]DataRecord, error) {
+	var processed []DataRecord
+	for _, record := range records {
+		if err := ValidateRecord(record); err != nil {
+			return nil, fmt.Errorf("validation failed for record %s: %w", record.ID, err)
+		}
+		processed = append(processed, TransformRecord(record))
+	}
+	return processed, nil
+}
+
+func main() {
+	records := []DataRecord{
+		{ID: "A001", Value: 100.0, Timestamp: time.Now(), Category: "sales"},
+		{ID: "A002", Value: 250.5, Timestamp: time.Now(), Category: "inventory"},
 	}
 
-	return UserData{
-		Username: NormalizeUsername(data.Username),
-		Email:    strings.ToLower(strings.TrimSpace(data.Email)),
-		Age:      data.Age,
-	}, nil
+	processed, err := ProcessRecords(records)
+	if err != nil {
+		fmt.Printf("Processing error: %v\n", err)
+		return
+	}
+
+	for _, record := range processed {
+		fmt.Printf("Processed: ID=%s, Value=%.2f, Category=%s\n",
+			record.ID, record.Value, record.Category)
+	}
 }

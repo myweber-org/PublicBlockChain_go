@@ -63,3 +63,26 @@ func main() {
 
     fmt.Printf("Successfully cleaned data from %s to %s\n", inputFile, outputFile)
 }
+package main
+
+import "fmt"
+
+func RemoveDuplicates(input []int) []int {
+	seen := make(map[int]bool)
+	result := []int{}
+
+	for _, value := range input {
+		if !seen[value] {
+			seen[value] = true
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func main() {
+	data := []int{4, 2, 8, 2, 4, 9, 8, 1}
+	cleaned := RemoveDuplicates(data)
+	fmt.Println("Original:", data)
+	fmt.Println("Cleaned:", cleaned)
+}

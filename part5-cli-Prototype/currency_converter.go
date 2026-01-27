@@ -79,3 +79,88 @@ func main() {
 	fmt.Printf("%.2f USD = %.2f EUR\n", amount, converted)
 	fmt.Printf("Supported currencies: %v\n", converter.GetSupportedCurrencies())
 }
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+type ExchangeRate struct {
+	BaseCurrency    string
+	TargetCurrency  string
+	Rate            float64
+}
+
+type CurrencyConverter struct {
+	rates map[string]map[string]float64
+	mu    sync.RWMutex
+}
+
+func NewCurrencyConverter() *CurrencyConverter {
+	return &CurrencyConverter{
+		rates: make(map[string]map[string]float64),
+	}
+}
+
+func (c *CurrencyConverter) AddRate(base, target string, rate float64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.rates[base] == nil {
+		c.rates[base] = make(map[string]float64)
+	}
+	c.rates[base][target] = rate
+
+	if c.rates[target] == nil {
+		c.rates[target] = make(map[string]float64)
+	}
+	c.rates[target][base] = 1 / rate
+}
+
+func (c *CurrencyConverter) Convert(amount float64, from, to string) (float64, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if from == to {
+		return amount, nil
+	}
+
+	if targetRates, ok := c.rates[from]; ok {
+		if rate, ok := targetRates[to]; ok {
+			return amount * rate, nil
+		}
+	}
+
+	return 0, fmt.Errorf("no conversion rate found from %s to %s", from, to)
+}
+
+func (c *CurrencyConverter) GetSupportedCurrencies() []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	currencies := make([]string, 0, len(c.rates))
+	for currency := range c.rates {
+		currencies = append(currencies, currency)
+	}
+	return currencies
+}
+
+func main() {
+	converter := NewCurrencyConverter()
+
+	converter.AddRate("USD", "EUR", 0.85)
+	converter.AddRate("USD", "GBP", 0.73)
+	converter.AddRate("EUR", "JPY", 130.0)
+
+	amount := 100.0
+	result, err := converter.Convert(amount, "USD", "EUR")
+	if err != nil {
+		fmt.Printf("Conversion error: %v\n", err)
+		return
+	}
+	fmt.Printf("%.2f USD = %.2f EUR\n", amount, result)
+
+	currencies := converter.GetSupportedCurrencies()
+	fmt.Println("Supported currencies:", currencies)
+}

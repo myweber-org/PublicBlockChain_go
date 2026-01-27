@@ -246,4 +246,148 @@ func DefaultConfigPath() string {
         return "./config.yaml"
     }
     return filepath.Join(homeDir, ".app", "config.yaml")
+}package config
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"gopkg.in/yaml.v3"
+)
+
+type DatabaseConfig struct {
+	Host     string `yaml:"host" env:"DB_HOST"`
+	Port     int    `yaml:"port" env:"DB_PORT"`
+	Username string `yaml:"username" env:"DB_USER"`
+	Password string `yaml:"password" env:"DB_PASS"`
+	Database string `yaml:"database" env:"DB_NAME"`
+}
+
+type ServerConfig struct {
+	Port         int    `yaml:"port" env:"SERVER_PORT"`
+	ReadTimeout  int    `yaml:"read_timeout" env:"READ_TIMEOUT"`
+	WriteTimeout int    `yaml:"write_timeout" env:"WRITE_TIMEOUT"`
+	LogLevel     string `yaml:"log_level" env:"LOG_LEVEL"`
+}
+
+type AppConfig struct {
+	Database DatabaseConfig `yaml:"database"`
+	Server   ServerConfig   `yaml:"server"`
+	Features struct {
+		EnableCache bool `yaml:"enable_cache" env:"ENABLE_CACHE"`
+		MaxWorkers  int  `yaml:"max_workers" env:"MAX_WORKERS"`
+	} `yaml:"features"`
+}
+
+func LoadConfig(configPath string) (*AppConfig, error) {
+	if configPath == "" {
+		configPath = "config.yaml"
+	}
+
+	absPath, err := filepath.Abs(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve config path: %w", err)
+	}
+
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	var config AppConfig
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse YAML config: %w", err)
+	}
+
+	if err := overrideFromEnv(&config); err != nil {
+		return nil, fmt.Errorf("failed to apply environment overrides: %w", err)
+	}
+
+	if err := validateConfig(&config); err != nil {
+		return nil, fmt.Errorf("config validation failed: %w", err)
+	}
+
+	return &config, nil
+}
+
+func overrideFromEnv(config *AppConfig) error {
+	overrideString := func(field *string, envVar string) {
+		if val := os.Getenv(envVar); val != "" {
+			*field = val
+		}
+	}
+
+	overrideInt := func(field *int, envVar string) error {
+		if val := os.Getenv(envVar); val != "" {
+			var intVal int
+			if _, err := fmt.Sscanf(val, "%d", &intVal); err != nil {
+				return fmt.Errorf("invalid integer value for %s: %w", envVar, err)
+			}
+			*field = intVal
+		}
+		return nil
+	}
+
+	overrideBool := func(field *bool, envVar string) error {
+		if val := os.Getenv(envVar); val != "" {
+			*field = val == "true" || val == "1" || val == "yes"
+		}
+		return nil
+	}
+
+	overrideString(&config.Database.Host, "DB_HOST")
+	overrideString(&config.Database.Username, "DB_USER")
+	overrideString(&config.Database.Password, "DB_PASS")
+	overrideString(&config.Database.Database, "DB_NAME")
+	overrideString(&config.Server.LogLevel, "LOG_LEVEL")
+
+	if err := overrideInt(&config.Database.Port, "DB_PORT"); err != nil {
+		return err
+	}
+	if err := overrideInt(&config.Server.Port, "SERVER_PORT"); err != nil {
+		return err
+	}
+	if err := overrideInt(&config.Server.ReadTimeout, "READ_TIMEOUT"); err != nil {
+		return err
+	}
+	if err := overrideInt(&config.Server.WriteTimeout, "WRITE_TIMEOUT"); err != nil {
+		return err
+	}
+	if err := overrideInt(&config.Features.MaxWorkers, "MAX_WORKERS"); err != nil {
+		return err
+	}
+
+	return overrideBool(&config.Features.EnableCache, "ENABLE_CACHE")
+}
+
+func validateConfig(config *AppConfig) error {
+	if config.Database.Host == "" {
+		return errors.New("database host is required")
+	}
+	if config.Database.Port <= 0 || config.Database.Port > 65535 {
+		return errors.New("database port must be between 1 and 65535")
+	}
+	if config.Server.Port <= 0 || config.Server.Port > 65535 {
+		return errors.New("server port must be between 1 and 65535")
+	}
+	if config.Server.ReadTimeout < 0 {
+		return errors.New("read timeout cannot be negative")
+	}
+	if config.Server.WriteTimeout < 0 {
+		return errors.New("write timeout cannot be negative")
+	}
+	if config.Features.MaxWorkers < 1 {
+		return errors.New("max workers must be at least 1")
+	}
+
+	validLogLevels := map[string]bool{
+		"debug": true, "info": true, "warn": true, "error": true, "fatal": true,
+	}
+	if !validLogLevels[config.Server.LogLevel] {
+		return errors.New("invalid log level")
+	}
+
+	return nil
 }

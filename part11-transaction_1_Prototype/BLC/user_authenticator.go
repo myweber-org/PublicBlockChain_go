@@ -10,21 +10,7 @@ type contextKey string
 
 const userIDKey contextKey = "userID"
 
-type Authenticator struct {
-	tokenValidator TokenValidator
-}
-
-type TokenValidator interface {
-	ValidateToken(tokenString string) (string, error)
-}
-
-func NewAuthenticator(validator TokenValidator) *Authenticator {
-	return &Authenticator{
-		tokenValidator: validator,
-	}
-}
-
-func (a *Authenticator) Middleware(next http.Handler) http.Handler {
+func Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
@@ -39,7 +25,7 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 		}
 
 		tokenString := parts[1]
-		userID, err := a.tokenValidator.ValidateToken(tokenString)
+		userID, err := validateToken(tokenString)
 		if err != nil {
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
@@ -50,9 +36,17 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-func GetUserID(ctx context.Context) string {
-	if userID, ok := ctx.Value(userIDKey).(string); ok {
-		return userID
+func GetUserID(ctx context.Context) (string, bool) {
+	userID, ok := ctx.Value(userIDKey).(string)
+	return userID, ok
+}
+
+func validateToken(tokenString string) (string, error) {
+	// This is a placeholder for actual JWT validation logic
+	// In production, use a proper JWT library like github.com/golang-jwt/jwt
+	// For this example, we'll assume token is valid and return a mock user ID
+	if tokenString == "" {
+		return "", http.ErrNoCookie
 	}
-	return ""
+	return "user-123", nil
 }

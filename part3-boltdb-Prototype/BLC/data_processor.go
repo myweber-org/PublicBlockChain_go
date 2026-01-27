@@ -175,3 +175,111 @@ func main() {
 	output := processor.Process(input)
 	fmt.Printf("Processed: '%s'\n", output)
 }
+package main
+
+import (
+	"encoding/csv"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+)
+
+type DataRecord struct {
+	ID    string
+	Name  string
+	Email string
+	Valid bool
+}
+
+func ProcessCSVFile(filename string) ([]DataRecord, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	reader.TrimLeadingSpace = true
+
+	var records []DataRecord
+	lineNumber := 0
+
+	for {
+		lineNumber++
+		row, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("csv read error at line %d: %w", lineNumber, err)
+		}
+
+		if len(row) < 3 {
+			continue
+		}
+
+		record := DataRecord{
+			ID:    strings.TrimSpace(row[0]),
+			Name:  strings.TrimSpace(row[1]),
+			Email: strings.TrimSpace(row[2]),
+			Valid: validateRecord(row),
+		}
+
+		if record.Valid {
+			records = append(records, record)
+		}
+	}
+
+	return records, nil
+}
+
+func validateRecord(fields []string) bool {
+	if len(fields) < 3 {
+		return false
+	}
+
+	for _, field := range fields[:3] {
+		if strings.TrimSpace(field) == "" {
+			return false
+		}
+	}
+
+	email := strings.TrimSpace(fields[2])
+	return strings.Contains(email, "@") && strings.Contains(email, ".")
+}
+
+func GenerateSummary(records []DataRecord) {
+	validCount := 0
+	for _, record := range records {
+		if record.Valid {
+			validCount++
+		}
+	}
+
+	fmt.Printf("Total records processed: %d\n", len(records))
+	fmt.Printf("Valid records: %d\n", validCount)
+	fmt.Printf("Invalid records: %d\n", len(records)-validCount)
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: data_processor <csv_file>")
+		os.Exit(1)
+	}
+
+	filename := os.Args[1]
+	records, err := ProcessCSVFile(filename)
+	if err != nil {
+		fmt.Printf("Error processing file: %v\n", err)
+		os.Exit(1)
+	}
+
+	GenerateSummary(records)
+
+	for i, record := range records {
+		if i < 5 && record.Valid {
+			fmt.Printf("Sample record: %s - %s\n", record.ID, record.Name)
+		}
+	}
+}

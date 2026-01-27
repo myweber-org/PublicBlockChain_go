@@ -7,152 +7,76 @@ import (
 
 type Session struct {
 	ID        string
+	UserID    int
 	Data      map[string]interface{}
 	ExpiresAt time.Time
-	mu        sync.RWMutex
 }
 
 type Manager struct {
 	sessions map[string]*Session
 	mu       sync.RWMutex
-	stopChan chan struct{}
+	ttl      time.Duration
 }
 
-func NewManager(cleanupInterval time.Duration) *Manager {
+func NewManager(ttl time.Duration) *Manager {
 	m := &Manager{
 		sessions: make(map[string]*Session),
-		stopChan: make(chan struct{}),
+		ttl:      ttl,
 	}
-	go m.startCleanup(cleanupInterval)
+	go m.cleanupLoop()
 	return m
 }
 
-func (m *Manager) CreateSession(id string, ttl time.Duration) *Session {
+func (m *Manager) Create(userID int) *Session {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	session := &Session{
-		ID:        id,
+		ID:        generateID(),
+		UserID:    userID,
 		Data:      make(map[string]interface{}),
-		ExpiresAt: time.Now().Add(ttl),
+		ExpiresAt: time.Now().Add(m.ttl),
 	}
-	m.sessions[id] = session
+	m.sessions[session.ID] = session
 	return session
 }
 
-func (m *Manager) GetSession(id string) *Session {
+func (m *Manager) Get(id string) *Session {
 	m.mu.RLock()
-	session, exists := m.sessions[id]
-	m.mu.RUnlock()
+	defer m.mu.RUnlock()
 
+	session, exists := m.sessions[id]
 	if !exists || time.Now().After(session.ExpiresAt) {
 		return nil
 	}
 	return session
 }
 
-func (m *Manager) startCleanup(interval time.Duration) {
-	ticker := time.NewTicker(interval)
+func (m *Manager) cleanupLoop() {
+	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			m.cleanupExpired()
-		case <-m.stopChan:
-			return
+	for range ticker.C {
+		m.mu.Lock()
+		now := time.Now()
+		for id, session := range m.sessions {
+			if now.After(session.ExpiresAt) {
+				delete(m.sessions, id)
+			}
 		}
+		m.mu.Unlock()
 	}
 }
 
-func (m *Manager) cleanupExpired() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+func generateID() string {
+	return time.Now().Format("20060102150405") + randomString(8)
+}
 
-	now := time.Now()
-	for id, session := range m.sessions {
-		if now.After(session.ExpiresAt) {
-			delete(m.sessions, id)
-		}
+func randomString(n int) string {
+	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = letters[time.Now().UnixNano()%int64(len(letters))]
 	}
-}
-
-func (m *Manager) Stop() {
-	close(m.stopChan)
-}
-
-func (s *Session) Set(key string, value interface{}) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.Data[key] = value
-}
-
-func (s *Session) Get(key string) interface{} {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.Data[key]
-}
-
-func (s *Session) Extend(ttl time.Duration) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.ExpiresAt = time.Now().Add(ttl)
-}package session
-
-import (
-	"crypto/rand"
-	"encoding/base64"
-	"errors"
-	"time"
-)
-
-type Session struct {
-	ID        string
-	UserID    int
-	ExpiresAt time.Time
-}
-
-var sessions = make(map[string]Session)
-
-func GenerateToken() (string, error) {
-	b := make([]byte, 32)
-	_, err := rand.Read(b)
-	if err != nil {
-		return "", err
-	}
-	return base64.URLEncoding.EncodeToString(b), nil
-}
-
-func CreateSession(userID int) (string, error) {
-	token, err := GenerateToken()
-	if err != nil {
-		return "", err
-	}
-
-	session := Session{
-		ID:        token,
-		UserID:    userID,
-		ExpiresAt: time.Now().Add(24 * time.Hour),
-	}
-
-	sessions[token] = session
-	return token, nil
-}
-
-func ValidateSession(token string) (Session, error) {
-	session, exists := sessions[token]
-	if !exists {
-		return Session{}, errors.New("session not found")
-	}
-
-	if time.Now().After(session.ExpiresAt) {
-		delete(sessions, token)
-		return Session{}, errors.New("session expired")
-	}
-
-	return session, nil
-}
-
-func DeleteSession(token string) {
-	delete(sessions, token)
+	return string(b)
 }

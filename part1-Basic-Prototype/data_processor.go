@@ -67,4 +67,40 @@ func main() {
         return
     }
     fmt.Printf("Processed data: %+v\n", result)
+}package main
+
+import (
+	"errors"
+	"strings"
+)
+
+type UserData struct {
+	ID    int
+	Name  string
+	Email string
+}
+
+func ValidateUserData(data UserData) error {
+	if data.ID <= 0 {
+		return errors.New("invalid user ID")
+	}
+	if strings.TrimSpace(data.Name) == "" {
+		return errors.New("name cannot be empty")
+	}
+	if !strings.Contains(data.Email, "@") {
+		return errors.New("invalid email format")
+	}
+	return nil
+}
+
+func TransformUserName(data UserData) UserData {
+	data.Name = strings.ToUpper(strings.TrimSpace(data.Name))
+	return data
+}
+
+func ProcessUserInput(data UserData) (UserData, error) {
+	if err := ValidateUserData(data); err != nil {
+		return UserData{}, err
+	}
+	return TransformUserName(data), nil
 }

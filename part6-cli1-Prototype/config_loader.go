@@ -111,4 +111,95 @@ func validateConfig(config *ServerConfig) error {
     }
 
     return nil
+}package config
+
+import (
+	"os"
+	"path/filepath"
+	"gopkg.in/yaml.v3"
+)
+
+type DatabaseConfig struct {
+	Host     string `yaml:"host" env:"DB_HOST"`
+	Port     int    `yaml:"port" env:"DB_PORT"`
+	Username string `yaml:"username" env:"DB_USER"`
+	Password string `yaml:"password" env:"DB_PASS"`
+	Database string `yaml:"database" env:"DB_NAME"`
+}
+
+type ServerConfig struct {
+	Port         int    `yaml:"port" env:"SERVER_PORT"`
+	ReadTimeout  int    `yaml:"read_timeout" env:"READ_TIMEOUT"`
+	WriteTimeout int    `yaml:"write_timeout" env:"WRITE_TIMEOUT"`
+	DebugMode    bool   `yaml:"debug_mode" env:"DEBUG_MODE"`
+}
+
+type AppConfig struct {
+	Server   ServerConfig   `yaml:"server"`
+	Database DatabaseConfig `yaml:"database"`
+	Features []string       `yaml:"features"`
+}
+
+func LoadConfig(configPath string) (*AppConfig, error) {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var config AppConfig
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, err
+	}
+
+	overrideFromEnv(&config)
+	return &config, nil
+}
+
+func overrideFromEnv(config *AppConfig) {
+	overrideString(&config.Database.Host, "DB_HOST")
+	overrideString(&config.Database.Password, "DB_PASS")
+	overrideString(&config.Database.Username, "DB_USER")
+	overrideString(&config.Database.Database, "DB_NAME")
+	overrideInt(&config.Database.Port, "DB_PORT")
+	overrideInt(&config.Server.Port, "SERVER_PORT")
+	overrideInt(&config.Server.ReadTimeout, "READ_TIMEOUT")
+	overrideInt(&config.Server.WriteTimeout, "WRITE_TIMEOUT")
+	overrideBool(&config.Server.DebugMode, "DEBUG_MODE")
+}
+
+func overrideString(field *string, envVar string) {
+	if val := os.Getenv(envVar); val != "" {
+		*field = val
+	}
+}
+
+func overrideInt(field *int, envVar string) {
+	if val := os.Getenv(envVar); val != "" {
+		var intVal int
+		if _, err := fmt.Sscanf(val, "%d", &intVal); err == nil {
+			*field = intVal
+		}
+	}
+}
+
+func overrideBool(field *bool, envVar string) {
+	if val := os.Getenv(envVar); val != "" {
+		*field = val == "true" || val == "1" || val == "yes"
+	}
+}
+
+func DefaultConfigPath() string {
+	paths := []string{
+		"config.yaml",
+		"config.yml",
+		filepath.Join("config", "config.yaml"),
+		filepath.Join("config", "config.yml"),
+	}
+
+	for _, path := range paths {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return ""
 }

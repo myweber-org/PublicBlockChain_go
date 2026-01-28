@@ -1,57 +1,50 @@
+
 package main
 
 import (
-	"context"
-	"log"
-	"time"
+    "context"
+    "log"
+    "time"
 
-	"github.com/redis/go-redis/v9"
+    "github.com/redis/go-redis/v9"
 )
 
-var (
-	rdb *redis.Client
-	ctx = context.Background()
-)
+var ctx = context.Background()
+var rdb *redis.Client
 
 func initRedis() {
-	rdb = redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
-		Password: "",
-		DB:       0,
-	})
+    rdb = redis.NewClient(&redis.Options{
+        Addr:     "localhost:6379",
+        Password: "",
+        DB:       0,
+    })
 }
 
-func cleanupExpiredSessions() error {
-	now := time.Now().Unix()
-	keys, err := rdb.Keys(ctx, "session:*").Result()
-	if err != nil {
-		return err
-	}
+func cleanupExpiredSessions() {
+    now := time.Now().Unix()
+    maxScore := float64(now - 86400)
 
-	for _, key := range keys {
-		exp, err := rdb.Get(ctx, key+":expires").Int64()
-		if err != nil {
-			continue
-		}
-		if exp < now {
-			rdb.Del(ctx, key, key+":expires")
-			log.Printf("Removed expired session: %s", key)
-		}
-	}
-	return nil
+    // Remove sessions older than 24 hours
+    removed, err := rdb.ZRemRangeByScore(ctx, "user_sessions", "0", string(maxScore)).Result()
+    if err != nil {
+        log.Printf("Failed to clean sessions: %v", err)
+        return
+    }
+
+    log.Printf("Cleaned up %d expired sessions", removed)
 }
 
 func main() {
-	initRedis()
-	ticker := time.NewTicker(24 * time.Hour)
-	defer ticker.Stop()
+    initRedis()
 
-	for {
-		select {
-		case <-ticker.C:
-			if err := cleanupExpiredSessions(); err != nil {
-				log.Printf("Cleanup failed: %v", err)
-			}
-		}
-	}
+    // Run cleanup daily at 2 AM
+    ticker := time.NewTicker(24 * time.Hour)
+    defer ticker.Stop()
+
+    for {
+        select {
+        case <-ticker.C:
+            cleanupExpiredSessions()
+        }
+    }
 }

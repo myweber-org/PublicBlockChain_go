@@ -257,3 +257,121 @@ func TruncateString(s string, maxLen int) string {
 	}
 	return s[:maxLen]
 }
+package main
+
+import (
+	"encoding/csv"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+)
+
+type Record struct {
+	ID    int
+	Name  string
+	Value float64
+}
+
+func parseCSV(filename string) ([]Record, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	records := []Record{}
+	lineNum := 0
+
+	for {
+		line, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("csv read error at line %d: %w", lineNum, err)
+		}
+
+		if len(line) != 3 {
+			return nil, fmt.Errorf("invalid column count at line %d: expected 3, got %d", lineNum, len(line))
+		}
+
+		id, err := strconv.Atoi(line[0])
+		if err != nil {
+			return nil, fmt.Errorf("invalid ID at line %d: %w", lineNum, err)
+		}
+
+		value, err := strconv.ParseFloat(line[2], 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid value at line %d: %w", lineNum, err)
+		}
+
+		records = append(records, Record{
+			ID:    id,
+			Name:  line[1],
+			Value: value,
+		})
+		lineNum++
+	}
+
+	return records, nil
+}
+
+func validateRecords(records []Record) error {
+	seenIDs := make(map[int]bool)
+	for _, rec := range records {
+		if rec.ID <= 0 {
+			return fmt.Errorf("invalid record ID: %d must be positive", rec.ID)
+		}
+		if rec.Name == "" {
+			return fmt.Errorf("record ID %d has empty name", rec.ID)
+		}
+		if rec.Value < 0 {
+			return fmt.Errorf("record ID %d has negative value: %f", rec.ID, rec.Value)
+		}
+		if seenIDs[rec.ID] {
+			return fmt.Errorf("duplicate record ID: %d", rec.ID)
+		}
+		seenIDs[rec.ID] = true
+	}
+	return nil
+}
+
+func calculateTotal(records []Record) float64 {
+	total := 0.0
+	for _, rec := range records {
+		total += rec.Value
+	}
+	return total
+}
+
+func processDataFile(filename string) error {
+	records, err := parseCSV(filename)
+	if err != nil {
+		return fmt.Errorf("parsing failed: %w", err)
+	}
+
+	if err := validateRecords(records); err != nil {
+		return fmt.Errorf("validation failed: %w", err)
+	}
+
+	total := calculateTotal(records)
+	fmt.Printf("Processed %d records\n", len(records))
+	fmt.Printf("Total value: %.2f\n", total)
+	fmt.Printf("Average value: %.2f\n", total/float64(len(records)))
+
+	return nil
+}
+
+func main() {
+	if len(os.Args) != 2 {
+		fmt.Println("Usage: data_processor <csv_file>")
+		os.Exit(1)
+	}
+
+	if err := processDataFile(os.Args[1]); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+}

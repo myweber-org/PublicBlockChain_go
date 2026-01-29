@@ -1,38 +1,29 @@
-package auth
+package middleware
 
 import (
     "net/http"
     "strings"
-    "time"
-
-    "github.com/golang-jwt/jwt/v5"
 )
 
-type Claims struct {
-    Username string `json:"username"`
-    Role     string `json:"role"`
-    jwt.RegisteredClaims
+type Authenticator struct {
+    secretKey []byte
 }
 
-var jwtKey = []byte("your-secret-key-here")
+func NewAuthenticator(secret string) *Authenticator {
+    return &Authenticator{secretKey: []byte(secret)}
+}
 
-func GenerateToken(username, role string) (string, error) {
-    expirationTime := time.Now().Add(24 * time.Hour)
-    claims := &Claims{
-        Username: username,
-        Role:     role,
-        RegisteredClaims: jwt.RegisteredClaims{
-            ExpiresAt: jwt.NewNumericDate(expirationTime),
-            IssuedAt:  jwt.NewNumericDate(time.Now()),
-            Issuer:    "myapp",
-        },
+func (a *Authenticator) ValidateToken(token string) bool {
+    if token == "" {
+        return false
     }
-
-    token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-    return token.SignedString(jwtKey)
+    
+    // Simulated token validation logic
+    // In real implementation, use proper JWT validation library
+    return strings.HasPrefix(token, "valid_")
 }
 
-func AuthenticateMiddleware(next http.Handler) http.Handler {
+func (a *Authenticator) Middleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
         authHeader := r.Header.Get("Authorization")
         if authHeader == "" {
@@ -40,25 +31,12 @@ func AuthenticateMiddleware(next http.Handler) http.Handler {
             return
         }
 
-        tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-        claims := &Claims{}
-
-        token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-            return jwtKey, nil
-        })
-
-        if err != nil || !token.Valid {
-            http.Error(w, "Invalid token", http.StatusUnauthorized)
+        token := strings.TrimPrefix(authHeader, "Bearer ")
+        if !a.ValidateToken(token) {
+            http.Error(w, "Invalid authentication token", http.StatusUnauthorized)
             return
         }
 
-        if claims.ExpiresAt.Time.Before(time.Now()) {
-            http.Error(w, "Token expired", http.StatusUnauthorized)
-            return
-        }
-
-        r.Header.Set("X-Username", claims.Username)
-        r.Header.Set("X-Role", claims.Role)
         next.ServeHTTP(w, r)
     })
 }

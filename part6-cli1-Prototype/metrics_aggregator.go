@@ -125,3 +125,77 @@ func main() {
 	}
 	fmt.Printf("95th percentile: %.2f\n", p95)
 }
+package main
+
+import (
+	"log"
+	"sync"
+	"time"
+)
+
+type Metrics struct {
+	mu            sync.RWMutex
+	requestCount  int64
+	errorCount    int64
+	totalLatency  time.Duration
+}
+
+func NewMetrics() *Metrics {
+	return &Metrics{}
+}
+
+func (m *Metrics) RecordRequest(latency time.Duration, isError bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.requestCount++
+	m.totalLatency += latency
+	if isError {
+		m.errorCount++
+	}
+}
+
+func (m *Metrics) GetStats() (int64, int64, time.Duration) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	return m.requestCount, m.errorCount, m.totalLatency
+}
+
+func (m *Metrics) CalculateAverageLatency() time.Duration {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if m.requestCount == 0 {
+		return 0
+	}
+	return m.totalLatency / time.Duration(m.requestCount)
+}
+
+func (m *Metrics) ErrorRate() float64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if m.requestCount == 0 {
+		return 0.0
+	}
+	return float64(m.errorCount) / float64(m.requestCount)
+}
+
+func main() {
+	metrics := NewMetrics()
+
+	metrics.RecordRequest(150*time.Millisecond, false)
+	metrics.RecordRequest(200*time.Millisecond, true)
+	metrics.RecordRequest(100*time.Millisecond, false)
+
+	total, errors, totalLatency := metrics.GetStats()
+	avgLatency := metrics.CalculateAverageLatency()
+	errorRate := metrics.ErrorRate()
+
+	log.Printf("Total requests: %d", total)
+	log.Printf("Total errors: %d", errors)
+	log.Printf("Total latency: %v", totalLatency)
+	log.Printf("Average latency: %v", avgLatency)
+	log.Printf("Error rate: %.2f", errorRate)
+}

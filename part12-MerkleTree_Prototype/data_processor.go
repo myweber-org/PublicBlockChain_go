@@ -87,4 +87,43 @@ func main() {
 
 	fmt.Printf("Processed %d records\n", len(records))
 	fmt.Printf("Total value: %.2f\n", CalculateTotal(records))
+}package main
+
+import (
+	"errors"
+	"strings"
+)
+
+type DataRecord struct {
+	ID    string
+	Value string
+	Valid bool
+}
+
+func ValidateRecord(record DataRecord) error {
+	if record.ID == "" {
+		return errors.New("ID cannot be empty")
+	}
+	if len(record.Value) > 100 {
+		return errors.New("value exceeds maximum length")
+	}
+	return nil
+}
+
+func TransformRecord(record DataRecord) DataRecord {
+	transformed := record
+	transformed.Value = strings.ToUpper(strings.TrimSpace(record.Value))
+	transformed.Valid = true
+	return transformed
+}
+
+func ProcessRecords(records []DataRecord) ([]DataRecord, error) {
+	var processed []DataRecord
+	for _, record := range records {
+		if err := ValidateRecord(record); err != nil {
+			return nil, err
+		}
+		processed = append(processed, TransformRecord(record))
+	}
+	return processed, nil
 }

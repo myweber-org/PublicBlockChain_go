@@ -127,3 +127,98 @@ func ProcessRecords(records []DataRecord) ([]DataRecord, error) {
 	}
 	return processed, nil
 }
+package main
+
+import (
+	"encoding/csv"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+)
+
+type Record struct {
+	Name   string
+	Age    int
+	Active bool
+}
+
+func processCSV(filename string) ([]Record, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	var records []Record
+
+	for {
+		row, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		if len(row) != 3 {
+			continue
+		}
+
+		age, err := strconv.Atoi(row[1])
+		if err != nil {
+			continue
+		}
+
+		active, err := strconv.ParseBool(row[2])
+		if err != nil {
+			continue
+		}
+
+		records = append(records, Record{
+			Name:   row[0],
+			Age:    age,
+			Active: active,
+		})
+	}
+
+	return records, nil
+}
+
+func calculateAverageAge(records []Record) float64 {
+	if len(records) == 0 {
+		return 0
+	}
+
+	total := 0
+	for _, r := range records {
+		total += r.Age
+	}
+
+	return float64(total) / float64(len(records))
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: data_processor <csv_file>")
+		return
+	}
+
+	records, err := processCSV(os.Args[1])
+	if err != nil {
+		fmt.Printf("Error processing file: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Processed %d records\n", len(records))
+	fmt.Printf("Average age: %.2f\n", calculateAverageAge(records))
+
+	activeCount := 0
+	for _, r := range records {
+		if r.Active {
+			activeCount++
+		}
+	}
+	fmt.Printf("Active users: %d\n", activeCount)
+}

@@ -1,151 +1,99 @@
 package main
 
 import (
-	"encoding/json"
+	"bufio"
 	"fmt"
-	"io"
 	"os"
-)
-
-type Config struct {
-	Server   ServerConfig   `json:"server"`
-	Database DatabaseConfig `json:"database"`
-	Logging  LogConfig      `json:"logging"`
-}
-
-type ServerConfig struct {
-	Host string `json:"host"`
-	Port int    `json:"port"`
-}
-
-type DatabaseConfig struct {
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Name     string `json:"name"`
-}
-
-type LogConfig struct {
-	Level    string `json:"level"`
-	FilePath string `json:"file_path"`
-}
-
-func LoadConfig(filePath string) (*Config, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open config file: %w", err)
-	}
-	defer file.Close()
-
-	data, err := io.ReadAll(file)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
-	}
-
-	var config Config
-	if err := json.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse config JSON: %w", err)
-	}
-
-	if err := ValidateConfig(&config); err != nil {
-		return nil, fmt.Errorf("config validation failed: %w", err)
-	}
-
-	return &config, nil
-}
-
-func ValidateConfig(config *Config) error {
-	if config.Server.Host == "" {
-		return fmt.Errorf("server host cannot be empty")
-	}
-	if config.Server.Port <= 0 || config.Server.Port > 65535 {
-		return fmt.Errorf("server port must be between 1 and 65535")
-	}
-	if config.Database.Host == "" {
-		return fmt.Errorf("database host cannot be empty")
-	}
-	if config.Logging.Level != "debug" && config.Logging.Level != "info" && config.Logging.Level != "warn" && config.Logging.Level != "error" {
-		return fmt.Errorf("logging level must be one of: debug, info, warn, error")
-	}
-	return nil
-}
-
-func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: file_processor <config_file_path>")
-		os.Exit(1)
-	}
-
-	config, err := LoadConfig(os.Args[1])
-	if err != nil {
-		fmt.Printf("Error loading config: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Configuration loaded successfully:\n")
-	fmt.Printf("Server: %s:%d\n", config.Server.Host, config.Server.Port)
-	fmt.Printf("Database: %s@%s:%d/%s\n", config.Database.Username, config.Database.Host, config.Database.Port, config.Database.Name)
-	fmt.Printf("Logging: level=%s, file=%s\n", config.Logging.Level, config.Logging.FilePath)
-}package main
-
-import (
-	"fmt"
+	"path/filepath"
 	"sync"
-	"time"
 )
 
 type FileProcessor struct {
-	workerCount int
-	jobQueue    chan string
-	wg          sync.WaitGroup
+	Workers   int
+	BatchSize int
 }
 
-func NewFileProcessor(workers int) *FileProcessor {
+func NewFileProcessor(workers, batchSize int) *FileProcessor {
 	return &FileProcessor{
-		workerCount: workers,
-		jobQueue:    make(chan string, 100),
+		Workers:   workers,
+		BatchSize: batchSize,
 	}
 }
 
-func (fp *FileProcessor) Start() {
-	for i := 0; i < fp.workerCount; i++ {
-		fp.wg.Add(1)
-		go fp.worker(i)
+func (fp *FileProcessor) ProcessFiles(paths []string, processFunc func(string) error) []error {
+	var wg sync.WaitGroup
+	errorChan := make(chan error, len(paths))
+	pathChan := make(chan string, len(paths))
+
+	for i := 0; i < fp.Workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for path := range pathChan {
+				if err := processFunc(path); err != nil {
+					errorChan <- fmt.Errorf("processing %s: %w", path, err)
+				}
+			}
+		}()
 	}
-}
 
-func (fp *FileProcessor) worker(id int) {
-	defer fp.wg.Done()
-	for filePath := range fp.jobQueue {
-		fp.processFile(id, filePath)
+	for _, path := range paths {
+		pathChan <- path
 	}
+	close(pathChan)
+	wg.Wait()
+	close(errorChan)
+
+	var errors []error
+	for err := range errorChan {
+		errors = append(errors, err)
+	}
+	return errors
 }
 
-func (fp *FileProcessor) processFile(workerID int, path string) {
-	fmt.Printf("Worker %d processing: %s\n", workerID, path)
-	time.Sleep(100 * time.Millisecond)
-	fmt.Printf("Worker %d completed: %s\n", workerID, path)
-}
+func readFileLines(path string) ([]string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
 
-func (fp *FileProcessor) AddJob(path string) {
-	fp.jobQueue <- path
-}
-
-func (fp *FileProcessor) Stop() {
-	close(fp.jobQueue)
-	fp.wg.Wait()
-	fmt.Println("All workers stopped")
+	var lines []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	return lines, scanner.Err()
 }
 
 func main() {
-	processor := NewFileProcessor(3)
-	processor.Start()
+	processor := NewFileProcessor(4, 10)
 
-	files := []string{"data1.txt", "data2.txt", "data3.txt", "data4.txt", "data5.txt"}
-	for _, file := range files {
-		processor.AddJob(file)
+	paths := []string{
+		"data/file1.txt",
+		"data/file2.txt",
+		"data/file3.txt",
 	}
 
-	processor.Stop()
+	errors := processor.ProcessFiles(paths, func(path string) error {
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			return err
+		}
+
+		lines, err := readFileLines(absPath)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Processed %s: %d lines\n", filepath.Base(path), len(lines))
+		return nil
+	})
+
+	if len(errors) > 0 {
+		fmt.Printf("Encountered %d errors:\n", len(errors))
+		for _, err := range errors {
+			fmt.Println(" -", err)
+		}
+	}
 }

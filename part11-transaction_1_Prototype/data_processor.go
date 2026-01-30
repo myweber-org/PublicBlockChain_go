@@ -1,58 +1,117 @@
 package main
 
 import (
+	"encoding/csv"
 	"errors"
-	"strings"
-	"unicode"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
 )
 
-type UserData struct {
-	Username string
-	Email    string
-	Age      int
+type DataRecord struct {
+	ID    int
+	Name  string
+	Value float64
 }
 
-func ValidateUserData(data UserData) error {
-	if strings.TrimSpace(data.Username) == "" {
-		return errors.New("username cannot be empty")
+func ReadCSVFile(filename string) ([]DataRecord, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
 	}
-	if len(data.Username) < 3 || len(data.Username) > 20 {
-		return errors.New("username must be between 3 and 20 characters")
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	records := make([]DataRecord, 0)
+
+	// Skip header
+	_, err = reader.Read()
+	if err != nil && err != io.EOF {
+		return nil, err
 	}
-	for _, r := range data.Username {
-		if !unicode.IsLetter(r) && !unicode.IsNumber(r) && r != '_' {
-			return errors.New("username can only contain letters, numbers, and underscores")
+
+	for {
+		row, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		if len(row) < 3 {
+			return nil, errors.New("invalid CSV format")
+		}
+
+		id, err := strconv.Atoi(row[0])
+		if err != nil {
+			return nil, fmt.Errorf("invalid ID: %v", err)
+		}
+
+		value, err := strconv.ParseFloat(row[2], 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid value: %v", err)
+		}
+
+		record := DataRecord{
+			ID:    id,
+			Name:  row[1],
+			Value: value,
+		}
+		records = append(records, record)
+	}
+
+	return records, nil
+}
+
+func CalculateAverage(records []DataRecord) float64 {
+	if len(records) == 0 {
+		return 0
+	}
+
+	var sum float64
+	for _, record := range records {
+		sum += record.Value
+	}
+	return sum / float64(len(records))
+}
+
+func FilterByThreshold(records []DataRecord, threshold float64) []DataRecord {
+	filtered := make([]DataRecord, 0)
+	for _, record := range records {
+		if record.Value >= threshold {
+			filtered = append(filtered, record)
+		}
+	}
+	return filtered
+}
+
+func WriteProcessedData(filename string, records []DataRecord) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	header := []string{"ID", "Name", "Value"}
+	if err := writer.Write(header); err != nil {
+		return err
+	}
+
+	for _, record := range records {
+		row := []string{
+			strconv.Itoa(record.ID),
+			record.Name,
+			strconv.FormatFloat(record.Value, 'f', 2, 64),
+		}
+		if err := writer.Write(row); err != nil {
+			return err
 		}
 	}
 
-	if !strings.Contains(data.Email, "@") || !strings.Contains(data.Email, ".") {
-		return errors.New("invalid email format")
-	}
-
-	if data.Age < 0 || data.Age > 150 {
-		return errors.New("age must be between 0 and 150")
-	}
-
 	return nil
-}
-
-func TransformUsername(username string) string {
-	return strings.ToLower(strings.TrimSpace(username))
-}
-
-func ProcessUserInput(rawUsername string, rawEmail string, rawAge int) (UserData, error) {
-	transformedUsername := TransformUsername(rawUsername)
-
-	userData := UserData{
-		Username: transformedUsername,
-		Email:    strings.TrimSpace(rawEmail),
-		Age:      rawAge,
-	}
-
-	err := ValidateUserData(userData)
-	if err != nil {
-		return UserData{}, err
-	}
-
-	return userData, nil
 }

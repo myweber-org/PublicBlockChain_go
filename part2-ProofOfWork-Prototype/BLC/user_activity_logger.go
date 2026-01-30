@@ -99,4 +99,35 @@ type responseRecorder struct {
 func (rr *responseRecorder) WriteHeader(code int) {
 	rr.statusCode = code
 	rr.ResponseWriter.WriteHeader(code)
+}package middleware
+
+import (
+	"log"
+	"net/http"
+	"time"
+)
+
+type ActivityLogger struct {
+	Logger *log.Logger
+}
+
+func NewActivityLogger(logger *log.Logger) *ActivityLogger {
+	return &ActivityLogger{Logger: logger}
+}
+
+func (al *ActivityLogger) LogActivity(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		startTime := time.Now()
+		userAgent := r.UserAgent()
+		clientIP := r.RemoteAddr
+		method := r.Method
+		path := r.URL.Path
+
+		al.Logger.Printf("Request started: %s %s from %s (%s)", method, path, clientIP, userAgent)
+
+		next.ServeHTTP(w, r)
+
+		duration := time.Since(startTime)
+		al.Logger.Printf("Request completed: %s %s took %v", method, path, duration)
+	})
 }

@@ -89,4 +89,63 @@ func Authenticate(next http.HandlerFunc) http.HandlerFunc {
         r.Header.Set("X-Role", claims.Role)
         next.ServeHTTP(w, r)
     }
+}package middleware
+
+import (
+	"net/http"
+	"strings"
+)
+
+type UserAuthenticator struct {
+	secretKey []byte
+}
+
+func NewUserAuthenticator(secretKey string) *UserAuthenticator {
+	return &UserAuthenticator{
+		secretKey: []byte(secretKey),
+	}
+}
+
+func (ua *UserAuthenticator) Authenticate(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			http.Error(w, "Authorization header required", http.StatusUnauthorized)
+			return
+		}
+
+		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		if tokenString == authHeader {
+			http.Error(w, "Bearer token required", http.StatusUnauthorized)
+			return
+		}
+
+		claims, err := ua.validateToken(tokenString)
+		if err != nil {
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			return
+		}
+
+		r = r.WithContext(ua.addClaimsToContext(r.Context(), claims))
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (ua *UserAuthenticator) validateToken(tokenString string) (map[string]interface{}, error) {
+	// Token validation logic would go here
+	// This is a placeholder implementation
+	if tokenString == "valid_token_example" {
+		return map[string]interface{}{
+			"user_id": "12345",
+			"role":    "admin",
+		}, nil
+	}
+	return nil, http.ErrNoCookie
+}
+
+func (ua *UserAuthenticator) addClaimsToContext(ctx context.Context, claims map[string]interface{}) context.Context {
+	for key, value := range claims {
+		ctx = context.WithValue(ctx, key, value)
+	}
+	return ctx
 }

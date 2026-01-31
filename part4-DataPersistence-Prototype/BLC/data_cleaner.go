@@ -112,4 +112,18 @@ func main() {
 	rawData := []string{"  Apple", "banana", "Apple", "  BANANA  ", "Cherry"}
 	cleaned := CleanData(rawData)
 	fmt.Println("Cleaned Data:", cleaned)
+}package datautil
+
+func RemoveDuplicates[T comparable](slice []T) []T {
+    seen := make(map[T]bool)
+    result := []T{}
+    
+    for _, item := range slice {
+        if !seen[item] {
+            seen[item] = true
+            result = append(result, item)
+        }
+    }
+    
+    return result
 }

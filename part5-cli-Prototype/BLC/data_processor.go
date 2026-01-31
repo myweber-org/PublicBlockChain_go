@@ -109,3 +109,57 @@ func ProcessUserInput(rawUsername string, rawEmail string, rawAge int) (UserData
 
 	return user, nil
 }
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "strings"
+)
+
+func ValidateJSONStructure(rawData string) (bool, error) {
+    var data map[string]interface{}
+    decoder := json.NewDecoder(strings.NewReader(rawData))
+    decoder.DisallowUnknownFields()
+
+    if err := decoder.Decode(&data); err != nil {
+        return false, fmt.Errorf("invalid JSON structure: %w", err)
+    }
+
+    if len(data) == 0 {
+        return false, fmt.Errorf("JSON data is empty")
+    }
+
+    return true, nil
+}
+
+func ExtractJSONKeys(rawData string) ([]string, error) {
+    var data map[string]interface{}
+    if err := json.Unmarshal([]byte(rawData), &data); err != nil {
+        return nil, err
+    }
+
+    keys := make([]string, 0, len(data))
+    for key := range data {
+        keys = append(keys, key)
+    }
+    return keys, nil
+}
+
+func main() {
+    sampleJSON := `{"name": "test", "value": 42, "active": true}`
+    
+    valid, err := ValidateJSONStructure(sampleJSON)
+    if err != nil {
+        fmt.Printf("Validation error: %v\n", err)
+        return
+    }
+    fmt.Printf("JSON is valid: %v\n", valid)
+
+    keys, err := ExtractJSONKeys(sampleJSON)
+    if err != nil {
+        fmt.Printf("Key extraction error: %v\n", err)
+        return
+    }
+    fmt.Printf("Extracted keys: %v\n", keys)
+}

@@ -1,182 +1,45 @@
-
 package main
 
 import (
-	"encoding/csv"
-	"fmt"
-	"io"
-	"os"
+	"errors"
 	"strings"
 )
 
-type DataProcessor struct {
-	FilePath string
-	Headers  []string
-	Records  [][]string
+type UserData struct {
+	Username string
+	Email    string
+	Age      int
 }
 
-func NewDataProcessor(filePath string) *DataProcessor {
-	return &DataProcessor{
-		FilePath: filePath,
+func ValidateUserData(data UserData) error {
+	if strings.TrimSpace(data.Username) == "" {
+		return errors.New("username cannot be empty")
 	}
-}
-
-func (dp *DataProcessor) LoadAndValidate() error {
-	file, err := os.Open(dp.FilePath)
-	if err != nil {
-		return fmt.Errorf("failed to open file: %w", err)
+	if !strings.Contains(data.Email, "@") {
+		return errors.New("invalid email format")
 	}
-	defer file.Close()
-
-	reader := csv.NewReader(file)
-	headers, err := reader.Read()
-	if err != nil {
-		return fmt.Errorf("failed to read headers: %w", err)
+	if data.Age < 0 || data.Age > 150 {
+		return errors.New("age must be between 0 and 150")
 	}
-	dp.Headers = headers
-
-	dp.Records = [][]string{}
-	lineNumber := 1
-	for {
-		record, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("csv read error at line %d: %w", lineNumber, err)
-		}
-
-		if len(record) != len(headers) {
-			return fmt.Errorf("column count mismatch at line %d: expected %d, got %d", lineNumber, len(headers), len(record))
-		}
-
-		for i, value := range record {
-			record[i] = strings.TrimSpace(value)
-			if record[i] == "" {
-				return fmt.Errorf("empty value at line %d, column %d", lineNumber, i+1)
-			}
-		}
-
-		dp.Records = append(dp.Records, record)
-		lineNumber++
-	}
-
-	if len(dp.Records) == 0 {
-		return fmt.Errorf("no data records found in file")
-	}
-
 	return nil
 }
 
-func (dp *DataProcessor) GetColumnStats(columnIndex int) (min, max string, count int) {
-	if columnIndex < 0 || columnIndex >= len(dp.Headers) {
-		return "", "", 0
+func TransformUsername(data UserData) UserData {
+	data.Username = strings.ToLower(strings.TrimSpace(data.Username))
+	return data
+}
+
+func ProcessUserInput(rawUsername string, rawEmail string, rawAge int) (UserData, error) {
+	userData := UserData{
+		Username: rawUsername,
+		Email:    rawEmail,
+		Age:      rawAge,
 	}
 
-	if len(dp.Records) == 0 {
-		return "", "", 0
+	if err := ValidateUserData(userData); err != nil {
+		return UserData{}, err
 	}
 
-	min = dp.Records[0][columnIndex]
-	max = dp.Records[0][columnIndex]
-	count = len(dp.Records)
-
-	for _, record := range dp.Records {
-		value := record[columnIndex]
-		if value < min {
-			min = value
-		}
-		if value > max {
-			max = value
-		}
-	}
-
-	return min, max, count
-}
-
-func (dp *DataProcessor) FilterRecords(predicate func([]string) bool) [][]string {
-	var filtered [][]string
-	for _, record := range dp.Records {
-		if predicate(record) {
-			filtered = append(filtered, record)
-		}
-	}
-	return filtered
-}
-package data_processor
-
-import (
-	"regexp"
-	"strings"
-)
-
-func CleanInput(input string) string {
-	// Remove extra whitespace
-	re := regexp.MustCompile(`\s+`)
-	cleaned := re.ReplaceAllString(input, " ")
-	
-	// Trim spaces from beginning and end
-	cleaned = strings.TrimSpace(cleaned)
-	
-	// Convert to lowercase for normalization
-	cleaned = strings.ToLower(cleaned)
-	
-	return cleaned
-}
-
-func ValidateEmail(email string) bool {
-	// Simple email validation regex
-	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
-	return emailRegex.MatchString(email)
-}
-
-func ExtractDomain(email string) (string, bool) {
-	if !ValidateEmail(email) {
-		return "", false
-	}
-	
-	parts := strings.Split(email, "@")
-	if len(parts) != 2 {
-		return "", false
-	}
-	
-	return parts[1], true
-}
-package main
-
-import (
-	"regexp"
-	"strings"
-)
-
-type DataProcessor struct {
-	allowedPattern *regexp.Regexp
-}
-
-func NewDataProcessor(pattern string) (*DataProcessor, error) {
-	compiled, err := regexp.Compile(pattern)
-	if err != nil {
-		return nil, err
-	}
-	return &DataProcessor{allowedPattern: compiled}, nil
-}
-
-func (dp *DataProcessor) CleanInput(input string) string {
-	trimmed := strings.TrimSpace(input)
-	return dp.allowedPattern.FindString(trimmed)
-}
-
-func (dp *DataProcessor) Validate(input string) bool {
-	return dp.allowedPattern.MatchString(input)
-}
-
-func (dp *DataProcessor) ProcessBatch(inputs []string) []string {
-	var results []string
-	for _, item := range inputs {
-		cleaned := dp.CleanInput(item)
-		if cleaned != "" {
-			results = append(results, cleaned)
-		}
-	}
-	return results
+	userData = TransformUsername(userData)
+	return userData, nil
 }

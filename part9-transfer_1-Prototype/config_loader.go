@@ -7,19 +7,20 @@ import (
 )
 
 type Config struct {
-    ServerPort int
     DatabaseURL string
+    MaxConnections int
     DebugMode bool
     AllowedOrigins []string
 }
 
-func LoadConfig() (*Config, error) {
+func Load() (*Config, error) {
     cfg := &Config{
-        ServerPort: getEnvAsInt("SERVER_PORT", 8080),
         DatabaseURL: getEnv("DATABASE_URL", "postgres://localhost:5432/app"),
+        MaxConnections: getEnvAsInt("MAX_CONNECTIONS", 10),
         DebugMode: getEnvAsBool("DEBUG_MODE", false),
-        AllowedOrigins: getEnvAsSlice("ALLOWED_ORIGINS", []string{"*"}, ","),
+        AllowedOrigins: getEnvAsSlice("ALLOWED_ORIGINS", []string{"localhost:3000"}, ","),
     }
+    
     return cfg, nil
 }
 

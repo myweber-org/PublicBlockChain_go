@@ -1,52 +1,66 @@
 package main
 
 import (
-	"fmt"
-	"runtime"
+	"net/http"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-type SystemMetrics struct {
-	Timestamp   time.Time
-	CPUPercent  float64
-	MemoryAlloc uint64
-	NumGoroutine int
+var (
+	httpRequestDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "http_request_duration_seconds",
+			Help:    "Duration of HTTP requests in seconds",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"method", "path", "status"},
+	)
+
+	httpRequestCount = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "http_request_total",
+			Help: "Total number of HTTP requests",
+		},
+		[]string{"method", "path", "status"},
+	)
+)
+
+func metricsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		recorder := &responseRecorder{ResponseWriter: w, statusCode: http.StatusOK}
+		next.ServeHTTP(recorder, r)
+
+		duration := time.Since(start).Seconds()
+		status := http.StatusText(recorder.statusCode)
+
+		httpRequestDuration.WithLabelValues(r.Method, r.URL.Path, status).Observe(duration)
+		httpRequestCount.WithLabelValues(r.Method, r.URL.Path, status).Inc()
+	})
 }
 
-func collectMetrics() SystemMetrics {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-
-	return SystemMetrics{
-		Timestamp:   time.Now(),
-		CPUPercent:  getCPUUsage(),
-		MemoryAlloc: m.Alloc,
-		NumGoroutine: runtime.NumGoroutine(),
-	}
+type responseRecorder struct {
+	http.ResponseWriter
+	statusCode int
 }
 
-func getCPUUsage() float64 {
-	start := time.Now()
-	runtime.Gosched()
-	time.Sleep(50 * time.Millisecond)
-	elapsed := time.Since(start).Seconds()
-	return (50.0 / 1000.0) / elapsed * 100
-}
-
-func displayMetrics(metrics SystemMetrics) {
-	fmt.Printf("[%s] CPU: %.2f%% | Memory: %v MB | Goroutines: %d\n",
-		metrics.Timestamp.Format("15:04:05"),
-		metrics.CPUPercent,
-		metrics.MemoryAlloc/1024/1024,
-		metrics.NumGoroutine)
+func (rr *responseRecorder) WriteHeader(code int) {
+	rr.statusCode = code
+	rr.ResponseWriter.WriteHeader(code)
 }
 
 func main() {
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Hello, World!"))
+	})
 
-	for range ticker.C {
-		metrics := collectMetrics()
-		displayMetrics(metrics)
-	}
+	mux.Handle("/metrics", promhttp.Handler())
+
+	handler := metricsMiddleware(mux)
+	http.ListenAndServe(":8080", handler)
 }

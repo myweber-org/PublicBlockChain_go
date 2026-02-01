@@ -349,4 +349,113 @@ func validateConfig(config *Config) error {
 	}
 	
 	return nil
+}package config
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"reflect"
+	"strconv"
+	"strings"
+)
+
+type Config struct {
+	ServerPort int    `env:"SERVER_PORT" default:"8080"`
+	DBHost     string `env:"DB_HOST" default:"localhost"`
+	DBPort     int    `env:"DB_PORT" default:"5432"`
+	DebugMode  bool   `env:"DEBUG_MODE" default:"false"`
+	APIKeys    []string `env:"API_KEYS" default:"[]"`
+}
+
+func Load() (*Config, error) {
+	cfg := &Config{}
+	
+	v := reflect.ValueOf(cfg).Elem()
+	t := v.Type()
+
+	for i := 0; i < v.NumField(); i++ {
+		field := v.Field(i)
+		structField := t.Field(i)
+		
+		envKey := structField.Tag.Get("env")
+		defaultValue := structField.Tag.Get("default")
+		
+		if envKey == "" {
+			continue
+		}
+		
+		envValue := os.Getenv(envKey)
+		if envValue == "" {
+			envValue = defaultValue
+		}
+		
+		if err := setField(field, envValue); err != nil {
+			return nil, fmt.Errorf("failed to set field %s: %w", structField.Name, err)
+		}
+	}
+	
+	if err := validateConfig(cfg); err != nil {
+		return nil, err
+	}
+	
+	return cfg, nil
+}
+
+func setField(field reflect.Value, value string) error {
+	if !field.CanSet() {
+		return errors.New("cannot set field")
+	}
+	
+	switch field.Kind() {
+	case reflect.String:
+		field.SetString(value)
+	case reflect.Int:
+		intVal, err := strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+		field.SetInt(int64(intVal))
+	case reflect.Bool:
+		boolVal, err := strconv.ParseBool(value)
+		if err != nil {
+			return err
+		}
+		field.SetBool(boolVal)
+	case reflect.Slice:
+		if field.Type().Elem().Kind() == reflect.String {
+			var slice []string
+			if err := json.Unmarshal([]byte(value), &slice); err != nil {
+				return err
+			}
+			field.Set(reflect.ValueOf(slice))
+		}
+	default:
+		return fmt.Errorf("unsupported field type: %s", field.Kind())
+	}
+	
+	return nil
+}
+
+func validateConfig(cfg *Config) error {
+	var errors []string
+	
+	if cfg.ServerPort <= 0 || cfg.ServerPort > 65535 {
+		errors = append(errors, "SERVER_PORT must be between 1 and 65535")
+	}
+	
+	if cfg.DBHost == "" {
+		errors = append(errors, "DB_HOST cannot be empty")
+	}
+	
+	if cfg.DBPort <= 0 || cfg.DBPort > 65535 {
+		errors = append(errors, "DB_PORT must be between 1 and 65535")
+	}
+	
+	if len(errors) > 0 {
+		return fmt.Errorf("validation failed: %s", strings.Join(errors, ", "))
+	}
+	
+	return nil
 }

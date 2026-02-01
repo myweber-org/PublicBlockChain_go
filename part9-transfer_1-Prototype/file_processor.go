@@ -116,4 +116,72 @@ func main() {
 	
 	validated := processor.GetValidatedCount()
 	fmt.Printf("Successfully validated records: %d/%d\n", validated, len(processor.records))
+}package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+type DataRecord struct {
+	ID      int    `json:"id"`
+	Name    string `json:"name"`
+	Value   int    `json:"value"`
+	Enabled bool   `json:"enabled"`
+}
+
+func readData(filename string) ([]DataRecord, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var records []DataRecord
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(&records)
+	return records, err
+}
+
+func writeData(filename string, records []DataRecord) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(records)
+}
+
+func processRecords(records []DataRecord) []DataRecord {
+	for i := range records {
+		if records[i].Enabled {
+			records[i].Value *= 2
+		}
+	}
+	return records
+}
+
+func main() {
+	inputFile := "input.json"
+	outputFile := "output.json"
+
+	records, err := readData(inputFile)
+	if err != nil {
+		fmt.Printf("Error reading file: %v\n", err)
+		return
+	}
+
+	processed := processRecords(records)
+
+	err = writeData(outputFile, processed)
+	if err != nil {
+		fmt.Printf("Error writing file: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Processed %d records successfully\n", len(processed))
 }

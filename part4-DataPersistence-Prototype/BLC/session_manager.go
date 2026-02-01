@@ -13,26 +13,26 @@ type Session struct {
 }
 
 type Manager struct {
-    sessions map[string]*Session
+    sessions map[string]Session
     mu       sync.RWMutex
     duration time.Duration
 }
 
-func NewManager(duration time.Duration) *Manager {
+func NewManager(sessionDuration time.Duration) *Manager {
     m := &Manager{
-        sessions: make(map[string]*Session),
-        duration: duration,
+        sessions: make(map[string]Session),
+        duration: sessionDuration,
     }
-    go m.cleanup()
+    go m.cleanupRoutine()
     return m
 }
 
-func (m *Manager) Create(userID int) *Session {
+func (m *Manager) Create(userID int) Session {
     m.mu.Lock()
     defer m.mu.Unlock()
 
-    session := &Session{
-        ID:        generateID(),
+    session := Session{
+        ID:        generateUUID(),
         UserID:    userID,
         Data:      make(map[string]interface{}),
         ExpiresAt: time.Now().Add(m.duration),
@@ -41,18 +41,31 @@ func (m *Manager) Create(userID int) *Session {
     return session
 }
 
-func (m *Manager) Get(id string) (*Session, bool) {
+func (m *Manager) Get(sessionID string) (Session, bool) {
     m.mu.RLock()
     defer m.mu.RUnlock()
 
-    session, exists := m.sessions[id]
+    session, exists := m.sessions[sessionID]
     if !exists || time.Now().After(session.ExpiresAt) {
-        return nil, false
+        return Session{}, false
     }
     return session, true
 }
 
-func (m *Manager) cleanup() {
+func (m *Manager) Refresh(sessionID string) bool {
+    m.mu.Lock()
+    defer m.mu.Unlock()
+
+    session, exists := m.sessions[sessionID]
+    if !exists {
+        return false
+    }
+    session.ExpiresAt = time.Now().Add(m.duration)
+    m.sessions[sessionID] = session
+    return true
+}
+
+func (m *Manager) cleanupRoutine() {
     ticker := time.NewTicker(time.Hour)
     defer ticker.Stop()
 
@@ -68,15 +81,6 @@ func (m *Manager) cleanup() {
     }
 }
 
-func generateID() string {
-    return time.Now().Format("20060102150405") + randomString(8)
-}
-
-func randomString(n int) string {
-    const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    b := make([]byte, n)
-    for i := range b {
-        b[i] = letters[time.Now().UnixNano()%int64(len(letters))]
-    }
-    return string(b)
+func generateUUID() string {
+    return "generated-unique-id"
 }

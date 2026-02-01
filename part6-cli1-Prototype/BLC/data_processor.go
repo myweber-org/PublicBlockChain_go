@@ -82,3 +82,107 @@ type InvalidUsernameError struct {
 func (e *InvalidUsernameError) Error() string {
 	return "Username must be at least 3 characters long: " + e.Username
 }
+package main
+
+import (
+    "encoding/csv"
+    "errors"
+    "fmt"
+    "io"
+    "os"
+    "strconv"
+)
+
+type Record struct {
+    ID    int
+    Name  string
+    Value float64
+}
+
+func ProcessCSV(filename string) ([]Record, error) {
+    file, err := os.Open(filename)
+    if err != nil {
+        return nil, fmt.Errorf("failed to open file: %w", err)
+    }
+    defer file.Close()
+
+    reader := csv.NewReader(file)
+    var records []Record
+    lineNumber := 0
+
+    for {
+        line, err := reader.Read()
+        if err == io.EOF {
+            break
+        }
+        if err != nil {
+            return nil, fmt.Errorf("csv read error: %w", err)
+        }
+
+        lineNumber++
+        if lineNumber == 1 {
+            continue
+        }
+
+        if len(line) != 3 {
+            return nil, errors.New("invalid column count")
+        }
+
+        id, err := strconv.Atoi(line[0])
+        if err != nil {
+            return nil, fmt.Errorf("invalid ID format: %w", err)
+        }
+
+        value, err := strconv.ParseFloat(line[2], 64)
+        if err != nil {
+            return nil, fmt.Errorf("invalid value format: %w", err)
+        }
+
+        records = append(records, Record{
+            ID:    id,
+            Name:  line[1],
+            Value: value,
+        })
+    }
+
+    return records, nil
+}
+
+func ValidateRecords(records []Record) error {
+    if len(records) == 0 {
+        return errors.New("no records to validate")
+    }
+
+    seen := make(map[int]bool)
+    for _, r := range records {
+        if seen[r.ID] {
+            return fmt.Errorf("duplicate ID found: %d", r.ID)
+        }
+        seen[r.ID] = true
+
+        if r.Value < 0 {
+            return fmt.Errorf("negative value for ID %d: %f", r.ID, r.Value)
+        }
+    }
+
+    return nil
+}
+
+func CalculateStats(records []Record) (float64, float64) {
+    if len(records) == 0 {
+        return 0, 0
+    }
+
+    var sum float64
+    var max float64 = records[0].Value
+
+    for _, r := range records {
+        sum += r.Value
+        if r.Value > max {
+            max = r.Value
+        }
+    }
+
+    average := sum / float64(len(records))
+    return average, max
+}

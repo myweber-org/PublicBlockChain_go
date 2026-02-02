@@ -168,3 +168,44 @@ func main() {
     fmt.Printf("Original: %v\n", data)
     fmt.Printf("Cleaned: %v\n", cleaned)
 }
+package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+type DataCleaner struct{}
+
+func (dc DataCleaner) RemoveDuplicates(items []string) []string {
+	seen := make(map[string]bool)
+	result := []string{}
+	for _, item := range items {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
+			continue
+		}
+		if !seen[trimmed] {
+			seen[trimmed] = true
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
+func (dc DataCleaner) Normalize(items []string) []string {
+	cleaned := dc.RemoveDuplicates(items)
+	for i, v := range cleaned {
+		cleaned[i] = strings.ToLower(v)
+	}
+	return cleaned
+}
+
+func main() {
+	cleaner := DataCleaner{}
+	data := []string{"  Apple ", "banana", "  apple", "Banana", "  ", "cherry"}
+	unique := cleaner.RemoveDuplicates(data)
+	fmt.Println("Unique cleaned:", unique)
+	normalized := cleaner.Normalize(data)
+	fmt.Println("Normalized:", normalized)
+}

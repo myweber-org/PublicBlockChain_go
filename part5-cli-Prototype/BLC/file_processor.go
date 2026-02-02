@@ -121,3 +121,119 @@ func main() {
 	fmt.Printf("\nSummary: Processed %d files, total size: %d bytes, total lines: %d\n",
 		fileCount, totalSize, totalLines)
 }
+package main
+
+import (
+	"errors"
+	"fmt"
+	"sync"
+	"time"
+)
+
+type DataRecord struct {
+	ID        string
+	Value     int
+	Timestamp time.Time
+	Valid     bool
+}
+
+type Processor struct {
+	records []DataRecord
+	mu      sync.RWMutex
+}
+
+func NewProcessor() *Processor {
+	return &Processor{
+		records: make([]DataRecord, 0),
+	}
+}
+
+func (p *Processor) AddRecord(id string, value int) error {
+	if id == "" {
+		return errors.New("id cannot be empty")
+	}
+	if value < 0 {
+		return errors.New("value must be non-negative")
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	record := DataRecord{
+		ID:        id,
+		Value:     value,
+		Timestamp: time.Now(),
+		Valid:     true,
+	}
+	p.records = append(p.records, record)
+	return nil
+}
+
+func (p *Processor) ValidateRecords() {
+	p.mu.RLock()
+	records := make([]DataRecord, len(p.records))
+	copy(records, p.records)
+	p.mu.RUnlock()
+
+	var wg sync.WaitGroup
+	for i := range records {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			p.validateRecord(&records[idx])
+		}(i)
+	}
+	wg.Wait()
+
+	p.mu.Lock()
+	p.records = records
+	p.mu.Unlock()
+}
+
+func (p *Processor) validateRecord(record *DataRecord) {
+	if record.Value > 1000 {
+		record.Valid = false
+	}
+	if time.Since(record.Timestamp) > 24*time.Hour {
+		record.Valid = false
+	}
+}
+
+func (p *Processor) GetValidCount() int {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	count := 0
+	for _, record := range p.records {
+		if record.Valid {
+			count++
+		}
+	}
+	return count
+}
+
+func main() {
+	processor := NewProcessor()
+
+	records := []struct {
+		id    string
+		value int
+	}{
+		{"A001", 150},
+		{"A002", 2500},
+		{"A003", 75},
+		{"A004", -5},
+		{"", 100},
+	}
+
+	for _, r := range records {
+		err := processor.AddRecord(r.id, r.value)
+		if err != nil {
+			fmt.Printf("Failed to add record %s: %v\n", r.id, err)
+		}
+	}
+
+	processor.ValidateRecords()
+	validCount := processor.GetValidCount()
+	fmt.Printf("Valid records: %d out of %d\n", validCount, len(records))
+}

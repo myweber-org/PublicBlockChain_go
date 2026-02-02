@@ -159,4 +159,144 @@ func main() {
     }
 
     fmt.Println("Log rotation test completed")
+}package main
+
+import (
+    "fmt"
+    "os"
+    "path/filepath"
+    "sync"
+    "time"
+)
+
+type Rotator struct {
+    mu          sync.Mutex
+    filePath    string
+    maxSize     int64
+    maxAge      time.Duration
+    currentFile *os.File
+    currentSize int64
+    createdAt   time.Time
+}
+
+func NewRotator(filePath string, maxSize int64, maxAge time.Duration) (*Rotator, error) {
+    r := &Rotator{
+        filePath: filePath,
+        maxSize:  maxSize,
+        maxAge:   maxAge,
+    }
+    if err := r.openOrCreate(); err != nil {
+        return nil, err
+    }
+    return r, nil
+}
+
+func (r *Rotator) openOrCreate() error {
+    r.mu.Lock()
+    defer r.mu.Unlock()
+
+    if r.currentFile != nil {
+        r.currentFile.Close()
+    }
+
+    info, err := os.Stat(r.filePath)
+    if os.IsNotExist(err) {
+        file, err := os.Create(r.filePath)
+        if err != nil {
+            return err
+        }
+        r.currentFile = file
+        r.currentSize = 0
+        r.createdAt = time.Now()
+        return nil
+    }
+    if err != nil {
+        return err
+    }
+
+    file, err := os.OpenFile(r.filePath, os.O_APPEND|os.O_WRONLY, 0644)
+    if err != nil {
+        return err
+    }
+    r.currentFile = file
+    r.currentSize = info.Size()
+    r.createdAt = info.ModTime()
+    return nil
+}
+
+func (r *Rotator) Write(p []byte) (int, error) {
+    r.mu.Lock()
+    defer r.mu.Unlock()
+
+    if r.shouldRotateLocked(len(p)) {
+        if err := r.rotateLocked(); err != nil {
+            return 0, err
+        }
+    }
+
+    n, err := r.currentFile.Write(p)
+    if err != nil {
+        return n, err
+    }
+    r.currentSize += int64(n)
+    return n, nil
+}
+
+func (r *Rotator) shouldRotateLocked(appendSize int) bool {
+    if r.currentSize+int64(appendSize) > r.maxSize {
+        return true
+    }
+    if time.Since(r.createdAt) > r.maxAge {
+        return true
+    }
+    return false
+}
+
+func (r *Rotator) rotateLocked() error {
+    if r.currentFile != nil {
+        r.currentFile.Close()
+    }
+
+    timestamp := time.Now().Format("20060102_150405")
+    ext := filepath.Ext(r.filePath)
+    base := r.filePath[:len(r.filePath)-len(ext)]
+    archivePath := fmt.Sprintf("%s_%s%s", base, timestamp, ext)
+
+    if err := os.Rename(r.filePath, archivePath); err != nil {
+        return err
+    }
+
+    file, err := os.Create(r.filePath)
+    if err != nil {
+        return err
+    }
+    r.currentFile = file
+    r.currentSize = 0
+    r.createdAt = time.Now()
+    return nil
+}
+
+func (r *Rotator) Close() error {
+    r.mu.Lock()
+    defer r.mu.Unlock()
+    if r.currentFile != nil {
+        return r.currentFile.Close()
+    }
+    return nil
+}
+
+func main() {
+    rotator, err := NewRotator("app.log", 1024*1024, 24*time.Hour)
+    if err != nil {
+        panic(err)
+    }
+    defer rotator.Close()
+
+    for i := 0; i < 100; i++ {
+        msg := fmt.Sprintf("Log entry %d at %s\n", i, time.Now().Format(time.RFC3339))
+        if _, err := rotator.Write([]byte(msg)); err != nil {
+            panic(err)
+        }
+        time.Sleep(100 * time.Millisecond)
+    }
 }

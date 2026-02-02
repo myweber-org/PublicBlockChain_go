@@ -260,4 +260,33 @@ func validateConfig(cfg *Config) error {
 var (
 	ErrInvalidPort    = errors.New("invalid port number")
 	ErrMissingAPIKeys = errors.New("at least one API key is required")
+)package config
+
+import (
+	"os"
+	"strconv"
 )
+
+type AppConfig struct {
+	ServerPort int
+	DebugMode  bool
+	ApiKey     string
+}
+
+func LoadConfig() *AppConfig {
+	port, _ := strconv.Atoi(getEnv("SERVER_PORT", "8080"))
+	debug, _ := strconv.ParseBool(getEnv("DEBUG_MODE", "false"))
+
+	return &AppConfig{
+		ServerPort: port,
+		DebugMode:  debug,
+		ApiKey:     getEnv("API_KEY", ""),
+	}
+}
+
+func getEnv(key, defaultValue string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return defaultValue
+}

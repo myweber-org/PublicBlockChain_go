@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -7,9 +6,9 @@ import (
 )
 
 type ExchangeRate struct {
-	FromCurrency string
-	ToCurrency   string
-	Rate         float64
+	From string
+	To   string
+	Rate float64
 }
 
 type CurrencyConverter struct {
@@ -26,19 +25,19 @@ func NewCurrencyConverter() *CurrencyConverter {
 func (c *CurrencyConverter) AddRate(from, to string, rate float64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	key := fmt.Sprintf("%s:%s", from, to)
+	key := from + ":" + to
 	c.rates[key] = rate
 }
 
 func (c *CurrencyConverter) Convert(amount float64, from, to string) (float64, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	if from == to {
 		return amount, nil
 	}
 
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	key := fmt.Sprintf("%s:%s", from, to)
+	key := from + ":" + to
 	rate, exists := c.rates[key]
 	if !exists {
 		return 0, fmt.Errorf("exchange rate not found for %s to %s", from, to)
@@ -52,8 +51,8 @@ func (c *CurrencyConverter) GetSupportedPairs() []string {
 	defer c.mu.RUnlock()
 
 	pairs := make([]string, 0, len(c.rates))
-	for key := range c.rates {
-		pairs = append(pairs, key)
+	for pair := range c.rates {
+		pairs = append(pairs, pair)
 	}
 	return pairs
 }
@@ -74,20 +73,4 @@ func main() {
 
 	fmt.Printf("%.2f USD = %.2f EUR\n", amount, converted)
 	fmt.Printf("Supported pairs: %v\n", converter.GetSupportedPairs())
-}
-package main
-
-import (
-    "fmt"
-)
-
-func ConvertUSDToEUR(amount float64) float64 {
-    const exchangeRate = 0.85
-    return amount * exchangeRate
-}
-
-func main() {
-    usdAmount := 100.0
-    eurAmount := ConvertUSDToEUR(usdAmount)
-    fmt.Printf("%.2f USD = %.2f EUR\n", usdAmount, eurAmount)
 }

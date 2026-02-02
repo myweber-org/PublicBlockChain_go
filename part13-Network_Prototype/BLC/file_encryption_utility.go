@@ -360,4 +360,134 @@ func generateKey() ([]byte, error) {
 		return nil, err
 	}
 	return key, nil
+}package main
+
+import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"io"
+	"strings"
+
+	"golang.org/x/crypto/pbkdf2"
+)
+
+const (
+	saltSize      = 16
+	nonceSize     = 12
+	keyIterations = 100000
+	keyLength     = 32
+)
+
+type EncryptionResult struct {
+	Ciphertext string
+	Salt       string
+	Nonce      string
+}
+
+func deriveKey(password string, salt []byte) []byte {
+	return pbkdf2.Key([]byte(password), salt, keyIterations, keyLength, sha256.New)
+}
+
+func Encrypt(plaintext, password string) (*EncryptionResult, error) {
+	salt := make([]byte, saltSize)
+	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
+		return nil, fmt.Errorf("salt generation failed: %w", err)
+	}
+
+	nonce := make([]byte, nonceSize)
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, fmt.Errorf("nonce generation failed: %w", err)
+	}
+
+	key := deriveKey(password, salt)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, fmt.Errorf("cipher creation failed: %w", err)
+	}
+
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("GCM mode initialization failed: %w", err)
+	}
+
+	ciphertext := aesgcm.Seal(nil, nonce, []byte(plaintext), nil)
+
+	return &EncryptionResult{
+		Ciphertext: base64.StdEncoding.EncodeToString(ciphertext),
+		Salt:       base64.StdEncoding.EncodeToString(salt),
+		Nonce:      base64.StdEncoding.EncodeToString(nonce),
+	}, nil
+}
+
+func Decrypt(encrypted *EncryptionResult, password string) (string, error) {
+	salt, err := base64.StdEncoding.DecodeString(encrypted.Salt)
+	if err != nil {
+		return "", fmt.Errorf("salt decoding failed: %w", err)
+	}
+
+	nonce, err := base64.StdEncoding.DecodeString(encrypted.Nonce)
+	if err != nil {
+		return "", fmt.Errorf("nonce decoding failed: %w", err)
+	}
+
+	ciphertext, err := base64.StdEncoding.DecodeString(encrypted.Ciphertext)
+	if err != nil {
+		return "", fmt.Errorf("ciphertext decoding failed: %w", err)
+	}
+
+	key := deriveKey(password, salt)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", fmt.Errorf("cipher creation failed: %w", err)
+	}
+
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", fmt.Errorf("GCM mode initialization failed: %w", err)
+	}
+
+	plaintext, err := aesgcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", errors.New("decryption failed - incorrect password or corrupted data")
+	}
+
+	return string(plaintext), nil
+}
+
+func main() {
+	password := "securePass123!@#"
+	originalText := "Sensitive data that requires encryption"
+
+	fmt.Printf("Original text: %s\n\n", originalText)
+
+	encrypted, err := Encrypt(originalText, password)
+	if err != nil {
+		fmt.Printf("Encryption error: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Encryption successful\n")
+	fmt.Printf("Salt (base64): %s\n", encrypted.Salt)
+	fmt.Printf("Nonce (base64): %s\n", encrypted.Nonce)
+	fmt.Printf("Ciphertext (base64): %s\n\n", encrypted.Ciphertext)
+
+	decrypted, err := Decrypt(encrypted, password)
+	if err != nil {
+		fmt.Printf("Decryption error: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Decryption successful\n")
+	fmt.Printf("Decrypted text: %s\n", decrypted)
+
+	if strings.EqualFold(originalText, decrypted) {
+		fmt.Println("\nVerification: Original and decrypted texts match!")
+	} else {
+		fmt.Println("\nWarning: Original and decrypted texts DO NOT match!")
+	}
 }

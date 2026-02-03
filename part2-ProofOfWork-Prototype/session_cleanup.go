@@ -77,4 +77,66 @@ func cleanupExpiredSessions(ctx context.Context, db *db.Database) {
 	if result.RowsAffected > 0 {
 		log.Printf("Cleaned up %d expired sessions", result.RowsAffected)
 	}
+}package main
+
+import (
+    "context"
+    "log"
+    "time"
+
+    "github.com/jackc/pgx/v5"
+)
+
+const (
+    cleanupInterval = 1 * time.Hour
+    sessionTTL      = 24 * time.Hour
+    deleteBatchSize = 1000
+)
+
+func main() {
+    connStr := "postgresql://user:pass@localhost:5432/dbname"
+    conn, err := pgx.Connect(context.Background(), connStr)
+    if err != nil {
+        log.Fatalf("Unable to connect to database: %v", err)
+    }
+    defer conn.Close(context.Background())
+
+    ticker := time.NewTicker(cleanupInterval)
+    defer ticker.Stop()
+
+    for range ticker.C {
+        if err := cleanupExpiredSessions(conn); err != nil {
+            log.Printf("Session cleanup failed: %v", err)
+        }
+    }
+}
+
+func cleanupExpiredSessions(conn *pgx.Conn) error {
+    ctx := context.Background()
+    cutoffTime := time.Now().Add(-sessionTTL)
+
+    for {
+        tag, err := conn.Exec(ctx,
+            `DELETE FROM user_sessions 
+             WHERE last_activity < $1 
+             AND session_id IN (
+                 SELECT session_id FROM user_sessions 
+                 WHERE last_activity < $1 
+                 LIMIT $2
+             )`,
+            cutoffTime, deleteBatchSize)
+
+        if err != nil {
+            return err
+        }
+
+        if tag.RowsAffected() == 0 {
+            break
+        }
+
+        log.Printf("Deleted %d expired sessions", tag.RowsAffected())
+        time.Sleep(100 * time.Millisecond)
+    }
+
+    return nil
 }

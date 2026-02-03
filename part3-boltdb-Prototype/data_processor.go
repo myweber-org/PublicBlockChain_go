@@ -375,3 +375,65 @@ func main() {
 		os.Exit(1)
 	}
 }
+package data_processor
+
+import (
+	"regexp"
+	"strings"
+)
+
+var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+
+func ValidateEmail(email string) bool {
+	return emailRegex.MatchString(email)
+}
+
+func SanitizeUsername(input string) string {
+	trimmed := strings.TrimSpace(input)
+	lower := strings.ToLower(trimmed)
+	re := regexp.MustCompile(`[^a-z0-9_-]`)
+	return re.ReplaceAllString(lower, "")
+}
+
+func ValidatePasswordStrength(password string) (bool, []string) {
+	var issues []string
+	
+	if len(password) < 8 {
+		issues = append(issues, "password must be at least 8 characters")
+	}
+	
+	hasUpper := regexp.MustCompile(`[A-Z]`).MatchString(password)
+	hasLower := regexp.MustCompile(`[a-z]`).MatchString(password)
+	hasDigit := regexp.MustCompile(`\d`).MatchString(password)
+	hasSpecial := regexp.MustCompile(`[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]`).MatchString(password)
+	
+	if !hasUpper {
+		issues = append(issues, "password must contain at least one uppercase letter")
+	}
+	if !hasLower {
+		issues = append(issues, "password must contain at least one lowercase letter")
+	}
+	if !hasDigit {
+		issues = append(issues, "password must contain at least one digit")
+	}
+	if !hasSpecial {
+		issues = append(issues, "password must contain at least one special character")
+	}
+	
+	return len(issues) == 0, issues
+}
+
+func NormalizePhoneNumber(phone string) string {
+	re := regexp.MustCompile(`\D`)
+	digits := re.ReplaceAllString(phone, "")
+	
+	if len(digits) == 10 {
+		return digits
+	}
+	
+	if len(digits) == 11 && digits[0] == '1' {
+		return digits[1:]
+	}
+	
+	return digits
+}

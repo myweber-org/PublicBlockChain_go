@@ -213,4 +213,61 @@ func getEnvAsSlice(key string, defaultValue []string, sep string) []string {
         return defaultValue
     }
     return strings.Split(valueStr, sep)
+}package config
+
+import (
+    "fmt"
+    "os"
+    "strconv"
+    "strings"
+)
+
+type Config struct {
+    ServerPort int
+    DatabaseURL string
+    EnableDebug bool
+    MaxConnections int
+}
+
+func LoadConfig() (*Config, error) {
+    cfg := &Config{}
+    
+    portStr := getEnvWithDefault("SERVER_PORT", "8080")
+    port, err := strconv.Atoi(portStr)
+    if err != nil {
+        return nil, fmt.Errorf("invalid SERVER_PORT value: %v", err)
+    }
+    cfg.ServerPort = port
+    
+    dbURL := getEnvWithDefault("DATABASE_URL", "postgres://localhost:5432/app")
+    if !strings.HasPrefix(dbURL, "postgres://") {
+        return nil, fmt.Errorf("invalid DATABASE_URL format")
+    }
+    cfg.DatabaseURL = dbURL
+    
+    debugStr := getEnvWithDefault("ENABLE_DEBUG", "false")
+    debug, err := strconv.ParseBool(debugStr)
+    if err != nil {
+        return nil, fmt.Errorf("invalid ENABLE_DEBUG value: %v", err)
+    }
+    cfg.EnableDebug = debug
+    
+    maxConnStr := getEnvWithDefault("MAX_CONNECTIONS", "100")
+    maxConn, err := strconv.Atoi(maxConnStr)
+    if err != nil {
+        return nil, fmt.Errorf("invalid MAX_CONNECTIONS value: %v", err)
+    }
+    if maxConn <= 0 {
+        return nil, fmt.Errorf("MAX_CONNECTIONS must be positive")
+    }
+    cfg.MaxConnections = maxConn
+    
+    return cfg, nil
+}
+
+func getEnvWithDefault(key, defaultValue string) string {
+    if value := os.Getenv(key); value != "" {
+        return value
+    }
+    return defaultValue
 }

@@ -59,4 +59,34 @@ func main() {
 	writer.Flush()
 	fmt.Printf("Cleaned data saved to: %s\n", outputFile)
 	fmt.Printf("Removed %d duplicate rows\n", len(records)-len(uniqueRecords))
+}package csvutil
+
+import (
+	"strings"
+	"unicode"
+)
+
+// SanitizeCSVField removes problematic characters from CSV field values
+func SanitizeCSVField(input string) string {
+	var result strings.Builder
+	result.Grow(len(input))
+
+	for _, r := range input {
+		switch {
+		case r == '\r' || r == '\n':
+			result.WriteRune(' ')
+		case r == '"':
+			result.WriteString(`""`)
+		case unicode.IsControl(r):
+			continue
+		default:
+			result.WriteRune(r)
+		}
+	}
+	return strings.TrimSpace(result.String())
+}
+
+// NormalizeWhitespace collapses multiple whitespace characters
+func NormalizeWhitespace(s string) string {
+	return strings.Join(strings.Fields(s), " ")
 }

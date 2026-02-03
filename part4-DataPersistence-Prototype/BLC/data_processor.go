@@ -111,4 +111,33 @@ func CalculateAverage(records []DataRecord) float64 {
 		sum += record.Value
 	}
 	return sum / float64(len(records))
+}package data
+
+import (
+	"regexp"
+	"strings"
+)
+
+// ValidateEmail checks if the provided string is a valid email address.
+func ValidateEmail(email string) bool {
+	pattern := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
+	matched, _ := regexp.MatchString(pattern, email)
+	return matched
+}
+
+// SanitizeInput removes leading and trailing whitespace from a string.
+func SanitizeInput(input string) string {
+	return strings.TrimSpace(input)
+}
+
+// ConvertToUpper transforms a string to uppercase.
+func ConvertToUpper(s string) string {
+	return strings.ToUpper(s)
+}
+
+// IsNumeric checks if a string contains only numeric characters.
+func IsNumeric(s string) bool {
+	pattern := `^[0-9]+$`
+	matched, _ := regexp.MatchString(pattern, s)
+	return matched
 }

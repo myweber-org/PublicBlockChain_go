@@ -234,3 +234,149 @@ func ValidateRecord(record DataRecord) error {
     }
     return nil
 }
+package main
+
+import (
+    "encoding/csv"
+    "errors"
+    "fmt"
+    "io"
+    "os"
+    "strconv"
+    "strings"
+)
+
+type Record struct {
+    ID      int
+    Name    string
+    Value   float64
+    Active  bool
+}
+
+func parseCSVFile(filename string) ([]Record, error) {
+    file, err := os.Open(filename)
+    if err != nil {
+        return nil, fmt.Errorf("failed to open file: %w", err)
+    }
+    defer file.Close()
+
+    reader := csv.NewReader(file)
+    reader.TrimLeadingSpace = true
+
+    var records []Record
+    lineNumber := 0
+
+    for {
+        lineNumber++
+        row, err := reader.Read()
+        if err == io.EOF {
+            break
+        }
+        if err != nil {
+            return nil, fmt.Errorf("csv read error at line %d: %w", lineNumber, err)
+        }
+
+        if len(row) != 4 {
+            return nil, fmt.Errorf("invalid column count at line %d: expected 4, got %d", lineNumber, len(row))
+        }
+
+        record, err := parseRow(row, lineNumber)
+        if err != nil {
+            return nil, err
+        }
+
+        records = append(records, record)
+    }
+
+    if len(records) == 0 {
+        return nil, errors.New("no valid records found in file")
+    }
+
+    return records, nil
+}
+
+func parseRow(row []string, lineNumber int) (Record, error) {
+    var record Record
+
+    id, err := strconv.Atoi(strings.TrimSpace(row[0]))
+    if err != nil {
+        return Record{}, fmt.Errorf("invalid ID at line %d: %w", lineNumber, err)
+    }
+    record.ID = id
+
+    name := strings.TrimSpace(row[1])
+    if name == "" {
+        return Record{}, fmt.Errorf("empty name at line %d", lineNumber)
+    }
+    record.Name = name
+
+    value, err := strconv.ParseFloat(strings.TrimSpace(row[2]), 64)
+    if err != nil {
+        return Record{}, fmt.Errorf("invalid value at line %d: %w", lineNumber, err)
+    }
+    record.Value = value
+
+    active, err := strconv.ParseBool(strings.TrimSpace(row[3]))
+    if err != nil {
+        return Record{}, fmt.Errorf("invalid active flag at line %d: %w", lineNumber, err)
+    }
+    record.Active = active
+
+    return record, nil
+}
+
+func calculateStats(records []Record) (float64, float64, int) {
+    if len(records) == 0 {
+        return 0, 0, 0
+    }
+
+    var sum float64
+    var max float64
+    activeCount := 0
+
+    for i, record := range records {
+        if i == 0 || record.Value > max {
+            max = record.Value
+        }
+        sum += record.Value
+        if record.Active {
+            activeCount++
+        }
+    }
+
+    average := sum / float64(len(records))
+    return average, max, activeCount
+}
+
+func filterRecords(records []Record, minValue float64) []Record {
+    var filtered []Record
+    for _, record := range records {
+        if record.Value >= minValue {
+            filtered = append(filtered, record)
+        }
+    }
+    return filtered
+}
+
+func main() {
+    if len(os.Args) < 2 {
+        fmt.Println("Usage: data_processor <csv_file>")
+        os.Exit(1)
+    }
+
+    filename := os.Args[1]
+    records, err := parseCSVFile(filename)
+    if err != nil {
+        fmt.Printf("Error processing file: %v\n", err)
+        os.Exit(1)
+    }
+
+    avg, max, activeCount := calculateStats(records)
+    fmt.Printf("Total records: %d\n", len(records))
+    fmt.Printf("Average value: %.2f\n", avg)
+    fmt.Printf("Maximum value: %.2f\n", max)
+    fmt.Printf("Active records: %d\n", activeCount)
+
+    filtered := filterRecords(records, 50.0)
+    fmt.Printf("Records with value >= 50: %d\n", len(filtered))
+}

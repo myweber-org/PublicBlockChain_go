@@ -149,4 +149,122 @@ func main() {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}package main
+
+import (
+	"fmt"
+	"io"
+	"log"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+)
+
+const (
+	maxFileSize  = 10 * 1024 * 1024
+	maxBackups   = 5
+	logDirectory = "./logs"
+)
+
+type RotatingLogger struct {
+	filename   string
+	current    *os.File
+	size       int64
+	mu         sync.Mutex
+}
+
+func NewRotatingLogger(filename string) (*RotatingLogger, error) {
+	if err := os.MkdirAll(logDirectory, 0755); err != nil {
+		return nil, err
+	}
+
+	fullPath := filepath.Join(logDirectory, filename)
+	file, err := os.OpenFile(fullPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, err
+	}
+
+	return &RotatingLogger{
+		filename: filename,
+		current:  file,
+		size:     info.Size(),
+	}, nil
+}
+
+func (rl *RotatingLogger) Write(p []byte) (int, error) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	if rl.size+int64(len(p)) > maxFileSize {
+		if err := rl.rotate(); err != nil {
+			return 0, err
+		}
+	}
+
+	n, err := rl.current.Write(p)
+	if err == nil {
+		rl.size += int64(n)
+	}
+	return n, err
+}
+
+func (rl *RotatingLogger) rotate() error {
+	if rl.current != nil {
+		rl.current.Close()
+	}
+
+	baseName := filepath.Join(logDirectory, rl.filename)
+	for i := maxBackups - 1; i >= 0; i-- {
+		oldName := fmt.Sprintf("%s.%d", baseName, i)
+		newName := fmt.Sprintf("%s.%d", baseName, i+1)
+
+		if _, err := os.Stat(oldName); err == nil {
+			os.Rename(oldName, newName)
+		}
+	}
+
+	if _, err := os.Stat(baseName); err == nil {
+		os.Rename(baseName, baseName+".0")
+	}
+
+	file, err := os.OpenFile(baseName, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+
+	rl.current = file
+	rl.size = 0
+	return nil
+}
+
+func (rl *RotatingLogger) Close() error {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	if rl.current != nil {
+		return rl.current.Close()
+	}
+	return nil
+}
+
+func main() {
+	logger, err := NewRotatingLogger("app.log")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer logger.Close()
+
+	log.SetOutput(io.MultiWriter(os.Stdout, logger))
+
+	for i := 0; i < 100; i++ {
+		log.Printf("Log entry %d at %s", i, time.Now().Format(time.RFC3339))
+		time.Sleep(100 * time.Millisecond)
+	}
 }

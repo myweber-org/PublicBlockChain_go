@@ -11,13 +11,13 @@ import (
 func calculateFileChecksum(filePath string) (string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return "", fmt.Errorf("failed to open file: %v", err)
+		return "", fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {
-		return "", fmt.Errorf("failed to calculate checksum: %v", err)
+		return "", fmt.Errorf("failed to calculate hash: %w", err)
 	}
 
 	return hex.EncodeToString(hash.Sum(nil)), nil
@@ -48,9 +48,9 @@ func main() {
 	}
 
 	if isValid {
-		fmt.Println("File integrity verified: checksum matches")
+		fmt.Println("File integrity verified successfully")
 	} else {
-		fmt.Println("WARNING: File integrity check failed - checksum mismatch")
+		fmt.Println("File integrity check failed")
 		os.Exit(1)
 	}
 }

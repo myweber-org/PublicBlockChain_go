@@ -289,4 +289,137 @@ func main() {
 		time.Sleep(100 * time.Millisecond)
 	}
 	fmt.Println("Log rotation test completed")
+}package main
+
+import (
+	"compress/gzip"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+type LogRotator struct {
+	filePath    string
+	maxSize     int64
+	currentSize int64
+	file        *os.File
+	sequence    int
+}
+
+func NewLogRotator(path string, maxSizeMB int) (*LogRotator, error) {
+	maxSize := int64(maxSizeMB) * 1024 * 1024
+	rotator := &LogRotator{
+		filePath: path,
+		maxSize:  maxSize,
+		sequence: 0,
+	}
+
+	if err := rotator.openCurrentFile(); err != nil {
+		return nil, err
+	}
+
+	return rotator, nil
+}
+
+func (lr *LogRotator) openCurrentFile() error {
+	if lr.file != nil {
+		lr.file.Close()
+	}
+
+	file, err := os.OpenFile(lr.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return err
+	}
+
+	lr.file = file
+	lr.currentSize = info.Size()
+	return nil
+}
+
+func (lr *LogRotator) rotate() error {
+	lr.file.Close()
+
+	backupPath := fmt.Sprintf("%s.%s.%d.gz",
+		lr.filePath,
+		time.Now().Format("20060102_150405"),
+		lr.sequence,
+	)
+
+	sourceFile, err := os.Open(lr.filePath)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.Create(backupPath)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	gzWriter := gzip.NewWriter(destFile)
+	defer gzWriter.Close()
+
+	if _, err := io.Copy(gzWriter, sourceFile); err != nil {
+		return err
+	}
+
+	if err := os.Remove(lr.filePath); err != nil {
+		return err
+	}
+
+	lr.sequence++
+	return lr.openCurrentFile()
+}
+
+func (lr *LogRotator) Write(p []byte) (int, error) {
+	if lr.currentSize+int64(len(p)) > lr.maxSize {
+		if err := lr.rotate(); err != nil {
+			return 0, err
+		}
+	}
+
+	n, err := lr.file.Write(p)
+	if err == nil {
+		lr.currentSize += int64(n)
+	}
+	return n, err
+}
+
+func (lr *LogRotator) Close() error {
+	if lr.file != nil {
+		return lr.file.Close()
+	}
+	return nil
+}
+
+func (lr *LogRotator) CleanupOldFiles(maxAgeDays int) error {
+	cutoffTime := time.Now().AddDate(0, 0, -maxAgeDays)
+	pattern := lr.filePath + ".*.gz"
+
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return err
+	}
+
+	for _, match := range matches {
+		info, err := os.Stat(match)
+		if err != nil {
+			continue
+		}
+
+		if info.ModTime().Before(cutoffTime) {
+			os.Remove(match)
+		}
+	}
+
+	return nil
 }

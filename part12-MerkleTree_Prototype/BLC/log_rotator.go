@@ -327,3 +327,193 @@ func main() {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+package main
+
+import (
+    "compress/gzip"
+    "fmt"
+    "io"
+    "os"
+    "path/filepath"
+    "strconv"
+    "strings"
+    "sync"
+    "time"
+)
+
+const (
+    maxFileSize   = 10 * 1024 * 1024 // 10MB
+    maxBackupFiles = 5
+)
+
+type RotatingLogger struct {
+    currentFile *os.File
+    currentSize int64
+    basePath    string
+    mu          sync.Mutex
+}
+
+func NewRotatingLogger(basePath string) (*RotatingLogger, error) {
+    rl := &RotatingLogger{
+        basePath: basePath,
+    }
+
+    if err := rl.openCurrentFile(); err != nil {
+        return nil, err
+    }
+
+    return rl, nil
+}
+
+func (rl *RotatingLogger) openCurrentFile() error {
+    file, err := os.OpenFile(rl.basePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        return err
+    }
+
+    info, err := file.Stat()
+    if err != nil {
+        file.Close()
+        return err
+    }
+
+    rl.currentFile = file
+    rl.currentSize = info.Size()
+    return nil
+}
+
+func (rl *RotatingLogger) Write(p []byte) (int, error) {
+    rl.mu.Lock()
+    defer rl.mu.Unlock()
+
+    if rl.currentSize+int64(len(p)) > maxFileSize {
+        if err := rl.rotate(); err != nil {
+            return 0, err
+        }
+    }
+
+    n, err := rl.currentFile.Write(p)
+    if err == nil {
+        rl.currentSize += int64(n)
+    }
+    return n, err
+}
+
+func (rl *RotatingLogger) rotate() error {
+    if rl.currentFile != nil {
+        rl.currentFile.Close()
+    }
+
+    if err := rl.compressOldFiles(); err != nil {
+        return err
+    }
+
+    if err := rl.renameCurrentFile(); err != nil {
+        return err
+    }
+
+    return rl.openCurrentFile()
+}
+
+func (rl *RotatingLogger) compressOldFiles() error {
+    for i := maxBackupFiles - 1; i >= 0; i-- {
+        oldPath := rl.getBackupPath(i)
+        if _, err := os.Stat(oldPath); os.IsNotExist(err) {
+            continue
+        }
+
+        if i == maxBackupFiles-1 {
+            os.Remove(oldPath)
+            continue
+        }
+
+        newPath := rl.getBackupPath(i + 1)
+        if err := compressFile(oldPath, newPath); err != nil {
+            return err
+        }
+        os.Remove(oldPath)
+    }
+    return nil
+}
+
+func (rl *RotatingLogger) renameCurrentFile() error {
+    backupPath := rl.getBackupPath(0)
+    return os.Rename(rl.basePath, backupPath)
+}
+
+func (rl *RotatingLogger) getBackupPath(index int) string {
+    if index == 0 {
+        return rl.basePath + ".1"
+    }
+    return fmt.Sprintf("%s.%d.gz", rl.basePath, index+1)
+}
+
+func compressFile(src, dst string) error {
+    srcFile, err := os.Open(src)
+    if err != nil {
+        return err
+    }
+    defer srcFile.Close()
+
+    dstFile, err := os.Create(dst)
+    if err != nil {
+        return err
+    }
+    defer dstFile.Close()
+
+    gzWriter := gzip.NewWriter(dstFile)
+    defer gzWriter.Close()
+
+    _, err = io.Copy(gzWriter, srcFile)
+    return err
+}
+
+func (rl *RotatingLogger) Close() error {
+    rl.mu.Lock()
+    defer rl.mu.Unlock()
+
+    if rl.currentFile != nil {
+        return rl.currentFile.Close()
+    }
+    return nil
+}
+
+func main() {
+    logger, err := NewRotatingLogger("app.log")
+    if err != nil {
+        panic(err)
+    }
+    defer logger.Close()
+
+    for i := 0; i < 1000; i++ {
+        logEntry := fmt.Sprintf("[%s] Log entry %d: %s\n",
+            time.Now().Format(time.RFC3339),
+            i,
+            strings.Repeat("X", 1024))
+
+        if _, err := logger.Write([]byte(logEntry)); err != nil {
+            fmt.Printf("Write error: %v\n", err)
+        }
+
+        time.Sleep(10 * time.Millisecond)
+    }
+
+    fmt.Println("Log rotation test completed")
+}
+
+func findOldLogFiles(basePath string) []string {
+    var files []string
+    pattern := filepath.Base(basePath) + ".*"
+    matches, _ := filepath.Glob(filepath.Join(filepath.Dir(basePath), pattern))
+
+    for _, match := range matches {
+        if strings.HasSuffix(match, ".gz") {
+            files = append(files, match)
+        } else if parts := strings.Split(match, "."); len(parts) > 1 {
+            if _, err := strconv.Atoi(parts[len(parts)-1]); err == nil {
+                files = append(files, match)
+            }
+        }
+    }
+    return files
+}

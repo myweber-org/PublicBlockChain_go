@@ -271,3 +271,81 @@ func getEnvWithDefault(key, defaultValue string) string {
     }
     return defaultValue
 }
+package config
+
+import (
+	"errors"
+	"os"
+	"strconv"
+	"strings"
+)
+
+type AppConfig struct {
+	ServerPort    int
+	DatabaseURL   string
+	CacheEnabled  bool
+	LogLevel      string
+	MaxRetries    int
+}
+
+func LoadConfig() (*AppConfig, error) {
+	cfg := &AppConfig{}
+	
+	port, err := getEnvInt("SERVER_PORT", 8080)
+	if err != nil {
+		return nil, err
+	}
+	cfg.ServerPort = port
+	
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		return nil, errors.New("DATABASE_URL environment variable is required")
+	}
+	cfg.DatabaseURL = dbURL
+	
+	cacheEnabled, err := getEnvBool("CACHE_ENABLED", true)
+	if err != nil {
+		return nil, err
+	}
+	cfg.CacheEnabled = cacheEnabled
+	
+	logLevel := os.Getenv("LOG_LEVEL")
+	if logLevel == "" {
+		logLevel = "info"
+	}
+	cfg.LogLevel = strings.ToLower(logLevel)
+	
+	maxRetries, err := getEnvInt("MAX_RETRIES", 3)
+	if err != nil {
+		return nil, err
+	}
+	cfg.MaxRetries = maxRetries
+	
+	return cfg, nil
+}
+
+func getEnvInt(key string, defaultValue int) (int, error) {
+	val := os.Getenv(key)
+	if val == "" {
+		return defaultValue, nil
+	}
+	
+	intVal, err := strconv.Atoi(val)
+	if err != nil {
+		return 0, errors.New("invalid integer value for " + key)
+	}
+	return intVal, nil
+}
+
+func getEnvBool(key string, defaultValue bool) (bool, error) {
+	val := os.Getenv(key)
+	if val == "" {
+		return defaultValue, nil
+	}
+	
+	boolVal, err := strconv.ParseBool(val)
+	if err != nil {
+		return false, errors.New("invalid boolean value for " + key)
+	}
+	return boolVal, nil
+}

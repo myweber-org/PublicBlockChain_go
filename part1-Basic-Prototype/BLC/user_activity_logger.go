@@ -247,4 +247,87 @@ func (rl *RateLimiter) Allow(ip string) bool {
 
 	rl.requests[ip] = append(rl.requests[ip], now)
 	return true
+}package middleware
+
+import (
+    "context"
+    "net/http"
+    "time"
+)
+
+type ActivityKey string
+
+const (
+    UserIDKey ActivityKey = "userID"
+    ActionKey ActivityKey = "action"
+)
+
+type ActivityLogger interface {
+    LogActivity(ctx context.Context, userID string, action string, timestamp time.Time)
+}
+
+type activityLogger struct {
+    store ActivityStore
+}
+
+func NewActivityLogger(store ActivityStore) ActivityLogger {
+    return &activityLogger{store: store}
+}
+
+func (al *activityLogger) LogActivity(ctx context.Context, userID string, action string, timestamp time.Time) {
+    al.store.Save(ctx, userID, action, timestamp)
+}
+
+func ActivityLoggingMiddleware(logger ActivityLogger, next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        ctx := r.Context()
+        
+        userID := r.Header.Get("X-User-ID")
+        if userID != "" {
+            ctx = context.WithValue(ctx, UserIDKey, userID)
+        }
+        
+        action := r.Method + " " + r.URL.Path
+        ctx = context.WithValue(ctx, ActionKey, action)
+        
+        start := time.Now()
+        next.ServeHTTP(w, r.WithContext(ctx))
+        
+        if userID != "" {
+            logger.LogActivity(ctx, userID, action, start)
+        }
+    })
+}
+
+type ActivityStore interface {
+    Save(ctx context.Context, userID string, action string, timestamp time.Time)
+}
+
+type MemoryActivityStore struct {
+    activities []ActivityRecord
+}
+
+type ActivityRecord struct {
+    UserID    string
+    Action    string
+    Timestamp time.Time
+}
+
+func NewMemoryActivityStore() *MemoryActivityStore {
+    return &MemoryActivityStore{
+        activities: make([]ActivityRecord, 0),
+    }
+}
+
+func (mas *MemoryActivityStore) Save(ctx context.Context, userID string, action string, timestamp time.Time) {
+    record := ActivityRecord{
+        UserID:    userID,
+        Action:    action,
+        Timestamp: timestamp,
+    }
+    mas.activities = append(mas.activities, record)
+}
+
+func (mas *MemoryActivityStore) GetActivities() []ActivityRecord {
+    return mas.activities
 }

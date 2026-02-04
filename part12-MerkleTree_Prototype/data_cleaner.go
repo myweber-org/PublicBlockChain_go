@@ -87,3 +87,11 @@ func main() {
 
 	fmt.Printf("Successfully cleaned data from %s to %s\n", inputFile, outputFile)
 }
+package utils
+
+import "strings"
+
+func SanitizeInput(input string) string {
+    trimmed := strings.TrimSpace(input)
+    return strings.Join(strings.Fields(trimmed), " ")
+}

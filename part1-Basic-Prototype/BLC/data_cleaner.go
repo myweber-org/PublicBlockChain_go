@@ -62,3 +62,34 @@ func main() {
 			record.ID, record.Email, status)
 	}
 }
+package main
+
+import (
+	"encoding/csv"
+	"fmt"
+	"strings"
+)
+
+func TrimCSVColumns(records [][]string) [][]string {
+	trimmed := make([][]string, len(records))
+	for i, row := range records {
+		trimmed[i] = make([]string, len(row))
+		for j, val := range row {
+			trimmed[i][j] = strings.TrimSpace(val)
+		}
+	}
+	return trimmed
+}
+
+func main() {
+	data := [][]string{
+		{"  id  ", " name ", " value "},
+		{"  1", "alpha  ", "  100"},
+		{"2  ", "  beta", "200  "},
+	}
+
+	cleaned := TrimCSVColumns(data)
+	writer := csv.NewWriter(fmt.Stdout)
+	writer.WriteAll(cleaned)
+	writer.Flush()
+}

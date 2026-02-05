@@ -53,4 +53,66 @@ func main() {
 		fmt.Println("File integrity check failed")
 		os.Exit(1)
 	}
+}package main
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"os"
+)
+
+func calculateFileChecksum(filePath string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
+	}
+
+	checksum := hash.Sum(nil)
+	return hex.EncodeToString(checksum), nil
+}
+
+func verifyFileIntegrity(filePath, expectedChecksum string) (bool, error) {
+	actualChecksum, err := calculateFileChecksum(filePath)
+	if err != nil {
+		return false, err
+	}
+	return actualChecksum == expectedChecksum, nil
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: go run file_checksum_verifier.go <filepath> [expected_checksum]")
+		return
+	}
+
+	filePath := os.Args[1]
+	checksum, err := calculateFileChecksum(filePath)
+	if err != nil {
+		fmt.Printf("Error calculating checksum: %v\n", err)
+		return
+	}
+
+	fmt.Printf("SHA256 checksum for %s:\n%s\n", filePath, checksum)
+
+	if len(os.Args) == 3 {
+		expectedChecksum := os.Args[2]
+		isValid, err := verifyFileIntegrity(filePath, expectedChecksum)
+		if err != nil {
+			fmt.Printf("Verification error: %v\n", err)
+			return
+		}
+		if isValid {
+			fmt.Println("File integrity: VERIFIED")
+		} else {
+			fmt.Println("File integrity: FAILED - checksum mismatch")
+		}
+	}
 }

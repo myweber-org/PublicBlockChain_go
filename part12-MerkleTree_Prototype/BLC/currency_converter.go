@@ -1,96 +1,89 @@
-
 package main
 
 import (
-	"fmt"
+    "encoding/json"
+    "fmt"
+    "io"
+    "net/http"
+    "os"
+    "strconv"
 )
 
-func ConvertUSDToEUR(amount float64) float64 {
-	const exchangeRate = 0.85
-	return amount * exchangeRate
+type ExchangeRates struct {
+    Rates map[string]float64 `json:"rates"`
+    Base  string             `json:"base"`
+    Date  string             `json:"date"`
+}
+
+func fetchExchangeRates(apiKey string) (*ExchangeRates, error) {
+    url := fmt.Sprintf("https://api.exchangerate-api.com/v4/latest/USD")
+    if apiKey != "" {
+        url = fmt.Sprintf("https://v6.exchangerate-api.com/v6/%s/latest/USD", apiKey)
+    }
+
+    resp, err := http.Get(url)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return nil, err
+    }
+
+    var rates ExchangeRates
+    err = json.Unmarshal(body, &rates)
+    if err != nil {
+        return nil, err
+    }
+
+    return &rates, nil
+}
+
+func convertCurrency(amount float64, fromCurrency, toCurrency string, rates *ExchangeRates) (float64, error) {
+    fromRate, okFrom := rates.Rates[fromCurrency]
+    toRate, okTo := rates.Rates[toCurrency]
+
+    if !okFrom || !okTo {
+        return 0, fmt.Errorf("invalid currency code")
+    }
+
+    amountInUSD := amount / fromRate
+    convertedAmount := amountInUSD * toRate
+
+    return convertedAmount, nil
 }
 
 func main() {
-	usdAmount := 100.0
-	eurAmount := ConvertUSDToEUR(usdAmount)
-	fmt.Printf("%.2f USD = %.2f EUR\n", usdAmount, eurAmount)
-}
-package main
+    apiKey := os.Getenv("EXCHANGE_RATE_API_KEY")
 
-import (
-	"fmt"
-	"os"
-	"strconv"
-)
+    rates, err := fetchExchangeRates(apiKey)
+    if err != nil {
+        fmt.Printf("Error fetching exchange rates: %v\n", err)
+        return
+    }
 
-type ExchangeRate struct {
-	Currency string
-	Rate     float64
-}
+    if len(os.Args) != 4 {
+        fmt.Println("Usage: currency_converter <amount> <from_currency> <to_currency>")
+        fmt.Println("Example: currency_converter 100 USD EUR")
+        return
+    }
 
-var rates = []ExchangeRate{
-	{"USD", 1.0},
-	{"EUR", 0.92},
-	{"GBP", 0.79},
-	{"JPY", 149.5},
-	{"CAD", 1.36},
-}
+    amount, err := strconv.ParseFloat(os.Args[1], 64)
+    if err != nil {
+        fmt.Printf("Invalid amount: %v\n", err)
+        return
+    }
 
-func convertAmount(amount float64, fromCurrency string, toCurrency string) (float64, error) {
-	var fromRate, toRate float64
-	foundFrom, foundTo := false, false
+    fromCurrency := os.Args[2]
+    toCurrency := os.Args[3]
 
-	for _, rate := range rates {
-		if rate.Currency == fromCurrency {
-			fromRate = rate.Rate
-			foundFrom = true
-		}
-		if rate.Currency == toCurrency {
-			toRate = rate.Rate
-			foundTo = true
-		}
-	}
+    result, err := convertCurrency(amount, fromCurrency, toCurrency, rates)
+    if err != nil {
+        fmt.Printf("Conversion error: %v\n", err)
+        return
+    }
 
-	if !foundFrom {
-		return 0, fmt.Errorf("unsupported source currency: %s", fromCurrency)
-	}
-	if !foundTo {
-		return 0, fmt.Errorf("unsupported target currency: %s", toCurrency)
-	}
-
-	convertedAmount := (amount / fromRate) * toRate
-	return convertedAmount, nil
-}
-
-func listSupportedCurrencies() {
-	fmt.Println("Supported currencies:")
-	for _, rate := range rates {
-		fmt.Printf("  %s (rate: %.4f)\n", rate.Currency, rate.Rate)
-	}
-}
-
-func main() {
-	if len(os.Args) != 4 {
-		fmt.Println("Usage: currency_converter <amount> <from_currency> <to_currency>")
-		fmt.Println("Example: currency_converter 100 USD EUR")
-		listSupportedCurrencies()
-		os.Exit(1)
-	}
-
-	amount, err := strconv.ParseFloat(os.Args[1], 64)
-	if err != nil {
-		fmt.Printf("Invalid amount: %v\n", err)
-		os.Exit(1)
-	}
-
-	fromCurrency := os.Args[2]
-	toCurrency := os.Args[3]
-
-	result, err := convertAmount(amount, fromCurrency, toCurrency)
-	if err != nil {
-		fmt.Printf("Conversion error: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("%.2f %s = %.2f %s\n", amount, fromCurrency, result, toCurrency)
+    fmt.Printf("%.2f %s = %.2f %s (as of %s)\n", amount, fromCurrency, result, toCurrency, rates.Date)
 }

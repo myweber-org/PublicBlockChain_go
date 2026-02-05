@@ -179,4 +179,52 @@ func main() {
 	}
 
 	fmt.Println("Activity logging completed")
+}package middleware
+
+import (
+	"context"
+	"log"
+	"net/http"
+	"time"
+)
+
+type ActivityKey string
+
+const (
+	UserIDKey ActivityKey = "userID"
+	ActionKey ActivityKey = "action"
+)
+
+type ActivityLogger struct {
+	handler http.Handler
+}
+
+func NewActivityLogger(handler http.Handler) *ActivityLogger {
+	return &ActivityLogger{handler: handler}
+}
+
+func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	ctx = context.WithValue(ctx, UserIDKey, extractUserID(r))
+	ctx = context.WithValue(ctx, ActionKey, r.Method+" "+r.URL.Path)
+
+	start := time.Now()
+	al.handler.ServeHTTP(w, r.WithContext(ctx))
+	duration := time.Since(start)
+
+	al.logActivity(ctx, duration)
+}
+
+func (al *ActivityLogger) logActivity(ctx context.Context, duration time.Duration) {
+	userID := ctx.Value(UserIDKey).(string)
+	action := ctx.Value(ActionKey).(string)
+
+	log.Printf("User %s performed %s in %v", userID, action, duration)
+}
+
+func extractUserID(r *http.Request) string {
+	if user := r.Header.Get("X-User-ID"); user != "" {
+		return user
+	}
+	return "anonymous"
 }

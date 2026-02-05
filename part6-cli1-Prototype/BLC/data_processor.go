@@ -223,3 +223,32 @@ func ProcessUserInput(rawData UserData) (UserData, error) {
 	processedData := TransformUserName(rawData)
 	return processedData, nil
 }
+package main
+
+import (
+	"errors"
+	"regexp"
+	"strings"
+)
+
+var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+
+func ValidateEmail(email string) error {
+	if !emailRegex.MatchString(email) {
+		return errors.New("invalid email format")
+	}
+	return nil
+}
+
+func NormalizeUsername(username string) string {
+	return strings.TrimSpace(strings.ToLower(username))
+}
+
+func TransformUserData(rawEmail, rawUsername string) (string, string, error) {
+	if err := ValidateEmail(rawEmail); err != nil {
+		return "", "", err
+	}
+	normalizedEmail := strings.ToLower(strings.TrimSpace(rawEmail))
+	normalizedUsername := NormalizeUsername(rawUsername)
+	return normalizedEmail, normalizedUsername, nil
+}

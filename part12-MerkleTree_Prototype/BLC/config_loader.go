@@ -1,97 +1,75 @@
 package config
 
 import (
-    "fmt"
-    "os"
-    "path/filepath"
+	"os"
+	"path/filepath"
 
-    "gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
-type DatabaseConfig struct {
-    Host     string `yaml:"host" env:"DB_HOST"`
-    Port     int    `yaml:"port" env:"DB_PORT"`
-    Username string `yaml:"username" env:"DB_USER"`
-    Password string `yaml:"password" env:"DB_PASS"`
-    Name     string `yaml:"name" env:"DB_NAME"`
+type Config struct {
+	Server struct {
+		Host string `yaml:"host" env:"SERVER_HOST"`
+		Port int    `yaml:"port" env:"SERVER_PORT"`
+	} `yaml:"server"`
+	Database struct {
+		Host     string `yaml:"host" env:"DB_HOST"`
+		Port     int    `yaml:"port" env:"DB_PORT"`
+		Name     string `yaml:"name" env:"DB_NAME"`
+		User     string `yaml:"user" env:"DB_USER"`
+		Password string `yaml:"password" env:"DB_PASSWORD"`
+	} `yaml:"database"`
+	Logging struct {
+		Level  string `yaml:"level" env:"LOG_LEVEL"`
+		Output string `yaml:"output" env:"LOG_OUTPUT"`
+	} `yaml:"logging"`
 }
 
-type ServerConfig struct {
-    Port         int    `yaml:"port" env:"SERVER_PORT"`
-    Debug        bool   `yaml:"debug" env:"SERVER_DEBUG"`
-    LogLevel     string `yaml:"log_level" env:"LOG_LEVEL"`
-    ReadTimeout  int    `yaml:"read_timeout" env:"READ_TIMEOUT"`
-    WriteTimeout int    `yaml:"write_timeout" env:"WRITE_TIMEOUT"`
+func LoadConfig(configPath string) (*Config, error) {
+	absPath, err := filepath.Abs(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+
+	overrideFromEnv(&cfg)
+	return &cfg, nil
 }
 
-type AppConfig struct {
-    Database DatabaseConfig `yaml:"database"`
-    Server   ServerConfig   `yaml:"server"`
-    Version  string         `yaml:"version"`
+func overrideFromEnv(cfg *Config) {
+	cfg.Server.Host = getEnvOrDefault("SERVER_HOST", cfg.Server.Host)
+	cfg.Server.Port = getEnvIntOrDefault("SERVER_PORT", cfg.Server.Port)
+	cfg.Database.Host = getEnvOrDefault("DB_HOST", cfg.Database.Host)
+	cfg.Database.Port = getEnvIntOrDefault("DB_PORT", cfg.Database.Port)
+	cfg.Database.Name = getEnvOrDefault("DB_NAME", cfg.Database.Name)
+	cfg.Database.User = getEnvOrDefault("DB_USER", cfg.Database.User)
+	cfg.Database.Password = getEnvOrDefault("DB_PASSWORD", cfg.Database.Password)
+	cfg.Logging.Level = getEnvOrDefault("LOG_LEVEL", cfg.Logging.Level)
+	cfg.Logging.Output = getEnvOrDefault("LOG_OUTPUT", cfg.Logging.Output)
 }
 
-func LoadConfig(configPath string) (*AppConfig, error) {
-    data, err := os.ReadFile(configPath)
-    if err != nil {
-        return nil, fmt.Errorf("failed to read config file: %w", err)
-    }
-
-    var config AppConfig
-    if err := yaml.Unmarshal(data, &config); err != nil {
-        return nil, fmt.Errorf("failed to parse YAML: %w", err)
-    }
-
-    overrideFromEnv(&config)
-    return &config, nil
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }
 
-func overrideFromEnv(config *AppConfig) {
-    overrideString(&config.Database.Host, "DB_HOST")
-    overrideInt(&config.Database.Port, "DB_PORT")
-    overrideString(&config.Database.Username, "DB_USER")
-    overrideString(&config.Database.Password, "DB_PASS")
-    overrideString(&config.Database.Name, "DB_NAME")
-    
-    overrideInt(&config.Server.Port, "SERVER_PORT")
-    overrideBool(&config.Server.Debug, "SERVER_DEBUG")
-    overrideString(&config.Server.LogLevel, "LOG_LEVEL")
-    overrideInt(&config.Server.ReadTimeout, "READ_TIMEOUT")
-    overrideInt(&config.Server.WriteTimeout, "WRITE_TIMEOUT")
-}
-
-func overrideString(field *string, envVar string) {
-    if val := os.Getenv(envVar); val != "" {
-        *field = val
-    }
-}
-
-func overrideInt(field *int, envVar string) {
-    if val := os.Getenv(envVar); val != "" {
-        var temp int
-        if _, err := fmt.Sscanf(val, "%d", &temp); err == nil {
-            *field = temp
-        }
-    }
-}
-
-func overrideBool(field *bool, envVar string) {
-    if val := os.Getenv(envVar); val != "" {
-        *field = val == "true" || val == "1" || val == "yes"
-    }
-}
-
-func DefaultConfigPath() string {
-    paths := []string{
-        "config.yaml",
-        "config.yml",
-        filepath.Join("config", "config.yaml"),
-        filepath.Join("config", "config.yml"),
-    }
-    
-    for _, path := range paths {
-        if _, err := os.Stat(path); err == nil {
-            return path
-        }
-    }
-    return ""
+func getEnvIntOrDefault(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		var result int
+		if _, err := fmt.Sscanf(value, "%d", &result); err == nil {
+			return result
+		}
+	}
+	return defaultValue
 }

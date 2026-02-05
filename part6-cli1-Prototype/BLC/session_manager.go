@@ -239,4 +239,56 @@ func randomString(n int) string {
         b[i] = letters[time.Now().UnixNano()%int64(len(letters))]
     }
     return string(b)
+}package session
+
+import (
+	"crypto/rand"
+	"encoding/base64"
+	"errors"
+	"time"
+)
+
+type Session struct {
+	Token     string
+	UserID    string
+	ExpiresAt time.Time
+}
+
+var sessions = make(map[string]Session)
+
+func GenerateToken(userID string) (string, error) {
+	tokenBytes := make([]byte, 32)
+	_, err := rand.Read(tokenBytes)
+	if err != nil {
+		return "", err
+	}
+
+	token := base64.URLEncoding.EncodeToString(tokenBytes)
+	expiresAt := time.Now().Add(24 * time.Hour)
+
+	sessions[token] = Session{
+		Token:     token,
+		UserID:    userID,
+		ExpiresAt: expiresAt,
+	}
+
+	return token, nil
+}
+
+func ValidateToken(token string) (string, error) {
+	session, exists := sessions[token]
+	if !exists {
+		return "", errors.New("session not found")
+	}
+
+	if time.Now().After(session.ExpiresAt) {
+		delete(sessions, token)
+		return "", errors.New("session expired")
+	}
+
+	return session.UserID, nil
+}
+
+func InvalidateToken(token string) {
+	delete(sessions, token)
 }

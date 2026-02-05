@@ -2,32 +2,35 @@ package config
 
 import (
     "fmt"
-    "io/ioutil"
     "os"
+    "path/filepath"
 
     "gopkg.in/yaml.v2"
 )
 
-type Config struct {
-    Server struct {
-        Host string `yaml:"host"`
-        Port int    `yaml:"port"`
-    } `yaml:"server"`
-    Database struct {
-        Host     string `yaml:"host"`
-        Port     int    `yaml:"port"`
-        Username string `yaml:"username"`
-        Password string `yaml:"password"`
-        Name     string `yaml:"name"`
-    } `yaml:"database"`
-    Logging struct {
-        Level string `yaml:"level"`
-        File  string `yaml:"file"`
-    } `yaml:"logging"`
+type DatabaseConfig struct {
+    Host     string `yaml:"host" env:"DB_HOST"`
+    Port     int    `yaml:"port" env:"DB_PORT"`
+    Username string `yaml:"username" env:"DB_USER"`
+    Password string `yaml:"password" env:"DB_PASS"`
+    Name     string `yaml:"name" env:"DB_NAME"`
 }
 
-func LoadConfig(path string) (*Config, error) {
-    data, err := ioutil.ReadFile(path)
+type ServerConfig struct {
+    Port         int    `yaml:"port" env:"SERVER_PORT"`
+    ReadTimeout  int    `yaml:"read_timeout" env:"READ_TIMEOUT"`
+    WriteTimeout int    `yaml:"write_timeout" env:"WRITE_TIMEOUT"`
+    DebugMode    bool   `yaml:"debug_mode" env:"DEBUG_MODE"`
+}
+
+type Config struct {
+    Database DatabaseConfig `yaml:"database"`
+    Server   ServerConfig   `yaml:"server"`
+    LogLevel string         `yaml:"log_level" env:"LOG_LEVEL"`
+}
+
+func LoadConfig(configPath string) (*Config, error) {
+    data, err := os.ReadFile(configPath)
     if err != nil {
         return nil, fmt.Errorf("failed to read config file: %w", err)
     }
@@ -37,117 +40,54 @@ func LoadConfig(path string) (*Config, error) {
         return nil, fmt.Errorf("failed to parse YAML: %w", err)
     }
 
-    if err := validateConfig(&config); err != nil {
-        return nil, fmt.Errorf("config validation failed: %w", err)
-    }
+    overrideFromEnv(&config)
 
     return &config, nil
 }
 
-func validateConfig(c *Config) error {
-    if c.Server.Host == "" {
-        return fmt.Errorf("server host cannot be empty")
-    }
-    if c.Server.Port <= 0 || c.Server.Port > 65535 {
-        return fmt.Errorf("server port must be between 1 and 65535")
-    }
-    if c.Database.Host == "" {
-        return fmt.Errorf("database host cannot be empty")
-    }
-    if c.Logging.Level == "" {
-        c.Logging.Level = "info"
-    }
-    return nil
+func overrideFromEnv(config *Config) {
+    config.Database.Host = getEnvOrDefault("DB_HOST", config.Database.Host)
+    config.Database.Port = getEnvIntOrDefault("DB_PORT", config.Database.Port)
+    config.Database.Username = getEnvOrDefault("DB_USER", config.Database.Username)
+    config.Database.Password = getEnvOrDefault("DB_PASS", config.Database.Password)
+    config.Database.Name = getEnvOrDefault("DB_NAME", config.Database.Name)
+
+    config.Server.Port = getEnvIntOrDefault("SERVER_PORT", config.Server.Port)
+    config.Server.ReadTimeout = getEnvIntOrDefault("READ_TIMEOUT", config.Server.ReadTimeout)
+    config.Server.WriteTimeout = getEnvIntOrDefault("WRITE_TIMEOUT", config.Server.WriteTimeout)
+    config.Server.DebugMode = getEnvBoolOrDefault("DEBUG_MODE", config.Server.DebugMode)
+
+    config.LogLevel = getEnvOrDefault("LOG_LEVEL", config.LogLevel)
 }
 
-func SaveConfig(c *Config, path string) error {
-    data, err := yaml.Marshal(c)
-    if err != nil {
-        return fmt.Errorf("failed to marshal config: %w", err)
-    }
-
-    if err := ioutil.WriteFile(path, data, 0644); err != nil {
-        return fmt.Errorf("failed to write config file: %w", err)
-    }
-
-    return nil
-}
-
-func GenerateDefaultConfig() *Config {
-    var config Config
-    config.Server.Host = "localhost"
-    config.Server.Port = 8080
-    config.Database.Host = "localhost"
-    config.Database.Port = 5432
-    config.Database.Username = "postgres"
-    config.Database.Name = "appdb"
-    config.Logging.Level = "info"
-    config.Logging.File = "app.log"
-    return &config
-}
-
-func ConfigExists(path string) bool {
-    _, err := os.Stat(path)
-    return !os.IsNotExist(err)
-}package config
-
-import (
-    "os"
-    "strconv"
-    "strings"
-)
-
-type Config struct {
-    DatabaseURL  string
-    MaxConnections int
-    DebugMode    bool
-    AllowedHosts []string
-}
-
-func LoadConfig() (*Config, error) {
-    cfg := &Config{
-        DatabaseURL:  getEnv("DATABASE_URL", "postgres://localhost:5432/app"),
-        MaxConnections: getEnvAsInt("MAX_CONNECTIONS", 10),
-        DebugMode:    getEnvAsBool("DEBUG_MODE", false),
-        AllowedHosts: getEnvAsSlice("ALLOWED_HOSTS", []string{"localhost", "127.0.0.1"}),
-    }
-    return cfg, nil
-}
-
-func getEnv(key, defaultValue string) string {
-    if value, exists := os.LookupEnv(key); exists {
+func getEnvOrDefault(key, defaultValue string) string {
+    if value := os.Getenv(key); value != "" {
         return value
     }
     return defaultValue
 }
 
-func getEnvAsInt(key string, defaultValue int) int {
-    strValue := getEnv(key, "")
-    if strValue == "" {
-        return defaultValue
-    }
-    if value, err := strconv.Atoi(strValue); err == nil {
-        return value
+func getEnvIntOrDefault(key string, defaultValue int) int {
+    if value := os.Getenv(key); value != "" {
+        var result int
+        if _, err := fmt.Sscanf(value, "%d", &result); err == nil {
+            return result
+        }
     }
     return defaultValue
 }
 
-func getEnvAsBool(key string, defaultValue bool) bool {
-    strValue := getEnv(key, "")
-    if strValue == "" {
-        return defaultValue
+func getEnvBoolOrDefault(key string, defaultValue bool) bool {
+    if value := os.Getenv(key); value != "" {
+        return value == "true" || value == "1" || value == "yes"
     }
-    value, err := strconv.ParseBool(strValue)
-    if err != nil {
-        return defaultValue
-    }
-    return value
+    return defaultValue
 }
 
-func getEnvAsSlice(key string, defaultValue []string) []string {
-    strValue := getEnv(key, "")
-    if strValue == "" {
-        return defaultValue
+func DefaultConfigPath() string {
+    homeDir, err := os.UserHomeDir()
+    if err != nil {
+        return "./config.yaml"
     }
-    return strings.Split(strValue, ",")
+    return filepath.Join(homeDir, ".app", "config.yaml")
 }

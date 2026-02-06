@@ -1,264 +1,104 @@
-
 package main
-
-import (
-	"encoding/json"
-	"fmt"
-	"regexp"
-	"strings"
-)
-
-type UserProfile struct {
-	ID        int    `json:"id"`
-	Username  string `json:"username"`
-	Email     string `json:"email"`
-	Age       int    `json:"age"`
-	Active    bool   `json:"active"`
-	Tags      []string `json:"tags"`
-}
-
-func ValidateUserProfile(profile UserProfile) error {
-	if profile.ID <= 0 {
-		return fmt.Errorf("invalid user ID: %d", profile.ID)
-	}
-
-	if len(profile.Username) < 3 || len(profile.Username) > 20 {
-		return fmt.Errorf("username must be between 3 and 20 characters")
-	}
-
-	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
-	if !emailRegex.MatchString(profile.Email) {
-		return fmt.Errorf("invalid email format: %s", profile.Email)
-	}
-
-	if profile.Age < 0 || profile.Age > 120 {
-		return fmt.Errorf("age must be between 0 and 120")
-	}
-
-	return nil
-}
-
-func TransformProfile(profile UserProfile) UserProfile {
-	transformed := profile
-	transformed.Username = strings.ToLower(transformed.Username)
-	transformed.Email = strings.ToLower(transformed.Email)
-	
-	uniqueTags := make(map[string]bool)
-	var cleanedTags []string
-	for _, tag := range transformed.Tags {
-		cleanedTag := strings.TrimSpace(tag)
-		if cleanedTag != "" && !uniqueTags[cleanedTag] {
-			uniqueTags[cleanedTag] = true
-			cleanedTags = append(cleanedTags, cleanedTag)
-		}
-	}
-	transformed.Tags = cleanedTags
-	
-	return transformed
-}
-
-func ProcessUserProfile(data []byte) (UserProfile, error) {
-	var profile UserProfile
-	if err := json.Unmarshal(data, &profile); err != nil {
-		return UserProfile{}, fmt.Errorf("failed to unmarshal JSON: %w", err)
-	}
-
-	if err := ValidateUserProfile(profile); err != nil {
-		return UserProfile{}, fmt.Errorf("validation failed: %w", err)
-	}
-
-	transformedProfile := TransformProfile(profile)
-	return transformedProfile, nil
-}
-
-func main() {
-	jsonData := []byte(`{
-		"id": 123,
-		"username": "JohnDoe",
-		"email": "JOHN@EXAMPLE.COM",
-		"age": 30,
-		"active": true,
-		"tags": ["golang", " backend", "golang", ""]
-	}`)
-
-	processedProfile, err := ProcessUserProfile(jsonData)
-	if err != nil {
-		fmt.Printf("Error processing profile: %v\n", err)
-		return
-	}
-
-	fmt.Printf("Processed Profile: %+v\n", processedProfile)
-	
-	outputJSON, _ := json.MarshalIndent(processedProfile, "", "  ")
-	fmt.Printf("JSON Output:\n%s\n", string(outputJSON))
-}package main
 
 import (
 	"encoding/csv"
 	"fmt"
 	"io"
 	"os"
-	"strings"
+	"strconv"
 )
 
-type DataProcessor struct {
-	InputPath  string
-	OutputPath string
+type Record struct {
+	ID    int
+	Name  string
+	Value float64
 }
 
-func NewDataProcessor(input, output string) *DataProcessor {
-	return &DataProcessor{
-		InputPath:  input,
-		OutputPath: output,
-	}
-}
-
-func (dp *DataProcessor) ValidateAndClean() error {
-	inputFile, err := os.Open(dp.InputPath)
+func processCSV(filename string) ([]Record, error) {
+	file, err := os.Open(filename)
 	if err != nil {
-		return fmt.Errorf("failed to open input file: %w", err)
+		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer inputFile.Close()
+	defer file.Close()
 
-	outputFile, err := os.Create(dp.OutputPath)
-	if err != nil {
-		return fmt.Errorf("failed to create output file: %w", err)
-	}
-	defer outputFile.Close()
+	reader := csv.NewReader(file)
+	records := []Record{}
+	lineNum := 0
 
-	reader := csv.NewReader(inputFile)
-	writer := csv.NewWriter(outputFile)
-	defer writer.Flush()
-
-	headers, err := reader.Read()
-	if err != nil {
-		return fmt.Errorf("failed to read headers: %w", err)
-	}
-
-	cleanedHeaders := dp.cleanHeaders(headers)
-	if err := writer.Write(cleanedHeaders); err != nil {
-		return fmt.Errorf("failed to write headers: %w", err)
-	}
-
-	recordCount := 0
 	for {
-		record, err := reader.Read()
+		lineNum++
+		row, err := reader.Read()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("failed to read record: %w", err)
+			return nil, fmt.Errorf("csv read error at line %d: %w", lineNum, err)
 		}
 
-		cleanedRecord := dp.cleanRecord(record)
-		if dp.isValidRecord(cleanedRecord) {
-			if err := writer.Write(cleanedRecord); err != nil {
-				return fmt.Errorf("failed to write record: %w", err)
-			}
-			recordCount++
+		if len(row) != 3 {
+			return nil, fmt.Errorf("invalid column count at line %d: expected 3, got %d", lineNum, len(row))
 		}
+
+		id, err := strconv.Atoi(row[0])
+		if err != nil {
+			return nil, fmt.Errorf("invalid ID at line %d: %w", lineNum, err)
+		}
+
+		name := row[1]
+		if name == "" {
+			return nil, fmt.Errorf("empty name at line %d", lineNum)
+		}
+
+		value, err := strconv.ParseFloat(row[2], 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid value at line %d: %w", lineNum, err)
+		}
+
+		records = append(records, Record{
+			ID:    id,
+			Name:  name,
+			Value: value,
+		})
 	}
 
-	fmt.Printf("Processed %d valid records\n", recordCount)
-	return nil
+	return records, nil
 }
 
-func (dp *DataProcessor) cleanHeaders(headers []string) []string {
-	cleaned := make([]string, len(headers))
-	for i, header := range headers {
-		cleaned[i] = strings.TrimSpace(header)
-		cleaned[i] = strings.ToLower(cleaned[i])
-		cleaned[i] = strings.ReplaceAll(cleaned[i], " ", "_")
+func calculateStats(records []Record) (float64, float64) {
+	if len(records) == 0 {
+		return 0, 0
 	}
-	return cleaned
-}
 
-func (dp *DataProcessor) cleanRecord(record []string) []string {
-	cleaned := make([]string, len(record))
-	for i, field := range record {
-		cleaned[i] = strings.TrimSpace(field)
-		if cleaned[i] == "" {
-			cleaned[i] = "N/A"
+	var sum float64
+	var max float64 = records[0].Value
+
+	for _, r := range records {
+		sum += r.Value
+		if r.Value > max {
+			max = r.Value
 		}
 	}
-	return cleaned
-}
 
-func (dp *DataProcessor) isValidRecord(record []string) bool {
-	for _, field := range record {
-		if field == "" {
-			return false
-		}
-	}
-	return true
+	average := sum / float64(len(records))
+	return average, max
 }
 
 func main() {
-	if len(os.Args) != 3 {
-		fmt.Println("Usage: data_processor <input.csv> <output.csv>")
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: data_processor <csv_file>")
 		os.Exit(1)
 	}
 
-	processor := NewDataProcessor(os.Args[1], os.Args[2])
-	if err := processor.ValidateAndClean(); err != nil {
-		fmt.Printf("Error: %v\n", err)
+	filename := os.Args[1]
+	records, err := processCSV(filename)
+	if err != nil {
+		fmt.Printf("Error processing file: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Println("Data processing completed successfully")
-}package main
-
-import (
-	"encoding/json"
-	"fmt"
-	"regexp"
-	"strings"
-)
-
-type UserData struct {
-	Email    string `json:"email"`
-	Username string `json:"username"`
-	Age      int    `json:"age"`
-}
-
-func ValidateEmail(email string) bool {
-	pattern := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
-	matched, _ := regexp.MatchString(pattern, email)
-	return matched
-}
-
-func SanitizeUsername(username string) string {
-	username = strings.TrimSpace(username)
-	username = strings.ToLower(username)
-	return username
-}
-
-func ProcessUserData(rawData []byte) (*UserData, error) {
-	var data UserData
-	err := json.Unmarshal(rawData, &data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
-	}
-
-	if !ValidateEmail(data.Email) {
-		return nil, fmt.Errorf("invalid email format: %s", data.Email)
-	}
-
-	data.Username = SanitizeUsername(data.Username)
-
-	if data.Age < 0 || data.Age > 150 {
-		return nil, fmt.Errorf("age out of valid range: %d", data.Age)
-	}
-
-	return &data, nil
-}
-
-func main() {
-	rawJSON := `{"email":"test@example.com","username":"  JohnDoe  ","age":25}`
-	processedData, err := ProcessUserData([]byte(rawJSON))
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
-	}
-	fmt.Printf("Processed Data: %+v\n", processedData)
+	fmt.Printf("Successfully processed %d records\n", len(records))
+	
+	avg, max := calculateStats(records)
+	fmt.Printf("Average value: %.2f\n", avg)
+	fmt.Printf("Maximum value: %.2f\n", max)
 }

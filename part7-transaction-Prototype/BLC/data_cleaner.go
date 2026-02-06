@@ -214,3 +214,151 @@ func main() {
 	fmt.Printf("Valid records: %v\n", valid)
 	fmt.Printf("Invalid records: %v\n", invalid)
 }
+package main
+
+import (
+	"encoding/csv"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+	"strings"
+)
+
+type DataRecord struct {
+	ID    int
+	Name  string
+	Email string
+	Score float64
+	Valid bool
+}
+
+func parseCSVFile(filename string) ([]DataRecord, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	records := []DataRecord{}
+	lineNum := 0
+
+	for {
+		line, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		lineNum++
+		if lineNum == 1 {
+			continue
+		}
+
+		if len(line) != 5 {
+			continue
+		}
+
+		id, idErr := strconv.Atoi(strings.TrimSpace(line[0]))
+		name := strings.TrimSpace(line[1])
+		email := strings.TrimSpace(line[2])
+		score, scoreErr := strconv.ParseFloat(strings.TrimSpace(line[3]), 64)
+		valid := strings.ToLower(strings.TrimSpace(line[4])) == "true"
+
+		if idErr != nil || scoreErr != nil {
+			continue
+		}
+
+		if !validateEmail(email) {
+			valid = false
+		}
+
+		record := DataRecord{
+			ID:    id,
+			Name:  name,
+			Email: email,
+			Score: score,
+			Valid: valid,
+		}
+		records = append(records, record)
+	}
+
+	return records, nil
+}
+
+func validateEmail(email string) bool {
+	if !strings.Contains(email, "@") {
+		return false
+	}
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return false
+	}
+	if len(parts[0]) == 0 || len(parts[1]) == 0 {
+		return false
+	}
+	return strings.Contains(parts[1], ".")
+}
+
+func filterValidRecords(records []DataRecord) []DataRecord {
+	validRecords := []DataRecord{}
+	for _, record := range records {
+		if record.Valid {
+			validRecords = append(validRecords, record)
+		}
+	}
+	return validRecords
+}
+
+func calculateAverageScore(records []DataRecord) float64 {
+	if len(records) == 0 {
+		return 0.0
+	}
+
+	total := 0.0
+	for _, record := range records {
+		total += record.Score
+	}
+	return total / float64(len(records))
+}
+
+func generateReport(records []DataRecord) {
+	validRecords := filterValidRecords(records)
+	invalidCount := len(records) - len(validRecords)
+	averageScore := calculateAverageScore(validRecords)
+
+	fmt.Printf("Data Cleaning Report\n")
+	fmt.Printf("====================\n")
+	fmt.Printf("Total records processed: %d\n", len(records))
+	fmt.Printf("Valid records: %d\n", len(validRecords))
+	fmt.Printf("Invalid records: %d\n", invalidCount)
+	fmt.Printf("Average score (valid records): %.2f\n", averageScore)
+
+	if len(validRecords) > 0 {
+		fmt.Printf("\nTop 5 valid records by score:\n")
+		for i := 0; i < len(validRecords) && i < 5; i++ {
+			record := validRecords[i]
+			fmt.Printf("%d. %s (Score: %.1f, Email: %s)\n",
+				i+1, record.Name, record.Score, record.Email)
+		}
+	}
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: go run data_cleaner.go <csv_file>")
+		os.Exit(1)
+	}
+
+	filename := os.Args[1]
+	records, err := parseCSVFile(filename)
+	if err != nil {
+		fmt.Printf("Error reading CSV file: %v\n", err)
+		os.Exit(1)
+	}
+
+	generateReport(records)
+}

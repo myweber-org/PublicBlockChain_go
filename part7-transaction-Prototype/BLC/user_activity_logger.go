@@ -136,4 +136,81 @@ func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.RemoteAddr,
 		duration,
 	)
+}package middleware
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/go-redis/redis/v8"
+	"golang.org/x/time/rate"
+)
+
+type ActivityLogger struct {
+	redisClient *redis.Client
+	limiter     *rate.Limiter
+	keyPrefix   string
+}
+
+func NewActivityLogger(redisAddr string, prefix string) *ActivityLogger {
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     redisAddr,
+		Password: "",
+		DB:       0,
+	})
+
+	return &ActivityLogger{
+		redisClient: rdb,
+		limiter:     rate.NewLimiter(rate.Every(time.Minute), 10),
+		keyPrefix:   prefix,
+	}
+}
+
+func (al *ActivityLogger) LogActivity(ctx context.Context, userID string, action string) error {
+	if !al.limiter.Allow() {
+		return fmt.Errorf("rate limit exceeded for user %s", userID)
+	}
+
+	key := fmt.Sprintf("%s:activity:%s", al.keyPrefix, userID)
+	timestamp := time.Now().Unix()
+
+	activity := map[string]interface{}{
+		"action":    action,
+		"timestamp": timestamp,
+		"user_id":   userID,
+	}
+
+	err := al.redisClient.HSet(ctx, key, activity).Err()
+	if err != nil {
+		return fmt.Errorf("failed to log activity: %w", err)
+	}
+
+	expiration := 24 * time.Hour
+	al.redisClient.Expire(ctx, key, expiration)
+
+	return nil
+}
+
+func (al *ActivityLogger) GetRecentActivities(ctx context.Context, userID string) ([]map[string]string, error) {
+	key := fmt.Sprintf("%s:activity:%s", al.keyPrefix, userID)
+	result, err := al.redisClient.HGetAll(ctx, key).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get activities: %w", err)
+	}
+
+	var activities []map[string]string
+	for field, value := range result {
+		activity := map[string]string{
+			"field": field,
+			"value": value,
+		}
+		activities = append(activities, activity)
+	}
+
+	return activities, nil
+}
+
+func (al *ActivityLogger) Close() error {
+	return al.redisClient.Close()
 }

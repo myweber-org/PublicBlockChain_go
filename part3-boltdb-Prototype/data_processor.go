@@ -436,4 +436,37 @@ func NormalizePhoneNumber(phone string) string {
 	}
 	
 	return digits
+}package data_processor
+
+import (
+	"regexp"
+	"strings"
+)
+
+type Processor struct {
+	whitespaceRegex *regexp.Regexp
+}
+
+func NewProcessor() *Processor {
+	return &Processor{
+		whitespaceRegex: regexp.MustCompile(`\s+`),
+	}
+}
+
+func (p *Processor) CleanString(input string) string {
+	trimmed := strings.TrimSpace(input)
+	cleaned := p.whitespaceRegex.ReplaceAllString(trimmed, " ")
+	return cleaned
+}
+
+func (p *Processor) NormalizeCase(input string) string {
+	return strings.ToLower(p.CleanString(input))
+}
+
+func (p *Processor) ExtractTokens(input string) []string {
+	cleaned := p.CleanString(input)
+	if cleaned == "" {
+		return []string{}
+	}
+	return strings.Split(cleaned, " ")
 }

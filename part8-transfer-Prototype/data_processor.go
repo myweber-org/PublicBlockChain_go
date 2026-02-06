@@ -263,3 +263,34 @@ func ProcessRecords(records []DataRecord, multiplier float64) ([]DataRecord, err
 	}
 	return processed, nil
 }
+package main
+
+import "fmt"
+
+func MovingAverage(data []float64, windowSize int) []float64 {
+    if windowSize <= 0 || windowSize > len(data) {
+        return []float64{}
+    }
+
+    result := make([]float64, 0, len(data)-windowSize+1)
+    var sum float64
+
+    for i := 0; i < windowSize; i++ {
+        sum += data[i]
+    }
+    result = append(result, sum/float64(windowSize))
+
+    for i := windowSize; i < len(data); i++ {
+        sum = sum - data[i-windowSize] + data[i]
+        result = append(result, sum/float64(windowSize))
+    }
+
+    return result
+}
+
+func main() {
+    sampleData := []float64{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0}
+    window := 3
+    averages := MovingAverage(sampleData, window)
+    fmt.Printf("Moving averages with window %d: %v\n", window, averages)
+}

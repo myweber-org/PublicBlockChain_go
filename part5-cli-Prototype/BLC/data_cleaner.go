@@ -64,3 +64,26 @@ func main() {
 		fmt.Printf("ID: %d, Email: %s\n", record.ID, record.Email)
 	}
 }
+package main
+
+import "fmt"
+
+func RemoveDuplicates(nums []int) []int {
+	encountered := map[int]bool{}
+	result := []int{}
+
+	for _, v := range nums {
+		if !encountered[v] {
+			encountered[v] = true
+			result = append(result, v)
+		}
+	}
+	return result
+}
+
+func main() {
+	slice := []int{1, 2, 2, 3, 4, 4, 5}
+	uniqueSlice := RemoveDuplicates(slice)
+	fmt.Println("Original:", slice)
+	fmt.Println("Unique:", uniqueSlice)
+}

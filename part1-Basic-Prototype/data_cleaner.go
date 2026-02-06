@@ -244,3 +244,46 @@ func main() {
 	cleaned2 := cleaner.RemoveDuplicates(moreData)
 	fmt.Println("Second batch:", cleaned2)
 }
+package utils
+
+import (
+	"regexp"
+	"strings"
+)
+
+// SanitizeInput cleans user-provided strings by:
+// - Removing leading/trailing whitespace
+// - Collapsing multiple spaces into single spaces
+// - Removing non-alphanumeric characters (configurable)
+// - Converting to lowercase (optional)
+func SanitizeInput(input string, allowSpecialChars bool, toLower bool) string {
+	if input == "" {
+		return input
+	}
+
+	// Trim whitespace
+	cleaned := strings.TrimSpace(input)
+
+	// Replace multiple spaces with single space
+	spaceRegex := regexp.MustCompile(`\s+`)
+	cleaned = spaceRegex.ReplaceAllString(cleaned, " ")
+
+	// Remove non-alphanumeric characters if not allowed
+	if !allowSpecialChars {
+		specialCharRegex := regexp.MustCompile(`[^a-zA-Z0-9\s\-_]`)
+		cleaned = specialCharRegex.ReplaceAllString(cleaned, "")
+	}
+
+	// Convert to lowercase if requested
+	if toLower {
+		cleaned = strings.ToLower(cleaned)
+	}
+
+	return cleaned
+}
+
+// ValidateEmail checks if a string is a valid email format
+func ValidateEmail(email string) bool {
+	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
+	return emailRegex.MatchString(email)
+}

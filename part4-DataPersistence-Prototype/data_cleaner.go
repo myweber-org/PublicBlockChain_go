@@ -356,3 +356,25 @@ func main() {
 		fmt.Printf("ID: %d, Email: %s, Valid: %v\n", record.ID, record.Email, record.Valid)
 	}
 }
+package main
+
+import "fmt"
+
+func removeDuplicates(nums []int) []int {
+    seen := make(map[int]bool)
+    result := []int{}
+    for _, num := range nums {
+        if !seen[num] {
+            seen[num] = true
+            result = append(result, num)
+        }
+    }
+    return result
+}
+
+func main() {
+    input := []int{1, 2, 2, 3, 4, 4, 5, 6, 6}
+    cleaned := removeDuplicates(input)
+    fmt.Println("Original:", input)
+    fmt.Println("Cleaned:", cleaned)
+}

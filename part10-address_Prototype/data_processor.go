@@ -1,93 +1,78 @@
+
 package main
 
 import (
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
-type UserData struct {
-	Username string
-	Email    string
-	Age      int
+type DataRecord struct {
+	ID        string
+	Value     float64
+	Timestamp time.Time
+	Category  string
 }
 
-func ValidateAndTransform(data UserData) (UserData, error) {
-	var processed UserData
-
-	if data.Username == "" {
-		return processed, fmt.Errorf("username cannot be empty")
+func ValidateRecord(record DataRecord) error {
+	if record.ID == "" {
+		return errors.New("ID cannot be empty")
 	}
-	processed.Username = strings.TrimSpace(data.Username)
-
-	if !strings.Contains(data.Email, "@") {
-		return processed, fmt.Errorf("invalid email format")
+	if record.Value < 0 {
+		return errors.New("value must be non-negative")
 	}
-	processed.Email = strings.ToLower(strings.TrimSpace(data.Email))
-
-	if data.Age < 0 || data.Age > 150 {
-		return processed, fmt.Errorf("age must be between 0 and 150")
+	if record.Timestamp.IsZero() {
+		return errors.New("timestamp must be set")
 	}
-	processed.Age = data.Age
+	if record.Category == "" {
+		return errors.New("category cannot be empty")
+	}
+	return nil
+}
 
+func TransformRecord(record DataRecord) DataRecord {
+	transformed := record
+	transformed.Category = strings.ToUpper(record.Category)
+	transformed.Value = record.Value * 1.1
+	return transformed
+}
+
+func ProcessRecords(records []DataRecord) ([]DataRecord, error) {
+	var processed []DataRecord
+	for _, record := range records {
+		if err := ValidateRecord(record); err != nil {
+			return nil, fmt.Errorf("validation failed for record %s: %w", record.ID, err)
+		}
+		processed = append(processed, TransformRecord(record))
+	}
 	return processed, nil
 }
 
 func main() {
-	sample := UserData{
-		Username: "  JohnDoe  ",
-		Email:    "John@Example.COM",
-		Age:      25,
+	records := []DataRecord{
+		{
+			ID:        "001",
+			Value:     100.0,
+			Timestamp: time.Now(),
+			Category:  "sales",
+		},
+		{
+			ID:        "002",
+			Value:     200.0,
+			Timestamp: time.Now().Add(-24 * time.Hour),
+			Category:  "inventory",
+		},
 	}
 
-	result, err := ValidateAndTransform(sample)
+	processed, err := ProcessRecords(records)
 	if err != nil {
-		fmt.Println("Error:", err)
+		fmt.Printf("Processing error: %v\n", err)
 		return
 	}
 
-	fmt.Printf("Processed: %+v\n", result)
-}
-package main
-
-import (
-	"regexp"
-	"strings"
-)
-
-type DataProcessor struct {
-	whitespaceRegex *regexp.Regexp
-	emailRegex      *regexp.Regexp
-}
-
-func NewDataProcessor() *DataProcessor {
-	return &DataProcessor{
-		whitespaceRegex: regexp.MustCompile(`\s+`),
-		emailRegex:      regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`),
+	for _, record := range processed {
+		fmt.Printf("Processed: ID=%s, Value=%.2f, Category=%s\n",
+			record.ID, record.Value, record.Category)
 	}
-}
-
-func (dp *DataProcessor) CleanString(input string) string {
-	trimmed := strings.TrimSpace(input)
-	return dp.whitespaceRegex.ReplaceAllString(trimmed, " ")
-}
-
-func (dp *DataProcessor) ValidateEmail(email string) bool {
-	return dp.emailRegex.MatchString(email)
-}
-
-func (dp *DataProcessor) NormalizeEmail(email string) (string, bool) {
-	cleaned := dp.CleanString(email)
-	normalized := strings.ToLower(cleaned)
-	return normalized, dp.ValidateEmail(normalized)
-}
-
-func (dp *DataProcessor) ProcessInputList(inputs []string) []string {
-	var processed []string
-	for _, input := range inputs {
-		cleaned := dp.CleanString(input)
-		if cleaned != "" {
-			processed = append(processed, cleaned)
-		}
-	}
-	return processed
 }

@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -6,110 +5,126 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
-	"os"
+	"strings"
+
+	"golang.org/x/crypto/pbkdf2"
 )
 
-func deriveKey(passphrase string, salt []byte) []byte {
-	hash := sha256.New()
-	hash.Write([]byte(passphrase))
-	hash.Write(salt)
-	return hash.Sum(nil)
+const (
+	saltSize      = 16
+	nonceSize     = 12
+	keyIterations = 100000
+	keyLength     = 32
+)
+
+type EncryptionResult struct {
+	Ciphertext string
+	Salt       string
+	Nonce      string
 }
 
-func encryptFile(inputPath, outputPath, passphrase string) error {
-	salt := make([]byte, 16)
-	if _, err := rand.Read(salt); err != nil {
-		return err
-	}
-
-	key := deriveKey(passphrase, salt)
-
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return err
-	}
-
-	plaintext, err := os.ReadFile(inputPath)
-	if err != nil {
-		return err
-	}
-
-	ciphertext := make([]byte, aes.BlockSize+len(plaintext))
-	iv := ciphertext[:aes.BlockSize]
-	if _, err := rand.Read(iv); err != nil {
-		return err
-	}
-
-	stream := cipher.NewCFBEncrypter(block, iv)
-	stream.XORKeyStream(ciphertext[aes.BlockSize:], plaintext)
-
-	outputData := append(salt, ciphertext...)
-	return os.WriteFile(outputPath, outputData, 0644)
+func deriveKey(password string, salt []byte) []byte {
+	return pbkdf2.Key([]byte(password), salt, keyIterations, keyLength, sha256.New)
 }
 
-func decryptFile(inputPath, outputPath, passphrase string) error {
-	data, err := os.ReadFile(inputPath)
-	if err != nil {
-		return err
+func Encrypt(plaintext, password string) (*EncryptionResult, error) {
+	salt := make([]byte, saltSize)
+	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
+		return nil, fmt.Errorf("failed to generate salt: %w", err)
 	}
 
-	if len(data) < 16+aes.BlockSize {
-		return errors.New("file too short")
+	nonce := make([]byte, nonceSize)
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, fmt.Errorf("failed to generate nonce: %w", err)
 	}
 
-	salt := data[:16]
-	ciphertext := data[16:]
-
-	key := deriveKey(passphrase, salt)
-
+	key := deriveKey(password, salt)
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed to create cipher: %w", err)
 	}
 
-	if len(ciphertext) < aes.BlockSize {
-		return errors.New("ciphertext too short")
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCM: %w", err)
 	}
 
-	iv := ciphertext[:aes.BlockSize]
-	ciphertext = ciphertext[aes.BlockSize:]
+	ciphertext := aesgcm.Seal(nil, nonce, []byte(plaintext), nil)
 
-	stream := cipher.NewCFBDecrypter(block, iv)
-	plaintext := make([]byte, len(ciphertext))
-	stream.XORKeyStream(plaintext, ciphertext)
+	return &EncryptionResult{
+		Ciphertext: base64.StdEncoding.EncodeToString(ciphertext),
+		Salt:       base64.StdEncoding.EncodeToString(salt),
+		Nonce:      base64.StdEncoding.EncodeToString(nonce),
+	}, nil
+}
 
-	return os.WriteFile(outputPath, plaintext, 0644)
+func Decrypt(encrypted *EncryptionResult, password string) (string, error) {
+	salt, err := base64.StdEncoding.DecodeString(encrypted.Salt)
+	if err != nil {
+		return "", fmt.Errorf("invalid salt encoding: %w", err)
+	}
+
+	nonce, err := base64.StdEncoding.DecodeString(encrypted.Nonce)
+	if err != nil {
+		return "", fmt.Errorf("invalid nonce encoding: %w", err)
+	}
+
+	ciphertext, err := base64.StdEncoding.DecodeString(encrypted.Ciphertext)
+	if err != nil {
+		return "", fmt.Errorf("invalid ciphertext encoding: %w", err)
+	}
+
+	key := deriveKey(password, salt)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", fmt.Errorf("failed to create cipher: %w", err)
+	}
+
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", fmt.Errorf("failed to create GCM: %w", err)
+	}
+
+	plaintext, err := aesgcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", errors.New("decryption failed: invalid password or corrupted data")
+	}
+
+	return string(plaintext), nil
 }
 
 func main() {
-	if len(os.Args) != 5 {
-		fmt.Println("Usage: go run file_encryption_utility.go <encrypt|decrypt> <input> <output> <passphrase>")
-		os.Exit(1)
-	}
+	password := "securePass123!"
+	message := "Sensitive data that requires protection"
 
-	operation := os.Args[1]
-	inputPath := os.Args[2]
-	outputPath := os.Args[3]
-	passphrase := os.Args[4]
+	fmt.Println("Original message:", message)
 
-	var err error
-	switch operation {
-	case "encrypt":
-		err = encryptFile(inputPath, outputPath, passphrase)
-	case "decrypt":
-		err = decryptFile(inputPath, outputPath, passphrase)
-	default:
-		fmt.Println("Invalid operation. Use 'encrypt' or 'decrypt'")
-		os.Exit(1)
-	}
-
+	encrypted, err := Encrypt(message, password)
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
+		fmt.Println("Encryption error:", err)
+		return
 	}
 
-	fmt.Println("Operation completed successfully")
+	fmt.Printf("Encrypted result:\n")
+	fmt.Printf("  Ciphertext: %s\n", encrypted.Ciphertext[:50]+"...")
+	fmt.Printf("  Salt: %s\n", encrypted.Salt)
+	fmt.Printf("  Nonce: %s\n", encrypted.Nonce)
+
+	decrypted, err := Decrypt(encrypted, password)
+	if err != nil {
+		fmt.Println("Decryption error:", err)
+		return
+	}
+
+	fmt.Println("Decrypted message:", decrypted)
+
+	if strings.Compare(message, decrypted) == 0 {
+		fmt.Println("SUCCESS: Original and decrypted messages match")
+	} else {
+		fmt.Println("ERROR: Messages do not match")
+	}
 }

@@ -177,4 +177,61 @@ func overrideBool(field *bool, envVar string) {
     if val := os.Getenv(envVar); val != "" {
         *field = val == "true" || val == "1" || val == "TRUE"
     }
+}package config
+
+import (
+    "os"
+    "strconv"
+    "strings"
+)
+
+type Config struct {
+    ServerPort int
+    DatabaseURL string
+    EnableLogging bool
+    AllowedOrigins []string
+}
+
+func LoadConfig() (*Config, error) {
+    cfg := &Config{}
+    
+    portStr := getEnvWithDefault("SERVER_PORT", "8080")
+    port, err := strconv.Atoi(portStr)
+    if err != nil {
+        return nil, err
+    }
+    cfg.ServerPort = port
+    
+    cfg.DatabaseURL = getEnvWithDefault("DATABASE_URL", "postgres://localhost:5432/app")
+    
+    loggingStr := getEnvWithDefault("ENABLE_LOGGING", "true")
+    cfg.EnableLogging = strings.ToLower(loggingStr) == "true"
+    
+    originsStr := getEnvWithDefault("ALLOWED_ORIGINS", "http://localhost:3000")
+    cfg.AllowedOrigins = strings.Split(originsStr, ",")
+    
+    if err := validateConfig(cfg); err != nil {
+        return nil, err
+    }
+    
+    return cfg, nil
+}
+
+func getEnvWithDefault(key, defaultValue string) string {
+    if value := os.Getenv(key); value != "" {
+        return value
+    }
+    return defaultValue
+}
+
+func validateConfig(cfg *Config) error {
+    if cfg.ServerPort < 1 || cfg.ServerPort > 65535 {
+        return strconv.ErrRange
+    }
+    
+    if cfg.DatabaseURL == "" {
+        return strconv.ErrSyntax
+    }
+    
+    return nil
 }

@@ -1,380 +1,100 @@
-
-package main
-
-import "fmt"
-
-func RemoveDuplicates(input []string) []string {
-	seen := make(map[string]struct{})
-	result := []string{}
-
-	for _, item := range input {
-		if _, exists := seen[item]; !exists {
-			seen[item] = struct{}{}
-			result = append(result, item)
-		}
-	}
-	return result
-}
-
-func main() {
-	data := []string{"apple", "banana", "apple", "cherry", "banana", "date"}
-	cleaned := RemoveDuplicates(data)
-	fmt.Println("Original:", data)
-	fmt.Println("Cleaned:", cleaned)
-}
-package main
-
-import "fmt"
-
-func removeDuplicates(input []int) []int {
-	seen := make(map[int]bool)
-	result := []int{}
-
-	for _, value := range input {
-		if !seen[value] {
-			seen[value] = true
-			result = append(result, value)
-		}
-	}
-	return result
-}
-
-func main() {
-	data := []int{4, 2, 8, 2, 4, 9, 8, 1}
-	cleaned := removeDuplicates(data)
-	fmt.Println("Original:", data)
-	fmt.Println("Cleaned:", cleaned)
-}package datautils
-
-func RemoveDuplicates[T comparable](slice []T) []T {
-	seen := make(map[T]bool)
-	result := []T{}
-	for _, item := range slice {
-		if !seen[item] {
-			seen[item] = true
-			result = append(result, item)
-		}
-	}
-	return result
-}
 package main
 
 import (
+    "encoding/csv"
     "fmt"
+    "io"
+    "os"
     "strings"
 )
 
-func DeduplicateStrings(slice []string) []string {
-    seen := make(map[string]bool)
-    result := []string{}
-    for _, item := range slice {
-        if !seen[item] {
-            seen[item] = true
-            result = append(result, item)
-        }
-    }
-    return result
-}
-
-func ValidateEmail(email string) bool {
-    if !strings.Contains(email, "@") {
-        return false
-    }
-    parts := strings.Split(email, "@")
-    if len(parts) != 2 {
-        return false
-    }
-    if len(parts[0]) == 0 || len(parts[1]) == 0 {
-        return false
-    }
-    return true
-}
-
-func main() {
-    emails := []string{
-        "test@example.com",
-        "user@domain.org",
-        "test@example.com",
-        "invalid-email",
-        "another@test.net",
-        "user@domain.org",
-    }
-
-    uniqueEmails := DeduplicateStrings(emails)
-    fmt.Println("Unique emails:", uniqueEmails)
-
-    for _, email := range uniqueEmails {
-        if ValidateEmail(email) {
-            fmt.Printf("%s is valid\n", email)
-        } else {
-            fmt.Printf("%s is invalid\n", email)
-        }
-    }
-}package utils
-
-import "strings"
-
-func SanitizeString(input string) string {
-    trimmed := strings.TrimSpace(input)
-    return strings.Join(strings.Fields(trimmed), " ")
-}package main
-
-import "fmt"
-
-func RemoveDuplicates[T comparable](slice []T) []T {
-	seen := make(map[T]bool)
-	result := []T{}
-
-	for _, item := range slice {
-		if !seen[item] {
-			seen[item] = true
-			result = append(result, item)
-		}
-	}
-	return result
-}
-
-func main() {
-	numbers := []int{1, 2, 2, 3, 4, 4, 5}
-	uniqueNumbers := RemoveDuplicates(numbers)
-	fmt.Println("Original:", numbers)
-	fmt.Println("Unique:", uniqueNumbers)
-
-	strings := []string{"apple", "banana", "apple", "orange"}
-	uniqueStrings := RemoveDuplicates(strings)
-	fmt.Println("Original:", strings)
-	fmt.Println("Unique:", uniqueStrings)
-}
-package main
-
-import (
-	"fmt"
-	"strings"
-)
-
-type DataCleaner struct {
-	seen map[string]bool
-}
-
-func NewDataCleaner() *DataCleaner {
-	return &DataCleaner{
-		seen: make(map[string]bool),
-	}
-}
-
-func (dc *DataCleaner) Deduplicate(items []string) []string {
-	var unique []string
-	for _, item := range items {
-		normalized := strings.ToLower(strings.TrimSpace(item))
-		if !dc.seen[normalized] && dc.isValid(normalized) {
-			dc.seen[normalized] = true
-			unique = append(unique, item)
-		}
-	}
-	return unique
-}
-
-func (dc *DataCleaner) isValid(item string) bool {
-	return len(item) > 0 && !strings.ContainsAny(item, "!@#$%")
-}
-
-func (dc *DataCleaner) Reset() {
-	dc.seen = make(map[string]bool)
-}
-
-func main() {
-	cleaner := NewDataCleaner()
-	
-	data := []string{"apple", "Apple", "banana", "", "cherry!", "banana", "date"}
-	cleaned := cleaner.Deduplicate(data)
-	
-	fmt.Println("Original:", data)
-	fmt.Println("Cleaned:", cleaned)
-	
-	cleaner.Reset()
-	
-	moreData := []string{"grape", "GRAPE", "kiwi"}
-	moreCleaned := cleaner.Deduplicate(moreData)
-	fmt.Println("Second batch:", moreCleaned)
-}
-package main
-
-import (
-	"fmt"
-	"strings"
-)
-
-type DataCleaner struct {
-	processedCount int
-	duplicateCount int
-}
-
-func NewDataCleaner() *DataCleaner {
-	return &DataCleaner{
-		processedCount: 0,
-		duplicateCount: 0,
-	}
-}
-
-func (dc *DataCleaner) RemoveDuplicates(items []string) []string {
-	seen := make(map[string]bool)
-	result := []string{}
-	
-	for _, item := range items {
-		trimmed := strings.TrimSpace(item)
-		if trimmed == "" {
-			continue
-		}
-		
-		if !seen[trimmed] {
-			seen[trimmed] = true
-			result = append(result, trimmed)
-			dc.processedCount++
-		} else {
-			dc.duplicateCount++
-		}
-	}
-	
-	return result
-}
-
-func (dc *DataCleaner) ValidateEmail(email string) bool {
-	if !strings.Contains(email, "@") {
-		return false
-	}
-	
-	parts := strings.Split(email, "@")
-	if len(parts) != 2 {
-		return false
-	}
-	
-	if parts[0] == "" || parts[1] == "" {
-		return false
-	}
-	
-	return strings.Contains(parts[1], ".")
-}
-
-func (dc *DataCleaner) GetStats() (int, int) {
-	return dc.processedCount, dc.duplicateCount
-}
-
-func main() {
-	cleaner := NewDataCleaner()
-	
-	data := []string{
-		"user@example.com",
-		"  user@example.com  ",
-		"test@domain.org",
-		"invalid-email",
-		"",
-		"another@test.com",
-		"test@domain.org",
-	}
-	
-	uniqueEmails := cleaner.RemoveDuplicates(data)
-	
-	fmt.Println("Cleaned data:")
-	for _, email := range uniqueEmails {
-		valid := cleaner.ValidateEmail(email)
-		status := "valid"
-		if !valid {
-			status = "invalid"
-		}
-		fmt.Printf("  %s (%s)\n", email, status)
-	}
-	
-	processed, duplicates := cleaner.GetStats()
-	fmt.Printf("\nStatistics:\n")
-	fmt.Printf("  Processed items: %d\n", processed)
-	fmt.Printf("  Duplicates found: %d\n", duplicates)
-}
-package main
-
-import (
-	"fmt"
-	"strings"
-)
-
 type DataRecord struct {
-	ID    int
-	Email string
-	Valid bool
+    ID    string
+    Name  string
+    Email string
+    Age   string
 }
 
-func deduplicateRecords(records []DataRecord) []DataRecord {
-	seen := make(map[string]bool)
-	var unique []DataRecord
-
-	for _, record := range records {
-		key := strings.ToLower(strings.TrimSpace(record.Email))
-		if !seen[key] {
-			seen[key] = true
-			unique = append(unique, record)
-		}
-	}
-	return unique
+func cleanString(s string) string {
+    return strings.TrimSpace(strings.ToLower(s))
 }
 
 func validateEmail(email string) bool {
-	if len(email) < 3 || !strings.Contains(email, "@") {
-		return false
-	}
-	parts := strings.Split(email, "@")
-	if len(parts) != 2 || len(parts[0]) == 0 || len(parts[1]) == 0 {
-		return false
-	}
-	return true
+    return strings.Contains(email, "@") && strings.Contains(email, ".")
 }
 
-func cleanDataset(records []DataRecord) []DataRecord {
-	var cleaned []DataRecord
-	for _, record := range records {
-		if validateEmail(record.Email) {
-			record.Valid = true
-			cleaned = append(cleaned, record)
-		}
-	}
-	return deduplicateRecords(cleaned)
-}
+func processCSVFile(inputPath string, outputPath string) error {
+    inFile, err := os.Open(inputPath)
+    if err != nil {
+        return fmt.Errorf("failed to open input file: %w", err)
+    }
+    defer inFile.Close()
 
-func main() {
-	dataset := []DataRecord{
-		{1, "user@example.com", false},
-		{2, "invalid-email", false},
-		{3, "user@example.com", false},
-		{4, "test@domain.org", false},
-		{5, "another@test.com", false},
-		{6, "test@domain.org", false},
-	}
+    outFile, err := os.Create(outputPath)
+    if err != nil {
+        return fmt.Errorf("failed to create output file: %w", err)
+    }
+    defer outFile.Close()
 
-	cleaned := cleanDataset(dataset)
-	fmt.Printf("Original: %d records\n", len(dataset))
-	fmt.Printf("Cleaned: %d records\n", len(cleaned))
-	
-	for _, record := range cleaned {
-		fmt.Printf("ID: %d, Email: %s, Valid: %v\n", record.ID, record.Email, record.Valid)
-	}
-}
-package main
+    reader := csv.NewReader(inFile)
+    writer := csv.NewWriter(outFile)
+    defer writer.Flush()
 
-import "fmt"
+    header, err := reader.Read()
+    if err != nil {
+        return fmt.Errorf("failed to read header: %w", err)
+    }
 
-func removeDuplicates(nums []int) []int {
-    seen := make(map[int]bool)
-    result := []int{}
-    for _, num := range nums {
-        if !seen[num] {
-            seen[num] = true
-            result = append(result, num)
+    if err := writer.Write(header); err != nil {
+        return fmt.Errorf("failed to write header: %w", err)
+    }
+
+    for {
+        row, err := reader.Read()
+        if err == io.EOF {
+            break
+        }
+        if err != nil {
+            return fmt.Errorf("failed to read row: %w", err)
+        }
+
+        if len(row) < 4 {
+            continue
+        }
+
+        record := DataRecord{
+            ID:    cleanString(row[0]),
+            Name:  cleanString(row[1]),
+            Email: cleanString(row[2]),
+            Age:   cleanString(row[3]),
+        }
+
+        if record.ID == "" || record.Name == "" || !validateEmail(record.Email) {
+            continue
+        }
+
+        cleanedRow := []string{record.ID, record.Name, record.Email, record.Age}
+        if err := writer.Write(cleanedRow); err != nil {
+            return fmt.Errorf("failed to write row: %w", err)
         }
     }
-    return result
+
+    return nil
 }
 
 func main() {
-    input := []int{1, 2, 2, 3, 4, 4, 5, 6, 6}
-    cleaned := removeDuplicates(input)
-    fmt.Println("Original:", input)
-    fmt.Println("Cleaned:", cleaned)
+    if len(os.Args) != 3 {
+        fmt.Println("Usage: data_cleaner <input.csv> <output.csv>")
+        os.Exit(1)
+    }
+
+    inputFile := os.Args[1]
+    outputFile := os.Args[2]
+
+    if err := processCSVFile(inputFile, outputFile); err != nil {
+        fmt.Printf("Error processing file: %v\n", err)
+        os.Exit(1)
+    }
+
+    fmt.Println("Data cleaning completed successfully")
 }

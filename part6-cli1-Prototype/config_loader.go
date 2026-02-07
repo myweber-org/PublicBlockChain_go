@@ -509,4 +509,131 @@ func DefaultConfigPath() string {
     }
     
     return ""
+}package config
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"reflect"
+	"strconv"
+	"strings"
+)
+
+type Config struct {
+	ServerPort int    `json:"server_port" env:"SERVER_PORT"`
+	DBHost     string `json:"db_host" env:"DB_HOST"`
+	DBPort     int    `json:"db_port" env:"DB_PORT"`
+	DebugMode  bool   `json:"debug_mode" env:"DEBUG_MODE"`
+	APIKey     string `json:"api_key" env:"API_KEY"`
+}
+
+func LoadConfig(configPath string) (*Config, error) {
+	config := &Config{}
+	
+	if configPath != "" {
+		if err := loadFromFile(configPath, config); err != nil {
+			return nil, err
+		}
+	}
+	
+	if err := loadFromEnv(config); err != nil {
+		return nil, err
+	}
+	
+	if err := validateConfig(config); err != nil {
+		return nil, err
+	}
+	
+	return config, nil
+}
+
+func loadFromFile(path string, config *Config) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("failed to open config file: %w", err)
+	}
+	defer file.Close()
+	
+	decoder := json.NewDecoder(file)
+	if err := decoder.Decode(config); err != nil {
+		return fmt.Errorf("failed to decode config JSON: %w", err)
+	}
+	
+	return nil
+}
+
+func loadFromEnv(config *Config) error {
+	val := reflect.ValueOf(config).Elem()
+	typ := val.Type()
+	
+	for i := 0; i < val.NumField(); i++ {
+		field := val.Field(i)
+		structField := typ.Field(i)
+		
+		envTag := structField.Tag.Get("env")
+		if envTag == "" {
+			continue
+		}
+		
+		envValue := os.Getenv(envTag)
+		if envValue == "" {
+			continue
+		}
+		
+		if err := setFieldFromString(field, envValue); err != nil {
+			return fmt.Errorf("failed to set field %s from env %s: %w", 
+				structField.Name, envTag, err)
+		}
+	}
+	
+	return nil
+}
+
+func setFieldFromString(field reflect.Value, value string) error {
+	switch field.Kind() {
+	case reflect.String:
+		field.SetString(value)
+	case reflect.Int:
+		intVal, err := strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+		field.SetInt(int64(intVal))
+	case reflect.Bool:
+		boolVal, err := strconv.ParseBool(value)
+		if err != nil {
+			return err
+		}
+		field.SetBool(boolVal)
+	default:
+		return fmt.Errorf("unsupported field type: %s", field.Kind())
+	}
+	return nil
+}
+
+func validateConfig(config *Config) error {
+	var errors []string
+	
+	if config.ServerPort <= 0 || config.ServerPort > 65535 {
+		errors = append(errors, "server_port must be between 1 and 65535")
+	}
+	
+	if config.DBHost == "" {
+		errors = append(errors, "db_host is required")
+	}
+	
+	if config.DBPort <= 0 || config.DBPort > 65535 {
+		errors = append(errors, "db_port must be between 1 and 65535")
+	}
+	
+	if config.APIKey == "" {
+		errors = append(errors, "api_key is required")
+	}
+	
+	if len(errors) > 0 {
+		return fmt.Errorf("config validation failed: %s", strings.Join(errors, ", "))
+	}
+	
+	return nil
 }

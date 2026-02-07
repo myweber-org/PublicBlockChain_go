@@ -49,4 +49,46 @@ func main() {
             }
         }
     }
+}package main
+
+import (
+    "context"
+    "log"
+    "time"
+)
+
+type Session struct {
+    ID        string
+    UserID    string
+    ExpiresAt time.Time
+}
+
+type SessionStore interface {
+    DeleteExpiredSessions(ctx context.Context) error
+}
+
+func cleanupExpiredSessions(store SessionStore, interval time.Duration) {
+    ticker := time.NewTicker(interval)
+    defer ticker.Stop()
+
+    for range ticker.C {
+        ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+        err := store.DeleteExpiredSessions(ctx)
+        cancel()
+
+        if err != nil {
+            log.Printf("Failed to delete expired sessions: %v", err)
+        } else {
+            log.Println("Successfully cleaned up expired sessions")
+        }
+    }
+}
+
+func main() {
+    // In a real application, initialize your session store here
+    // store := NewDatabaseSessionStore()
+    // cleanupExpiredSessions(store, 1*time.Hour)
+    
+    log.Println("Session cleanup service would start here")
+    select {} // Block forever in this example
 }

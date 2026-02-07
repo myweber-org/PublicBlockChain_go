@@ -92,4 +92,39 @@ func main() {
 	writer := csv.NewWriter(fmt.Stdout)
 	writer.WriteAll(cleaned)
 	writer.Flush()
+}package utils
+
+import (
+	"regexp"
+	"strings"
+)
+
+// SanitizeInput cleans and normalizes user-provided strings
+func SanitizeInput(input string) string {
+	// Remove leading/trailing whitespace
+	cleaned := strings.TrimSpace(input)
+	
+	// Replace multiple spaces with single space
+	spaceRegex := regexp.MustCompile(`\s+`)
+	cleaned = spaceRegex.ReplaceAllString(cleaned, " ")
+	
+	// Remove potentially dangerous characters (customize as needed)
+	dangerousChars := regexp.MustCompile(`[<>{}]`)
+	cleaned = dangerousChars.ReplaceAllString(cleaned, "")
+	
+	return cleaned
+}
+
+// NormalizeEmail formats email addresses to lowercase and trims spaces
+func NormalizeEmail(email string) string {
+	email = strings.TrimSpace(email)
+	email = strings.ToLower(email)
+	
+	// Basic email validation pattern
+	emailRegex := regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$`)
+	if !emailRegex.MatchString(email) {
+		return ""
+	}
+	
+	return email
 }

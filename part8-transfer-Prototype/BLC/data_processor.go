@@ -202,3 +202,34 @@ func FilterRecords(records []DataRecord, minValue float64) []DataRecord {
     }
     return filtered
 }
+package data_processor
+
+import (
+	"regexp"
+	"strings"
+)
+
+type Processor struct {
+	whitespaceRegex *regexp.Regexp
+}
+
+func NewProcessor() *Processor {
+	return &Processor{
+		whitespaceRegex: regexp.MustCompile(`\s+`),
+	}
+}
+
+func (p *Processor) CleanInput(input string) string {
+	trimmed := strings.TrimSpace(input)
+	cleaned := p.whitespaceRegex.ReplaceAllString(trimmed, " ")
+	return cleaned
+}
+
+func (p *Processor) NormalizeCase(input string) string {
+	return strings.ToLower(p.CleanInput(input))
+}
+
+func (p *Processor) ExtractAlphanumeric(input string) string {
+	alphanumericRegex := regexp.MustCompile(`[^a-zA-Z0-9\s]`)
+	return alphanumericRegex.ReplaceAllString(input, "")
+}

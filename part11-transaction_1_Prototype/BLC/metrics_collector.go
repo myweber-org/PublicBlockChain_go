@@ -57,3 +57,70 @@ func main() {
         }
     }
 }
+package main
+
+import (
+    "fmt"
+    "net/http"
+    "time"
+)
+
+type Metrics struct {
+    RequestCount    int
+    TotalLatency    time.Duration
+    StatusCodes     map[int]int
+}
+
+var metrics = Metrics{
+    StatusCodes: make(map[int]int),
+}
+
+func metricsMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        start := time.Now()
+        recorder := &responseRecorder{ResponseWriter: w, statusCode: http.StatusOK}
+        
+        next.ServeHTTP(recorder, r)
+        
+        duration := time.Since(start)
+        metrics.RequestCount++
+        metrics.TotalLatency += duration
+        metrics.StatusCodes[recorder.statusCode]++
+    })
+}
+
+type responseRecorder struct {
+    http.ResponseWriter
+    statusCode int
+}
+
+func (rr *responseRecorder) WriteHeader(code int) {
+    rr.statusCode = code
+    rr.ResponseWriter.WriteHeader(code)
+}
+
+func metricsHandler(w http.ResponseWriter, r *http.Request) {
+    avgLatency := time.Duration(0)
+    if metrics.RequestCount > 0 {
+        avgLatency = metrics.TotalLatency / time.Duration(metrics.RequestCount)
+    }
+    
+    fmt.Fprintf(w, "Requests: %d\n", metrics.RequestCount)
+    fmt.Fprintf(w, "Average Latency: %v\n", avgLatency)
+    fmt.Fprintf(w, "Status Codes:\n")
+    for code, count := range metrics.StatusCodes {
+        fmt.Fprintf(w, "  %d: %d\n", code, count)
+    }
+}
+
+func main() {
+    mux := http.NewServeMux()
+    mux.Handle("/", metricsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        time.Sleep(50 * time.Millisecond)
+        w.Write([]byte("Hello, World!"))
+    })))
+    mux.HandleFunc("/metrics", metricsHandler)
+    
+    fmt.Println("Server starting on :8080")
+    http.ListenAndServe(":8080", mux)
+}

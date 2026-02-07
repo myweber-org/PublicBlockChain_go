@@ -213,4 +213,37 @@ func (al *ActivityLogger) GetRecentActivities(ctx context.Context, userID string
 
 func (al *ActivityLogger) Close() error {
 	return al.redisClient.Close()
+}package middleware
+
+import (
+	"log"
+	"net/http"
+	"time"
+)
+
+type ActivityLogger struct {
+	handler http.Handler
+}
+
+func NewActivityLogger(handler http.Handler) *ActivityLogger {
+	return &ActivityLogger{handler: handler}
+}
+
+func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	userID := extractUserID(r)
+	path := r.URL.Path
+	method := r.Method
+
+	al.handler.ServeHTTP(w, r)
+
+	duration := time.Since(start)
+	log.Printf("User %s %s %s completed in %v", userID, method, path, duration)
+}
+
+func extractUserID(r *http.Request) string {
+	if auth := r.Header.Get("Authorization"); auth != "" {
+		return auth[:8]
+	}
+	return "anonymous"
 }

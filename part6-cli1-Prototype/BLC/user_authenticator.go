@@ -742,4 +742,52 @@ func HasRole(tokenString string, requiredRole string) bool {
 		return false
 	}
 	return claims.Role == requiredRole
+}package middleware
+
+import (
+	"net/http"
+	"strings"
+)
+
+type Authenticator struct {
+	secretKey string
+}
+
+func NewAuthenticator(secretKey string) *Authenticator {
+	return &Authenticator{secretKey: secretKey}
+}
+
+func (a *Authenticator) ValidateToken(tokenString string) (bool, error) {
+	if strings.TrimSpace(tokenString) == "" {
+		return false, nil
+	}
+	
+	// In production, use proper JWT validation library
+	// This is a simplified example
+	expectedPrefix := "Bearer "
+	if !strings.HasPrefix(tokenString, expectedPrefix) {
+		return false, nil
+	}
+	
+	token := strings.TrimPrefix(tokenString, expectedPrefix)
+	return len(token) > 10, nil
+}
+
+func (a *Authenticator) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		valid, err := a.ValidateToken(authHeader)
+		
+		if err != nil {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		
+		if !valid {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		
+		next.ServeHTTP(w, r)
+	})
 }

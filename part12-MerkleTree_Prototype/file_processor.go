@@ -1,67 +1,81 @@
+
 package main
 
 import (
-	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
 )
 
-type FileStats struct {
-	Path    string
-	Size    int64
-	Lines   int
-	Words   int
-	Chars   int
+type FileInfo struct {
+	Path string
+	Size int64
+	Hash string
+	Err  error
 }
 
-func processFile(path string, wg *sync.WaitGroup, results chan<- FileStats) {
+func processFile(path string, results chan<- FileInfo, wg *sync.WaitGroup) {
 	defer wg.Done()
+
+	info := FileInfo{Path: path}
 
 	file, err := os.Open(path)
 	if err != nil {
-		fmt.Printf("Error opening file %s: %v\n", path, err)
+		info.Err = err
+		results <- info
 		return
 	}
 	defer file.Close()
 
-	stats := FileStats{Path: path}
-	scanner := bufio.NewScanner(file)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		stats.Lines++
-		stats.Chars += len(line) + 1
-		stats.Words += countWords(line)
+	stat, err := file.Stat()
+	if err != nil {
+		info.Err = err
+		results <- info
+		return
 	}
+	info.Size = stat.Size()
 
-	if err := scanner.Err(); err != nil {
-		fmt.Printf("Error scanning file %s: %v\n", path, err)
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		info.Err = err
+		results <- info
 		return
 	}
 
-	if fileInfo, err := file.Stat(); err == nil {
-		stats.Size = fileInfo.Size()
-	}
-
-	results <- stats
+	info.Hash = hex.EncodeToString(hasher.Sum(nil))
+	results <- info
 }
 
-func countWords(line string) int {
-	inWord := false
-	count := 0
-
-	for _, ch := range line {
-		if ch == ' ' || ch == '\t' || ch == '\n' {
-			inWord = false
-		} else if !inWord {
-			inWord = true
-			count++
-		}
+func validateFiles(dir string) ([]FileInfo, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
 	}
 
-	return count
+	var wg sync.WaitGroup
+	results := make(chan FileInfo, len(entries))
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		wg.Add(1)
+		go processFile(filepath.Join(dir, entry.Name()), results, &wg)
+	}
+
+	wg.Wait()
+	close(results)
+
+	var processed []FileInfo
+	for info := range results {
+		processed = append(processed, info)
+	}
+
+	return processed, nil
 }
 
 func main() {
@@ -70,54 +84,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	root := os.Args[1]
-	var wg sync.WaitGroup
-	results := make(chan FileStats, 100)
-
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if !info.IsDir() && filepath.Ext(path) == ".txt" {
-			wg.Add(1)
-			go processFile(path, &wg, results)
-		}
-
-		return nil
-	})
-
+	files, err := validateFiles(os.Args[1])
 	if err != nil {
-		fmt.Printf("Error walking directory: %v\n", err)
+		fmt.Printf("Error reading directory: %v\n", err)
 		os.Exit(1)
 	}
 
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
-	totalFiles := 0
-	totalLines := 0
-	totalWords := 0
-	totalChars := 0
-
-	for stats := range results {
-		totalFiles++
-		totalLines += stats.Lines
-		totalWords += stats.Words
-		totalChars += stats.Chars
-
-		fmt.Printf("File: %s\n", stats.Path)
-		fmt.Printf("  Size: %d bytes\n", stats.Size)
-		fmt.Printf("  Lines: %d\n", stats.Lines)
-		fmt.Printf("  Words: %d\n", stats.Words)
-		fmt.Printf("  Characters: %d\n\n", stats.Chars)
+	fmt.Printf("Processed %d files:\n", len(files))
+	for _, file := range files {
+		if file.Err != nil {
+			fmt.Printf("ERROR %s: %v\n", file.Path, file.Err)
+		} else {
+			fmt.Printf("OK %s: size=%d hash=%s\n", file.Path, file.Size, file.Hash)
+		}
 	}
-
-	fmt.Printf("Summary:\n")
-	fmt.Printf("  Total files processed: %d\n", totalFiles)
-	fmt.Printf("  Total lines: %d\n", totalLines)
-	fmt.Printf("  Total words: %d\n", totalWords)
-	fmt.Printf("  Total characters: %d\n", totalChars)
 }

@@ -60,3 +60,79 @@ func main() {
 	fmt.Printf("Is '%s' duplicate? %v\n", testValue, cleaner.IsDuplicate(testValue))
 	fmt.Printf("Is '%s' duplicate? %v\n", strings.ToLower(testValue), cleaner.IsDuplicate(strings.ToLower(testValue)))
 }
+package main
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+)
+
+type DataRecord struct {
+	ID    string
+	Email string
+	Score int
+}
+
+func ValidateRecord(record DataRecord) error {
+	if record.ID == "" {
+		return errors.New("ID cannot be empty")
+	}
+	if !strings.Contains(record.Email, "@") {
+		return errors.New("invalid email format")
+	}
+	if record.Score < 0 || record.Score > 100 {
+		return errors.New("score must be between 0 and 100")
+	}
+	return nil
+}
+
+func DeduplicateRecords(records []DataRecord) []DataRecord {
+	seen := make(map[string]bool)
+	var unique []DataRecord
+
+	for _, record := range records {
+		if !seen[record.ID] {
+			seen[record.ID] = true
+			unique = append(unique, record)
+		}
+	}
+	return unique
+}
+
+func CleanData(records []DataRecord) ([]DataRecord, error) {
+	var cleaned []DataRecord
+
+	for _, record := range records {
+		if err := ValidateRecord(record); err != nil {
+			fmt.Printf("Skipping invalid record %s: %v\n", record.ID, err)
+			continue
+		}
+		cleaned = append(cleaned, record)
+	}
+
+	cleaned = DeduplicateRecords(cleaned)
+	return cleaned, nil
+}
+
+func main() {
+	records := []DataRecord{
+		{"A1", "test@example.com", 85},
+		{"A2", "invalid-email", 92},
+		{"A1", "duplicate@example.com", 78},
+		{"A3", "another@test.com", 105},
+		{"A4", "valid@domain.com", 67},
+	}
+
+	cleaned, err := CleanData(records)
+	if err != nil {
+		fmt.Printf("Error cleaning data: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Original records: %d\n", len(records))
+	fmt.Printf("Cleaned records: %d\n", len(cleaned))
+	for _, record := range cleaned {
+		fmt.Printf("ID: %s, Email: %s, Score: %d\n", record.ID, record.Email, record.Score)
+	}
+}

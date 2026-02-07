@@ -139,4 +139,35 @@ func main() {
 	cleaned := RemoveDuplicates(data)
 	fmt.Println("Original:", data)
 	fmt.Println("Cleaned:", cleaned)
+}package main
+
+import (
+	"strings"
+)
+
+func RemoveDuplicates(lines []string) []string {
+	seen := make(map[string]bool)
+	result := []string{}
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if !seen[trimmed] {
+			seen[trimmed] = true
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
+func CleanData(input []string) []string {
+	cleaned := make([]string, 0, len(input))
+	for _, item := range input {
+		trimmed := strings.TrimSpace(item)
+		if trimmed != "" {
+			cleaned = append(cleaned, trimmed)
+		}
+	}
+	return RemoveDuplicates(cleaned)
 }

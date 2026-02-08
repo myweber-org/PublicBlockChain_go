@@ -51,3 +51,72 @@ func main() {
         fmt.Printf("Email '%s' valid: %v\n", email, cleaner.ValidateEmail(email))
     }
 }
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+)
+
+type Record struct {
+	ID    int    `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+func deduplicateRecords(records []Record) []Record {
+	seen := make(map[string]bool)
+	var unique []Record
+	for _, r := range records {
+		key := fmt.Sprintf("%d|%s|%s", r.ID, strings.ToLower(r.Name), strings.ToLower(r.Email))
+		if !seen[key] {
+			seen[key] = true
+			unique = append(unique, r)
+		}
+	}
+	return unique
+}
+
+func validateEmail(email string) bool {
+	return strings.Contains(email, "@") && strings.Contains(email, ".")
+}
+
+func cleanData(inputJSON string) (string, error) {
+	var records []Record
+	err := json.Unmarshal([]byte(inputJSON), &records)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse JSON: %v", err)
+	}
+
+	records = deduplicateRecords(records)
+	var validRecords []Record
+	for _, r := range records {
+		if validateEmail(r.Email) {
+			validRecords = append(validRecords, r)
+		}
+	}
+
+	output, err := json.MarshalIndent(validRecords, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal JSON: %v", err)
+	}
+	return string(output), nil
+}
+
+func main() {
+	input := `[
+		{"id":1,"name":"John","email":"john@example.com"},
+		{"id":2,"name":"Jane","email":"jane@example.com"},
+		{"id":1,"name":"John","email":"john@example.com"},
+		{"id":3,"name":"Bob","email":"invalid-email"}
+	]`
+
+	result, err := cleanData(input)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	fmt.Println("Cleaned data:")
+	fmt.Println(result)
+}

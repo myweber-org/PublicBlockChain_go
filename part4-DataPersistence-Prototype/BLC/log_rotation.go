@@ -113,3 +113,109 @@ func main() {
 
 	fmt.Println("Log rotation test completed")
 }
+package main
+
+import (
+	"log"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+)
+
+const (
+	maxLogSize    = 10 * 1024 * 1024 // 10MB
+	checkInterval = 30 * time.Second
+)
+
+type RotatingLogger struct {
+	mu        sync.Mutex
+	file      *os.File
+	filePath  string
+	baseName  string
+	fileIndex int
+	maxSize   int64
+}
+
+func NewRotatingLogger(basePath string) (*RotatingLogger, error) {
+	rl := &RotatingLogger{
+		filePath: basePath,
+		baseName: filepath.Base(basePath),
+		maxSize:  maxLogSize,
+	}
+
+	if err := rl.openCurrentFile(); err != nil {
+		return nil, err
+	}
+
+	go rl.monitorLogSize()
+	return rl, nil
+}
+
+func (rl *RotatingLogger) openCurrentFile() error {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	if rl.file != nil {
+		rl.file.Close()
+	}
+
+	file, err := os.OpenFile(rl.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+
+	rl.file = file
+	return nil
+}
+
+func (rl *RotatingLogger) Write(p []byte) (n int, err error) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	return rl.file.Write(p)
+}
+
+func (rl *RotatingLogger) rotateIfNeeded() error {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	info, err := rl.file.Stat()
+	if err != nil {
+		return err
+	}
+
+	if info.Size() < rl.maxSize {
+		return nil
+	}
+
+	rl.file.Close()
+
+	backupPath := rl.filePath + "." + time.Now().Format("20060102150405")
+	if err := os.Rename(rl.filePath, backupPath); err != nil {
+		return err
+	}
+
+	return rl.openCurrentFile()
+}
+
+func (rl *RotatingLogger) monitorLogSize() {
+	ticker := time.NewTicker(checkInterval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if err := rl.rotateIfNeeded(); err != nil {
+			log.Printf("Failed to rotate log: %v", err)
+		}
+	}
+}
+
+func (rl *RotatingLogger) Close() error {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	if rl.file != nil {
+		return rl.file.Close()
+	}
+	return nil
+}

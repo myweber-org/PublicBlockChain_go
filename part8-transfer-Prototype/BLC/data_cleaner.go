@@ -1,72 +1,77 @@
-package csvutils
+
+package main
 
 import (
 	"encoding/csv"
+	"fmt"
 	"io"
-	"strings"
-	"unicode"
+	"os"
 )
 
-type Cleaner struct {
-	TrimSpaces  bool
-	RemoveEmpty bool
-	ToLowercase bool
-}
-
-func NewCleaner() *Cleaner {
-	return &Cleaner{
-		TrimSpaces:  true,
-		RemoveEmpty: true,
-		ToLowercase: false,
+func removeDuplicates(inputPath, outputPath string) error {
+	inFile, err := os.Open(inputPath)
+	if err != nil {
+		return fmt.Errorf("failed to open input file: %w", err)
 	}
-}
+	defer inFile.Close()
 
-func (c *Cleaner) CleanRecord(record []string) []string {
-	var cleaned []string
+	outFile, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
+	}
+	defer outFile.Close()
 
-	for _, field := range record {
-		processed := field
+	reader := csv.NewReader(inFile)
+	writer := csv.NewWriter(outFile)
+	defer writer.Flush()
 
-		if c.TrimSpaces {
-			processed = strings.TrimSpace(processed)
-		}
-
-		if c.ToLowercase {
-			processed = strings.ToLower(processed)
-		}
-
-		processed = strings.Map(func(r rune) rune {
-			if unicode.IsControl(r) && r != '\n' && r != '\t' {
-				return -1
-			}
-			return r
-		}, processed)
-
-		if !c.RemoveEmpty || processed != "" {
-			cleaned = append(cleaned, processed)
-		}
+	seen := make(map[string]bool)
+	headers, err := reader.Read()
+	if err != nil {
+		return fmt.Errorf("failed to read headers: %w", err)
 	}
 
-	return cleaned
-}
+	err = writer.Write(headers)
+	if err != nil {
+		return fmt.Errorf("failed to write headers: %w", err)
+	}
 
-func (c *Cleaner) ProcessCSV(reader *csv.Reader, writer *csv.Writer) error {
 	for {
 		record, err := reader.Read()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to read record: %w", err)
 		}
 
-		cleaned := c.CleanRecord(record)
-		if len(cleaned) > 0 {
-			if err := writer.Write(cleaned); err != nil {
-				return err
+		key := fmt.Sprintf("%v", record)
+		if !seen[key] {
+			seen[key] = true
+			err = writer.Write(record)
+			if err != nil {
+				return fmt.Errorf("failed to write record: %w", err)
 			}
 		}
 	}
 
-	return writer.Flush()
+	return nil
+}
+
+func main() {
+	if len(os.Args) != 3 {
+		fmt.Println("Usage: data_cleaner <input.csv> <output.csv>")
+		os.Exit(1)
+	}
+
+	inputFile := os.Args[1]
+	outputFile := os.Args[2]
+
+	err := removeDuplicates(inputFile, outputFile)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Successfully cleaned data. Output saved to %s\n", outputFile)
 }

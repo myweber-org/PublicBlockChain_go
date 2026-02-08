@@ -195,4 +195,112 @@ func main() {
     }
 
     fmt.Println("Log rotation test completed")
+}package main
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sync"
+)
+
+type RotatingWriter struct {
+	mu          sync.Mutex
+	file        *os.File
+	maxSize     int64
+	basePath    string
+	currentSize int64
+	maxFiles    int
+}
+
+func NewRotatingWriter(basePath string, maxSize int64, maxFiles int) (*RotatingWriter, error) {
+	writer := &RotatingWriter{
+		basePath: basePath,
+		maxSize:  maxSize,
+		maxFiles: maxFiles,
+	}
+
+	if err := writer.openCurrentFile(); err != nil {
+		return nil, err
+	}
+
+	return writer, nil
+}
+
+func (w *RotatingWriter) openCurrentFile() error {
+	file, err := os.OpenFile(w.basePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+	if err != nil {
+		return err
+	}
+
+	stat, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return err
+	}
+
+	w.file = file
+	w.currentSize = stat.Size()
+	return nil
+}
+
+func (w *RotatingWriter) rotate() error {
+	w.file.Close()
+
+	for i := w.maxFiles - 1; i > 0; i-- {
+		oldPath := fmt.Sprintf("%s.%d", w.basePath, i)
+		newPath := fmt.Sprintf("%s.%d", w.basePath, i+1)
+
+		if _, err := os.Stat(oldPath); err == nil {
+			os.Rename(oldPath, newPath)
+		}
+	}
+
+	backupPath := fmt.Sprintf("%s.1", w.basePath)
+	os.Rename(w.basePath, backupPath)
+
+	return w.openCurrentFile()
+}
+
+func (w *RotatingWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if w.currentSize+int64(len(p)) > w.maxSize {
+		if err := w.rotate(); err != nil {
+			return 0, err
+		}
+	}
+
+	n, err := w.file.Write(p)
+	if err == nil {
+		w.currentSize += int64(n)
+	}
+	return n, err
+}
+
+func (w *RotatingWriter) Close() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.file.Close()
+}
+
+func main() {
+	writer, err := NewRotatingWriter("app.log", 1024*1024, 5)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create rotating writer: %v\n", err)
+		os.Exit(1)
+	}
+	defer writer.Close()
+
+	for i := 0; i < 100; i++ {
+		line := fmt.Sprintf("Log entry number %d: Some sample log data for testing rotation\n", i)
+		if _, err := writer.Write([]byte(line)); err != nil {
+			fmt.Fprintf(os.Stderr, "Write error: %v\n", err)
+			break
+		}
+	}
+
+	fmt.Println("Log rotation test completed")
 }

@@ -157,4 +157,22 @@ func main() {
 	cleaned := removeDuplicates(data)
 	fmt.Println("Original:", data)
 	fmt.Println("Cleaned:", cleaned)
+}package utils
+
+func RemoveDuplicates(nums []int) []int {
+    if len(nums) == 0 {
+        return nums
+    }
+    
+    seen := make(map[int]bool)
+    result := make([]int, 0, len(nums))
+    
+    for _, num := range nums {
+        if !seen[num] {
+            seen[num] = true
+            result = append(result, num)
+        }
+    }
+    
+    return result
 }

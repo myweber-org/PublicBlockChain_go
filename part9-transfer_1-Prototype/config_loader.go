@@ -53,4 +53,68 @@ func getEnvAsSlice(key string, defaultValue []string, sep string) []string {
         return defaultValue
     }
     return strings.Split(valueStr, sep)
+}package config
+
+import (
+	"encoding/json"
+	"os"
+	"sync"
+)
+
+type Config struct {
+	ServerPort string `json:"server_port"`
+	DBHost     string `json:"db_host"`
+	DBPort     string `json:"db_port"`
+	DebugMode  bool   `json:"debug_mode"`
+}
+
+var (
+	instance *Config
+	once     sync.Once
+)
+
+func Load() *Config {
+	once.Do(func() {
+		instance = &Config{
+			ServerPort: getEnv("SERVER_PORT", "8080"),
+			DBHost:     getEnv("DB_HOST", "localhost"),
+			DBPort:     getEnv("DB_PORT", "5432"),
+			DebugMode:  getEnv("DEBUG", "false") == "true",
+		}
+
+		configFile := getEnv("CONFIG_FILE", "")
+		if configFile != "" {
+			loadFromFile(configFile)
+		}
+	})
+	return instance
+}
+
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+func loadFromFile(filename string) {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return
+	}
+
+	var fileConfig Config
+	if err := json.Unmarshal(data, &fileConfig); err != nil {
+		return
+	}
+
+	if fileConfig.ServerPort != "" {
+		instance.ServerPort = fileConfig.ServerPort
+	}
+	if fileConfig.DBHost != "" {
+		instance.DBHost = fileConfig.DBHost
+	}
+	if fileConfig.DBPort != "" {
+		instance.DBPort = fileConfig.DBPort
+	}
 }

@@ -1,65 +1,61 @@
 package config
 
 import (
-	"encoding/json"
-	"os"
-	"sync"
+    "fmt"
+    "io/ioutil"
+    "os"
+
+    "gopkg.in/yaml.v2"
 )
 
-type Config struct {
-	ServerPort string `json:"server_port"`
-	DBHost     string `json:"db_host"`
-	DBPort     string `json:"db_port"`
-	DebugMode  bool   `json:"debug_mode"`
+type AppConfig struct {
+    Server struct {
+        Host string `yaml:"host"`
+        Port int    `yaml:"port"`
+    } `yaml:"server"`
+    Database struct {
+        Host     string `yaml:"host"`
+        Username string `yaml:"username"`
+        Password string `yaml:"password"`
+        Name     string `yaml:"name"`
+    } `yaml:"database"`
+    Logging struct {
+        Level  string `yaml:"level"`
+        Output string `yaml:"output"`
+    } `yaml:"logging"`
 }
 
-var (
-	instance *Config
-	once     sync.Once
-)
+func LoadConfig(filePath string) (*AppConfig, error) {
+    var config AppConfig
 
-func Load() *Config {
-	once.Do(func() {
-		instance = &Config{
-			ServerPort: getEnv("SERVER_PORT", "8080"),
-			DBHost:     getEnv("DB_HOST", "localhost"),
-			DBPort:     getEnv("DB_PORT", "5432"),
-			DebugMode:  getEnv("DEBUG_MODE", "false") == "true",
-		}
+    file, err := os.Open(filePath)
+    if err != nil {
+        return nil, fmt.Errorf("failed to open config file: %w", err)
+    }
+    defer file.Close()
 
-		if configFile := os.Getenv("CONFIG_FILE"); configFile != "" {
-			loadFromFile(configFile, instance)
-		}
-	})
-	return instance
+    data, err := ioutil.ReadAll(file)
+    if err != nil {
+        return nil, fmt.Errorf("failed to read config file: %w", err)
+    }
+
+    err = yaml.Unmarshal(data, &config)
+    if err != nil {
+        return nil, fmt.Errorf("failed to parse YAML: %w", err)
+    }
+
+    return &config, nil
 }
 
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
-func loadFromFile(filename string, config *Config) {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return
-	}
-
-	var fileConfig Config
-	if err := json.Unmarshal(data, &fileConfig); err != nil {
-		return
-	}
-
-	if fileConfig.ServerPort != "" {
-		config.ServerPort = fileConfig.ServerPort
-	}
-	if fileConfig.DBHost != "" {
-		config.DBHost = fileConfig.DBHost
-	}
-	if fileConfig.DBPort != "" {
-		config.DBPort = fileConfig.DBPort
-	}
-	config.DebugMode = config.DebugMode || fileConfig.DebugMode
+func ValidateConfig(config *AppConfig) error {
+    if config.Server.Host == "" {
+        return fmt.Errorf("server host cannot be empty")
+    }
+    if config.Server.Port <= 0 || config.Server.Port > 65535 {
+        return fmt.Errorf("invalid server port: %d", config.Server.Port)
+    }
+    if config.Database.Host == "" {
+        return fmt.Errorf("database host cannot be empty")
+    }
+    return nil
 }

@@ -123,4 +123,60 @@ func GetUserID(ctx context.Context) string {
 		return val
 	}
 	return ""
+}package middleware
+
+import (
+	"net/http"
+	"strings"
+)
+
+type Authenticator struct {
+	secretKey []byte
+}
+
+func NewAuthenticator(secretKey string) *Authenticator {
+	return &Authenticator{
+		secretKey: []byte(secretKey),
+	}
+}
+
+func (a *Authenticator) ValidateToken(tokenString string) (bool, error) {
+	if strings.TrimSpace(tokenString) == "" {
+		return false, nil
+	}
+
+	// Simulated token validation logic
+	// In real implementation, use proper JWT library
+	expectedPrefix := "Bearer "
+	if !strings.HasPrefix(tokenString, expectedPrefix) {
+		return false, nil
+	}
+
+	token := strings.TrimPrefix(tokenString, expectedPrefix)
+	if len(token) < 10 {
+		return false, nil
+	}
+
+	// Mock validation - always returns true for demonstration
+	// Replace with actual JWT validation in production
+	return true, nil
+}
+
+func (a *Authenticator) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		valid, err := a.ValidateToken(authHeader)
+
+		if err != nil {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		if !valid {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }

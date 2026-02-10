@@ -132,3 +132,31 @@ func main() {
 	fmt.Println("Original:", numbers)
 	fmt.Println("Unique:", unique)
 }
+package utils
+
+import (
+	"regexp"
+	"strings"
+)
+
+// SanitizeInput cleans and normalizes user-provided strings
+func SanitizeInput(input string) string {
+	// Remove leading/trailing whitespace
+	trimmed := strings.TrimSpace(input)
+	
+	// Replace multiple spaces with single space
+	spaceRegex := regexp.MustCompile(`\s+`)
+	normalized := spaceRegex.ReplaceAllString(trimmed, " ")
+	
+	// Remove potentially harmful characters (basic example)
+	cleanRegex := regexp.MustCompile(`[<>{}]`)
+	sanitized := cleanRegex.ReplaceAllString(normalized, "")
+	
+	return sanitized
+}
+
+// ValidateEmail checks if a string matches basic email format
+func ValidateEmail(email string) bool {
+	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	return emailRegex.MatchString(email)
+}

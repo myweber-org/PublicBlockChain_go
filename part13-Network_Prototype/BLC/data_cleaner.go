@@ -83,3 +83,62 @@ func main() {
 	fmt.Printf("Original: %v\n", data)
 	fmt.Printf("Cleaned: %v\n", cleaned)
 }
+package main
+
+import (
+    "fmt"
+    "strings"
+)
+
+type DataRecord struct {
+    ID    int
+    Email string
+    Phone string
+}
+
+func RemoveDuplicates(records []DataRecord) []DataRecord {
+    seen := make(map[string]bool)
+    unique := []DataRecord{}
+    for _, record := range records {
+        key := fmt.Sprintf("%s|%s", record.Email, record.Phone)
+        if !seen[key] {
+            seen[key] = true
+            unique = append(unique, record)
+        }
+    }
+    return unique
+}
+
+func ValidateEmail(email string) bool {
+    return strings.Contains(email, "@") && strings.Contains(email, ".")
+}
+
+func ValidatePhone(phone string) bool {
+    return len(phone) >= 10 && len(phone) <= 15
+}
+
+func CleanData(records []DataRecord) []DataRecord {
+    validRecords := []DataRecord{}
+    for _, record := range records {
+        if ValidateEmail(record.Email) && ValidatePhone(record.Phone) {
+            validRecords = append(validRecords, record)
+        }
+    }
+    return RemoveDuplicates(validRecords)
+}
+
+func main() {
+    sampleData := []DataRecord{
+        {1, "test@example.com", "1234567890"},
+        {2, "invalid-email", "9876543210"},
+        {3, "test@example.com", "1234567890"},
+        {4, "another@test.org", "5551234567"},
+    }
+
+    cleaned := CleanData(sampleData)
+    fmt.Printf("Original count: %d\n", len(sampleData))
+    fmt.Printf("Cleaned count: %d\n", len(cleaned))
+    for _, record := range cleaned {
+        fmt.Printf("ID: %d, Email: %s, Phone: %s\n", record.ID, record.Email, record.Phone)
+    }
+}

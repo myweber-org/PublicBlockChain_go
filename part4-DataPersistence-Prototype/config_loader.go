@@ -404,4 +404,110 @@ func parseInt(s string) (int, error) {
 	var result int
 	_, err := fmt.Sscanf(s, "%d", &result)
 	return result, err
+}package config
+
+import (
+    "fmt"
+    "os"
+    "strconv"
+    "strings"
+)
+
+type DatabaseConfig struct {
+    Host     string
+    Port     int
+    Username string
+    Password string
+    Database string
+}
+
+type ServerConfig struct {
+    Port         int
+    ReadTimeout  int
+    WriteTimeout int
+    DebugMode    bool
+}
+
+type Config struct {
+    Database DatabaseConfig
+    Server   ServerConfig
+    LogLevel string
+}
+
+func LoadConfig() (*Config, error) {
+    cfg := &Config{}
+
+    dbHost := getEnvWithDefault("DB_HOST", "localhost")
+    dbPort := getEnvAsInt("DB_PORT", 5432)
+    dbUser := getEnvWithDefault("DB_USER", "postgres")
+    dbPass := getEnvWithDefault("DB_PASS", "")
+    dbName := getEnvWithDefault("DB_NAME", "appdb")
+
+    cfg.Database = DatabaseConfig{
+        Host:     dbHost,
+        Port:     dbPort,
+        Username: dbUser,
+        Password: dbPass,
+        Database: dbName,
+    }
+
+    serverPort := getEnvAsInt("SERVER_PORT", 8080)
+    readTimeout := getEnvAsInt("READ_TIMEOUT", 30)
+    writeTimeout := getEnvAsInt("WRITE_TIMEOUT", 30)
+    debugMode := getEnvAsBool("DEBUG_MODE", false)
+
+    cfg.Server = ServerConfig{
+        Port:         serverPort,
+        ReadTimeout:  readTimeout,
+        WriteTimeout: writeTimeout,
+        DebugMode:    debugMode,
+    }
+
+    logLevel := getEnvWithDefault("LOG_LEVEL", "info")
+    allowedLevels := map[string]bool{"debug": true, "info": true, "warn": true, "error": true}
+    if !allowedLevels[strings.ToLower(logLevel)] {
+        return nil, fmt.Errorf("invalid log level: %s", logLevel)
+    }
+    cfg.LogLevel = strings.ToLower(logLevel)
+
+    if cfg.Database.Password == "" {
+        return nil, fmt.Errorf("database password must be set")
+    }
+
+    if cfg.Server.Port < 1 || cfg.Server.Port > 65535 {
+        return nil, fmt.Errorf("server port must be between 1 and 65535")
+    }
+
+    return cfg, nil
+}
+
+func getEnvWithDefault(key, defaultValue string) string {
+    if value, exists := os.LookupEnv(key); exists {
+        return value
+    }
+    return defaultValue
+}
+
+func getEnvAsInt(key string, defaultValue int) int {
+    valueStr := getEnvWithDefault(key, "")
+    if valueStr == "" {
+        return defaultValue
+    }
+    value, err := strconv.Atoi(valueStr)
+    if err != nil {
+        return defaultValue
+    }
+    return value
+}
+
+func getEnvAsBool(key string, defaultValue bool) bool {
+    valueStr := getEnvWithDefault(key, "")
+    if valueStr == "" {
+        return defaultValue
+    }
+    value, err := strconv.ParseBool(valueStr)
+    if err != nil {
+        return defaultValue
+    }
+    return value
 }

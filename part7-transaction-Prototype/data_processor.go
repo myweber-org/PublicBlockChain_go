@@ -424,3 +424,98 @@ func main() {
 
 	GenerateReport(records)
 }
+package main
+
+import (
+	"encoding/csv"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+)
+
+type Record struct {
+	Name  string  `json:"name"`
+	Value float64 `json:"value"`
+	Count int     `json:"count"`
+}
+
+func processCSVFile(filename string) ([]Record, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	var records []Record
+
+	// Skip header
+	_, err = reader.Read()
+	if err != nil {
+		return nil, err
+	}
+
+	for {
+		row, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		if len(row) < 3 {
+			continue
+		}
+
+		value, err := strconv.ParseFloat(row[1], 64)
+		if err != nil {
+			continue
+		}
+
+		count, err := strconv.Atoi(row[2])
+		if err != nil {
+			continue
+		}
+
+		record := Record{
+			Name:  row[0],
+			Value: value,
+			Count: count,
+		}
+		records = append(records, record)
+	}
+
+	return records, nil
+}
+
+func convertToJSON(records []Record) (string, error) {
+	jsonData, err := json.MarshalIndent(records, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(jsonData), nil
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: data_processor <csv_file>")
+		os.Exit(1)
+	}
+
+	records, err := processCSVFile(os.Args[1])
+	if err != nil {
+		fmt.Printf("Error processing file: %v\n", err)
+		os.Exit(1)
+	}
+
+	jsonOutput, err := convertToJSON(records)
+	if err != nil {
+		fmt.Printf("Error converting to JSON: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println(jsonOutput)
+}

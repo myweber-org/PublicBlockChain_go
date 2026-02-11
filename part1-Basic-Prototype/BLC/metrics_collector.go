@@ -65,4 +65,59 @@ func main() {
 
     wrappedMux := metricsMiddleware(mux)
     http.ListenAndServe(":8080", wrappedMux)
+}package main
+
+import (
+    "fmt"
+    "runtime"
+    "time"
+)
+
+type SystemMetrics struct {
+    Timestamp     time.Time
+    MemoryAlloc   uint64
+    TotalAlloc    uint64
+    Sys           uint64
+    NumGC         uint32
+    NumGoroutine  int
+    CPUCount      int
+}
+
+func collectMetrics() SystemMetrics {
+    var m runtime.MemStats
+    runtime.ReadMemStats(&m)
+
+    return SystemMetrics{
+        Timestamp:     time.Now().UTC(),
+        MemoryAlloc:   m.Alloc,
+        TotalAlloc:    m.TotalAlloc,
+        Sys:           m.Sys,
+        NumGC:         m.NumGC,
+        NumGoroutine:  runtime.NumGoroutine(),
+        CPUCount:      runtime.NumCPU(),
+    }
+}
+
+func printMetrics(metrics SystemMetrics) {
+    fmt.Printf("=== System Metrics at %v ===\n", metrics.Timestamp.Format(time.RFC3339))
+    fmt.Printf("Goroutines: %d\n", metrics.NumGoroutine)
+    fmt.Printf("CPU Cores: %d\n", metrics.CPUCount)
+    fmt.Printf("Memory Allocated: %v MB\n", metrics.MemoryAlloc/1024/1024)
+    fmt.Printf("Total Allocated: %v MB\n", metrics.TotalAlloc/1024/1024)
+    fmt.Printf("System Memory: %v MB\n", metrics.Sys/1024/1024)
+    fmt.Printf("Garbage Collections: %d\n", metrics.NumGC)
+    fmt.Println()
+}
+
+func main() {
+    ticker := time.NewTicker(5 * time.Second)
+    defer ticker.Stop()
+
+    for {
+        select {
+        case <-ticker.C:
+            metrics := collectMetrics()
+            printMetrics(metrics)
+        }
+    }
 }

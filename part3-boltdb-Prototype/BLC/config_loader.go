@@ -437,4 +437,76 @@ func overrideBool(field *bool, envVar string) {
     if val := os.Getenv(envVar); val != "" {
         *field = val == "true" || val == "1" || val == "yes"
     }
+}package config
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"strings"
+)
+
+type Config struct {
+	settings map[string]string
+}
+
+func LoadConfig(filename string) (*Config, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open config file: %w", err)
+	}
+	defer file.Close()
+
+	config := &Config{
+		settings: make(map[string]string),
+	}
+
+	scanner := bufio.NewScanner(file)
+	lineNumber := 0
+
+	for scanner.Scan() {
+		lineNumber++
+		line := strings.TrimSpace(scanner.Text())
+
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid format on line %d", lineNumber)
+		}
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+
+		value = os.ExpandEnv(value)
+		config.settings[key] = value
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error reading config file: %w", err)
+	}
+
+	return config, nil
+}
+
+func (c *Config) Get(key string) (string, bool) {
+	value, exists := c.settings[key]
+	return value, exists
+}
+
+func (c *Config) GetWithDefault(key, defaultValue string) string {
+	if value, exists := c.settings[key]; exists {
+		return value
+	}
+	return defaultValue
+}
+
+func (c *Config) GetAll() map[string]string {
+	copyMap := make(map[string]string)
+	for k, v := range c.settings {
+		copyMap[k] = v
+	}
+	return copyMap
 }

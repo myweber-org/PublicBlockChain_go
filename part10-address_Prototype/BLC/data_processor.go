@@ -168,3 +168,41 @@ func calculateStats(records []Record) (float64, float64) {
 	average := sum / float64(len(records))
 	return average, max
 }
+package data_processor
+
+import (
+	"regexp"
+	"strings"
+	"unicode"
+)
+
+type DataCleaner struct {
+	whitespaceRegex *regexp.Regexp
+}
+
+func NewDataCleaner() *DataCleaner {
+	return &DataCleaner{
+		whitespaceRegex: regexp.MustCompile(`\s+`),
+	}
+}
+
+func (dc *DataCleaner) NormalizeString(input string) string {
+	trimmed := strings.TrimSpace(input)
+	normalized := dc.whitespaceRegex.ReplaceAllString(trimmed, " ")
+	return normalized
+}
+
+func (dc *DataCleaner) RemoveSpecialChars(input string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsNumber(r) || unicode.IsSpace(r) {
+			return r
+		}
+		return -1
+	}, input)
+}
+
+func (dc *DataCleaner) Process(input string) string {
+	normalized := dc.NormalizeString(input)
+	cleaned := dc.RemoveSpecialChars(normalized)
+	return cleaned
+}

@@ -1,50 +1,70 @@
-package middleware
+package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"log"
-	"net/http"
+	"os"
 	"time"
 )
 
+type ActivityEvent struct {
+	UserID    string    `json:"user_id"`
+	EventType string    `json:"event_type"`
+	Timestamp time.Time `json:"timestamp"`
+	Details   string    `json:"details,omitempty"`
+}
+
 type ActivityLogger struct {
-	Logger *log.Logger
+	logFile *os.File
 }
 
-func NewActivityLogger(logger *log.Logger) *ActivityLogger {
-	return &ActivityLogger{Logger: logger}
+func NewActivityLogger(filename string) (*ActivityLogger, error) {
+	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return nil, err
+	}
+	return &ActivityLogger{logFile: file}, nil
 }
 
-func (al *ActivityLogger) LogActivity(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		userAgent := r.UserAgent()
-		clientIP := r.RemoteAddr
-		method := r.Method
-		path := r.URL.Path
+func (al *ActivityLogger) LogActivity(userID, eventType, details string) error {
+	event := ActivityEvent{
+		UserID:    userID,
+		EventType: eventType,
+		Timestamp: time.Now(),
+		Details:   details,
+	}
 
-		recorder := &responseRecorder{
-			ResponseWriter: w,
-			statusCode:     http.StatusOK,
-		}
+	eventJSON, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
 
-		next.ServeHTTP(recorder, r)
-
-		duration := time.Since(start)
-		status := recorder.statusCode
-
-		al.Logger.Printf(
-			"Activity: %s %s | Status: %d | Duration: %v | IP: %s | Agent: %s",
-			method, path, status, duration, clientIP, userAgent,
-		)
-	})
+	eventJSON = append(eventJSON, '\n')
+	_, err = al.logFile.Write(eventJSON)
+	return err
 }
 
-type responseRecorder struct {
-	http.ResponseWriter
-	statusCode int
+func (al *ActivityLogger) Close() error {
+	return al.logFile.Close()
 }
 
-func (rr *responseRecorder) WriteHeader(code int) {
-	rr.statusCode = code
-	rr.ResponseWriter.WriteHeader(code)
+func main() {
+	logger, err := NewActivityLogger("user_activities.log")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer logger.Close()
+
+	err = logger.LogActivity("user123", "login", "User logged in from web browser")
+	if err != nil {
+		log.Println("Failed to log activity:", err)
+	}
+
+	err = logger.LogActivity("user123", "view_page", "Viewed dashboard")
+	if err != nil {
+		log.Println("Failed to log activity:", err)
+	}
+
+	fmt.Println("Activities logged successfully")
 }

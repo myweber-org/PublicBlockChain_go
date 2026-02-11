@@ -57,4 +57,67 @@ func main() {
 	cleaner.Reset()
 	testData := []string{"test", "test", "TEST"}
 	fmt.Printf("Reset test: %v\n", cleaner.Deduplicate(testData))
+}package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+type DataRecord struct {
+	ID    int
+	Email string
+	Valid bool
+}
+
+func deduplicateEmails(records []DataRecord) []DataRecord {
+	seen := make(map[string]bool)
+	var unique []DataRecord
+
+	for _, record := range records {
+		email := strings.ToLower(strings.TrimSpace(record.Email))
+		if !seen[email] {
+			seen[email] = true
+			record.Email = email
+			unique = append(unique, record)
+		}
+	}
+	return unique
+}
+
+func validateEmailFormat(email string) bool {
+	return strings.Contains(email, "@") && strings.Contains(email, ".")
+}
+
+func markValidRecords(records []DataRecord) []DataRecord {
+	for i := range records {
+		records[i].Valid = validateEmailFormat(records[i].Email)
+	}
+	return records
+}
+
+func processRecords(records []DataRecord) []DataRecord {
+	deduped := deduplicateEmails(records)
+	validated := markValidRecords(deduped)
+	return validated
+}
+
+func main() {
+	sampleData := []DataRecord{
+		{1, "user@example.com", false},
+		{2, "USER@example.com", false},
+		{3, "invalid-email", false},
+		{4, "test@domain.org", false},
+		{5, "user@example.com", false},
+	}
+
+	processed := processRecords(sampleData)
+
+	for _, record := range processed {
+		status := "invalid"
+		if record.Valid {
+			status = "valid"
+		}
+		fmt.Printf("ID: %d, Email: %s, Status: %s\n", record.ID, record.Email, status)
+	}
 }

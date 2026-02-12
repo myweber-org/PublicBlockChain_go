@@ -123,4 +123,61 @@ func main() {
     
     fmt.Println("Server starting on :8080")
     http.ListenAndServe(":8080", mux)
+}package main
+
+import (
+	"fmt"
+	"runtime"
+	"time"
+)
+
+type SystemMetrics struct {
+	Timestamp    time.Time
+	CPUUsage     float64
+	MemoryAlloc  uint64
+	MemoryTotal  uint64
+	GoroutineCnt int
+}
+
+func collectMetrics() SystemMetrics {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
+	return SystemMetrics{
+		Timestamp:    time.Now(),
+		CPUUsage:     getCPUUsage(),
+		MemoryAlloc:  m.Alloc,
+		MemoryTotal:  m.Sys,
+		GoroutineCnt: runtime.NumGoroutine(),
+	}
+}
+
+func getCPUUsage() float64 {
+	start := time.Now()
+	runtime.Gosched()
+	time.Sleep(50 * time.Millisecond)
+	elapsed := time.Since(start).Seconds()
+	return (50.0 / 1000.0) / elapsed * 100.0
+}
+
+func printMetrics(metrics SystemMetrics) {
+	fmt.Printf("Time: %v\n", metrics.Timestamp.Format("15:04:05"))
+	fmt.Printf("CPU Usage: %.2f%%\n", metrics.CPUUsage)
+	fmt.Printf("Memory Allocated: %v bytes\n", metrics.MemoryAlloc)
+	fmt.Printf("Total Memory: %v bytes\n", metrics.MemoryTotal)
+	fmt.Printf("Goroutines: %d\n", metrics.GoroutineCnt)
+	fmt.Println("---")
+}
+
+func main() {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for i := 0; i < 5; i++ {
+		select {
+		case <-ticker.C:
+			metrics := collectMetrics()
+			printMetrics(metrics)
+		}
+	}
 }

@@ -1,140 +1,32 @@
 
-package data_processor
+package main
 
-import (
-	"regexp"
-	"strings"
-)
+import "fmt"
 
-type Processor struct {
-	allowedPattern *regexp.Regexp
+func movingAverage(data []float64, windowSize int) []float64 {
+    if windowSize <= 0 || windowSize > len(data) {
+        return nil
+    }
+
+    result := make([]float64, len(data)-windowSize+1)
+    var sum float64
+
+    for i := 0; i < windowSize; i++ {
+        sum += data[i]
+    }
+    result[0] = sum / float64(windowSize)
+
+    for i := windowSize; i < len(data); i++ {
+        sum = sum - data[i-windowSize] + data[i]
+        result[i-windowSize+1] = sum / float64(windowSize)
+    }
+
+    return result
 }
 
-func NewProcessor(allowedPattern string) (*Processor, error) {
-	compiled, err := regexp.Compile(allowedPattern)
-	if err != nil {
-		return nil, err
-	}
-	return &Processor{allowedPattern: compiled}, nil
-}
-
-func (p *Processor) CleanInput(input string) string {
-	trimmed := strings.TrimSpace(input)
-	return p.allowedPattern.FindString(trimmed)
-}
-
-func (p *Processor) Validate(input string) bool {
-	return p.allowedPattern.MatchString(input)
-}
-
-func (p *Processor) ProcessBatch(inputs []string) []string {
-	var results []string
-	for _, input := range inputs {
-		cleaned := p.CleanInput(input)
-		if cleaned != "" {
-			results = append(results, cleaned)
-		}
-	}
-	return results
-}package main
-
-import (
-	"encoding/csv"
-	"fmt"
-	"io"
-	"os"
-	"strings"
-)
-
-type DataRecord struct {
-	ID      string
-	Name    string
-	Value   string
-	IsValid bool
-}
-
-func ProcessCSVFile(filePath string) ([]DataRecord, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open file: %w", err)
-	}
-	defer file.Close()
-
-	reader := csv.NewReader(file)
-	reader.TrimLeadingSpace = true
-
-	var records []DataRecord
-	lineNumber := 0
-
-	for {
-		lineNumber++
-		row, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("csv read error at line %d: %w", lineNumber, err)
-		}
-
-		if len(row) < 3 {
-			continue
-		}
-
-		record := DataRecord{
-			ID:    strings.TrimSpace(row[0]),
-			Name:  strings.TrimSpace(row[1]),
-			Value: strings.TrimSpace(row[2]),
-		}
-
-		record.IsValid = validateRecord(record)
-		records = append(records, record)
-	}
-
-	return records, nil
-}
-
-func validateRecord(record DataRecord) bool {
-	if record.ID == "" || record.Name == "" {
-		return false
-	}
-
-	if len(record.Value) > 100 {
-		return false
-	}
-
-	return true
-}
-
-func FilterValidRecords(records []DataRecord) []DataRecord {
-	var valid []DataRecord
-	for _, record := range records {
-		if record.IsValid {
-			valid = append(valid, record)
-		}
-	}
-	return valid
-}
-
-func GenerateReport(records []DataRecord) {
-	fmt.Printf("Total records processed: %d\n", len(records))
-	
-	validCount := 0
-	for _, record := range records {
-		if record.IsValid {
-			validCount++
-		}
-	}
-	
-	fmt.Printf("Valid records: %d\n", validCount)
-	fmt.Printf("Invalid records: %d\n", len(records)-validCount)
-	
-	if validCount > 0 {
-		fmt.Println("\nValid Records:")
-		for _, record := range records {
-			if record.IsValid {
-				fmt.Printf("  ID: %s, Name: %s, Value: %s\n", 
-					record.ID, record.Name, record.Value)
-			}
-		}
-	}
+func main() {
+    sampleData := []float64{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0}
+    window := 3
+    averages := movingAverage(sampleData, window)
+    fmt.Printf("Moving averages with window size %d: %v\n", window, averages)
 }

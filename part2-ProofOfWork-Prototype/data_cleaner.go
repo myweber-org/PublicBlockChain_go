@@ -1,279 +1,84 @@
 package main
 
-import "fmt"
-
-func RemoveDuplicates[T comparable](slice []T) []T {
-	seen := make(map[T]bool)
-	result := []T{}
-
-	for _, item := range slice {
-		if !seen[item] {
-			seen[item] = true
-			result = append(result, item)
-		}
-	}
-	return result
-}
-
-func main() {
-	numbers := []int{1, 2, 2, 3, 4, 4, 5}
-	uniqueNumbers := RemoveDuplicates(numbers)
-	fmt.Println("Original:", numbers)
-	fmt.Println("Unique:", uniqueNumbers)
-
-	strings := []string{"apple", "banana", "apple", "orange"}
-	uniqueStrings := RemoveDuplicates(strings)
-	fmt.Println("Original:", strings)
-	fmt.Println("Unique:", uniqueStrings)
-}package main
-
-import "fmt"
-
-func RemoveDuplicates(input []int) []int {
-	seen := make(map[int]bool)
-	result := []int{}
-
-	for _, value := range input {
-		if !seen[value] {
-			seen[value] = true
-			result = append(result, value)
-		}
-	}
-	return result
-}
-
-func main() {
-	data := []int{1, 2, 2, 3, 4, 4, 5, 1, 6}
-	cleaned := RemoveDuplicates(data)
-	fmt.Println("Original:", data)
-	fmt.Println("Cleaned:", cleaned)
-}package datautil
-
-func RemoveDuplicates[T comparable](slice []T) []T {
-	seen := make(map[T]bool)
-	result := []T{}
-	for _, item := range slice {
-		if !seen[item] {
-			seen[item] = true
-			result = append(result, item)
-		}
-	}
-	return result
-}
-package main
-
 import (
-	"crypto/sha256"
-	"encoding/hex"
+	"encoding/csv"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 )
 
-type Record struct {
-	ID    string
-	Email string
-	Phone string
-}
-
-type Cleaner struct {
-	seenHashes map[string]bool
-}
-
-func NewCleaner() *Cleaner {
-	return &Cleaner{
-		seenHashes: make(map[string]bool),
+func cleanCSV(inputPath, outputPath string) error {
+	inFile, err := os.Open(inputPath)
+	if err != nil {
+		return fmt.Errorf("failed to open input file: %w", err)
 	}
-}
+	defer inFile.Close()
 
-func (c *Cleaner) NormalizeEmail(email string) string {
-	parts := strings.Split(strings.ToLower(email), "@")
-	if len(parts) != 2 {
-		return ""
+	outFile, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	local := strings.Split(parts[0], "+")[0]
-	local = strings.ReplaceAll(local, ".", "")
-	return local + "@" + parts[1]
-}
+	defer outFile.Close()
 
-func (c *Cleaner) GenerateHash(record Record) string {
-	normalizedEmail := c.NormalizeEmail(record.Email)
-	phoneDigits := strings.Map(func(r rune) rune {
-		if r >= '0' && r <= '9' {
-			return r
-		}
-		return -1
-	}, record.Phone)
+	reader := csv.NewReader(inFile)
+	writer := csv.NewWriter(outFile)
+	defer writer.Flush()
 
-	data := fmt.Sprintf("%s|%s", normalizedEmail, phoneDigits)
-	hash := sha256.Sum256([]byte(data))
-	return hex.EncodeToString(hash[:])
-}
-
-func (c *Cleaner) IsDuplicate(record Record) bool {
-	hash := c.GenerateHash(record)
-	if c.seenHashes[hash] {
-		return true
-	}
-	c.seenHashes[hash] = true
-	return false
-}
-
-func (c *Cleaner) ValidateRecord(record Record) bool {
-	if record.ID == "" {
-		return false
-	}
-	if c.NormalizeEmail(record.Email) == "" {
-		return false
-	}
-	if len(record.Phone) < 10 {
-		return false
-	}
-	return true
-}
-
-func (c *Cleaner) ProcessRecords(records []Record) []Record {
-	var cleaned []Record
-	for _, rec := range records {
-		if !c.ValidateRecord(rec) {
-			continue
-		}
-		if c.IsDuplicate(rec) {
-			continue
-		}
-		cleaned = append(cleaned, rec)
-	}
-	return cleaned
-}
-
-func main() {
-	cleaner := NewCleaner()
-	
-	records := []Record{
-		{ID: "1", Email: "test@example.com", Phone: "1234567890"},
-		{ID: "2", Email: "TEST@example.com", Phone: "1234567890"},
-		{ID: "3", Email: "test+tag@example.com", Phone: "1234567890"},
-		{ID: "4", Email: "invalid-email", Phone: "1234567890"},
-		{ID: "5", Email: "another@test.com", Phone: "9876543210"},
-		{ID: "6", Email: "test.work@example.com", Phone: "1234567890"},
-		{ID: "", Email: "emptyid@test.com", Phone: "1112223333"},
-	}
-	
-	cleaned := cleaner.ProcessRecords(records)
-	fmt.Printf("Original: %d, Cleaned: %d\n", len(records), len(cleaned))
-	
-	for _, rec := range cleaned {
-		fmt.Printf("ID: %s, Email: %s\n", rec.ID, rec.Email)
-	}
-}
-package main
-
-import (
-	"fmt"
-	"strings"
-)
-
-type DataCleaner struct {
-	seen map[string]bool
-}
-
-func NewDataCleaner() *DataCleaner {
-	return &DataCleaner{
-		seen: make(map[string]bool),
-	}
-}
-
-func (dc *DataCleaner) Deduplicate(items []string) []string {
-	var unique []string
-	for _, item := range items {
-		normalized := strings.ToLower(strings.TrimSpace(item))
-		if !dc.seen[normalized] && dc.isValid(normalized) {
-			dc.seen[normalized] = true
-			unique = append(unique, item)
-		}
-	}
-	return unique
-}
-
-func (dc *DataCleaner) isValid(item string) bool {
-	return len(item) > 0 && !strings.ContainsAny(item, "!@#$%")
-}
-
-func (dc *DataCleaner) Reset() {
-	dc.seen = make(map[string]bool)
-}
-
-func main() {
-	cleaner := NewDataCleaner()
-	
-	data := []string{"apple", "Apple", "banana", "", "cherry!", "banana", "date"}
-	cleaned := cleaner.Deduplicate(data)
-	
-	fmt.Println("Original:", data)
-	fmt.Println("Cleaned:", cleaned)
-	
-	cleaner.Reset()
-	
-	moreData := []string{"grape", "GRAPE", "kiwi"}
-	moreCleaned := cleaner.Deduplicate(moreData)
-	fmt.Println("More cleaned:", moreCleaned)
-}
-package main
-
-import (
-	"fmt"
-	"strings"
-)
-
-type DataRecord struct {
-	ID    int
-	Email string
-	Valid bool
-}
-
-func deduplicateRecords(records []DataRecord) []DataRecord {
 	seen := make(map[string]bool)
-	var unique []DataRecord
+	headers, err := reader.Read()
+	if err != nil {
+		return fmt.Errorf("failed to read headers: %w", err)
+	}
 
-	for _, record := range records {
-		key := strings.ToLower(strings.TrimSpace(record.Email))
-		if !seen[key] {
-			seen[key] = true
-			unique = append(unique, record)
+	for i := range headers {
+		headers[i] = strings.TrimSpace(headers[i])
+	}
+
+	if err := writer.Write(headers); err != nil {
+		return fmt.Errorf("failed to write headers: %w", err)
+	}
+
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read record: %w", err)
+		}
+
+		for i := range record {
+			record[i] = strings.TrimSpace(record[i])
+		}
+
+		key := strings.Join(record, "|")
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+
+		if err := writer.Write(record); err != nil {
+			return fmt.Errorf("failed to write record: %w", err)
 		}
 	}
-	return unique
-}
 
-func validateEmail(email string) bool {
-	if len(email) == 0 {
-		return false
-	}
-	return strings.Contains(email, "@") && strings.Contains(email, ".")
-}
-
-func cleanData(records []DataRecord) []DataRecord {
-	var cleaned []DataRecord
-	for _, record := range records {
-		if validateEmail(record.Email) {
-			record.Valid = true
-			cleaned = append(cleaned, record)
-		}
-	}
-	return deduplicateRecords(cleaned)
+	return nil
 }
 
 func main() {
-	sampleData := []DataRecord{
-		{1, "user@example.com", false},
-		{2, "invalid-email", false},
-		{3, "user@example.com", false},
-		{4, "another@test.org", false},
+	if len(os.Args) != 3 {
+		fmt.Println("Usage: data_cleaner <input.csv> <output.csv>")
+		os.Exit(1)
 	}
 
-	cleaned := cleanData(sampleData)
-	fmt.Printf("Original: %d records\n", len(sampleData))
-	fmt.Printf("Cleaned: %d records\n", len(cleaned))
-	for _, r := range cleaned {
-		fmt.Printf("ID: %d, Email: %s, Valid: %v\n", r.ID, r.Email, r.Valid)
+	inputFile := os.Args[1]
+	outputFile := os.Args[2]
+
+	if err := cleanCSV(inputFile, outputFile); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
 	}
+
+	fmt.Printf("Successfully cleaned data. Output saved to %s\n", outputFile)
 }

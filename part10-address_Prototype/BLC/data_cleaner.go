@@ -121,3 +121,32 @@ func main() {
 		fmt.Printf("ID: %d, Email: %s, Status: %s\n", record.ID, record.Email, status)
 	}
 }
+package datautils
+
+import (
+	"regexp"
+	"strings"
+	"unicode"
+)
+
+func SanitizeString(input string) string {
+	// Remove any non-printable characters
+	clean := strings.Map(func(r rune) rune {
+		if unicode.IsPrint(r) {
+			return r
+		}
+		return -1
+	}, input)
+
+	// Normalize whitespace
+	re := regexp.MustCompile(`\s+`)
+	clean = re.ReplaceAllString(clean, " ")
+
+	// Trim leading/trailing spaces
+	return strings.TrimSpace(clean)
+}
+
+func NormalizeWhitespace(input string) string {
+	re := regexp.MustCompile(`\s+`)
+	return re.ReplaceAllString(strings.TrimSpace(input), " ")
+}

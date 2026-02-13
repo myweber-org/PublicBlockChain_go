@@ -247,4 +247,143 @@ func overrideInt(field *int, envVar string) {
 
 func (c *Config) GetDSN() string {
 	return strings.ReplaceAll(c.Database.URL, "${HOST}", c.Server.Host)
+}package config
+
+import (
+    "encoding/json"
+    "fmt"
+    "os"
+    "path/filepath"
+    "strings"
+)
+
+type DatabaseConfig struct {
+    Host     string `json:"host" env:"DB_HOST"`
+    Port     int    `json:"port" env:"DB_PORT"`
+    Username string `json:"username" env:"DB_USER"`
+    Password string `json:"password" env:"DB_PASS"`
+    Name     string `json:"name" env:"DB_NAME"`
+}
+
+type ServerConfig struct {
+    Address      string `json:"address" env:"SERVER_ADDR"`
+    Port         int    `json:"port" env:"SERVER_PORT"`
+    ReadTimeout  int    `json:"read_timeout" env:"READ_TIMEOUT"`
+    WriteTimeout int    `json:"write_timeout" env:"WRITE_TIMEOUT"`
+}
+
+type AppConfig struct {
+    Database DatabaseConfig `json:"database"`
+    Server   ServerConfig   `json:"server"`
+    Debug    bool           `json:"debug" env:"APP_DEBUG"`
+}
+
+func LoadConfig(configPath string) (*AppConfig, error) {
+    data, err := os.ReadFile(configPath)
+    if err != nil {
+        return nil, fmt.Errorf("failed to read config file: %w", err)
+    }
+
+    var config AppConfig
+    if err := json.Unmarshal(data, &config); err != nil {
+        return nil, fmt.Errorf("failed to parse config JSON: %w", err)
+    }
+
+    if err := overrideFromEnv(&config); err != nil {
+        return nil, fmt.Errorf("failed to apply environment variables: %w", err)
+    }
+
+    if err := validateConfig(&config); err != nil {
+        return nil, fmt.Errorf("config validation failed: %w", err)
+    }
+
+    return &config, nil
+}
+
+func overrideFromEnv(config *AppConfig) error {
+    overrideString(&config.Database.Host, "DB_HOST")
+    overrideInt(&config.Database.Port, "DB_PORT")
+    overrideString(&config.Database.Username, "DB_USER")
+    overrideString(&config.Database.Password, "DB_PASS")
+    overrideString(&config.Database.Name, "DB_NAME")
+    
+    overrideString(&config.Server.Address, "SERVER_ADDR")
+    overrideInt(&config.Server.Port, "SERVER_PORT")
+    overrideInt(&config.Server.ReadTimeout, "READ_TIMEOUT")
+    overrideInt(&config.Server.WriteTimeout, "WRITE_TIMEOUT")
+    
+    if envVal := os.Getenv("APP_DEBUG"); envVal != "" {
+        config.Debug = strings.ToLower(envVal) == "true"
+    }
+    
+    return nil
+}
+
+func overrideString(field *string, envVar string) {
+    if val := os.Getenv(envVar); val != "" {
+        *field = val
+    }
+}
+
+func overrideInt(field *int, envVar string) {
+    if val := os.Getenv(envVar); val != "" {
+        var intVal int
+        if _, err := fmt.Sscanf(val, "%d", &intVal); err == nil {
+            *field = intVal
+        }
+    }
+}
+
+func validateConfig(config *AppConfig) error {
+    if config.Database.Host == "" {
+        return fmt.Errorf("database host is required")
+    }
+    if config.Database.Port <= 0 || config.Database.Port > 65535 {
+        return fmt.Errorf("database port must be between 1 and 65535")
+    }
+    if config.Server.Port <= 0 || config.Server.Port > 65535 {
+        return fmt.Errorf("server port must be between 1 and 65535")
+    }
+    if config.Server.ReadTimeout < 0 {
+        return fmt.Errorf("read timeout cannot be negative")
+    }
+    if config.Server.WriteTimeout < 0 {
+        return fmt.Errorf("write timeout cannot be negative")
+    }
+    return nil
+}
+
+func SaveDefaultConfig(path string) error {
+    defaultConfig := AppConfig{
+        Database: DatabaseConfig{
+            Host:     "localhost",
+            Port:     5432,
+            Username: "postgres",
+            Password: "",
+            Name:     "appdb",
+        },
+        Server: ServerConfig{
+            Address:      "0.0.0.0",
+            Port:         8080,
+            ReadTimeout:  30,
+            WriteTimeout: 30,
+        },
+        Debug: false,
+    }
+
+    data, err := json.MarshalIndent(defaultConfig, "", "  ")
+    if err != nil {
+        return fmt.Errorf("failed to marshal default config: %w", err)
+    }
+
+    dir := filepath.Dir(path)
+    if err := os.MkdirAll(dir, 0755); err != nil {
+        return fmt.Errorf("failed to create config directory: %w", err)
+    }
+
+    if err := os.WriteFile(path, data, 0644); err != nil {
+        return fmt.Errorf("failed to write config file: %w", err)
+    }
+
+    return nil
 }

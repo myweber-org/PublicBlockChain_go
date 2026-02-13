@@ -52,4 +52,55 @@ func main() {
     }
 
     fmt.Println(string(jsonData))
+}package main
+
+import (
+	"log"
+	"net/http"
+	"time"
+)
+
+var (
+	requestLatency = make(map[string]time.Duration)
+	errorCount     = make(map[string]int)
+)
+
+func metricsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		path := r.URL.Path
+
+		defer func() {
+			duration := time.Since(start)
+			requestLatency[path] = duration
+
+			if r.Response != nil && r.Response.StatusCode >= 400 {
+				errorCount[path]++
+			}
+		}()
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func metricsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+	for path, latency := range requestLatency {
+		errors := errorCount[path]
+		log.Printf("Path: %s, Latency: %v, Errors: %d", path, latency, errors)
+	}
+}
+
+func main() {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(10 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+
+	http.Handle("/", metricsMiddleware(handler))
+	http.Handle("/metrics", http.HandlerFunc(metricsHandler))
+
+	log.Println("Server starting on :8080")
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }

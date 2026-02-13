@@ -10,18 +10,14 @@ import (
 
 type contextKey string
 
-const (
-	UserIDKey contextKey = "userID"
-)
+const UserIDKey contextKey = "userID"
 
 type Authenticator struct {
 	secretKey []byte
 }
 
 func NewAuthenticator(secretKey string) *Authenticator {
-	return &Authenticator{
-		secretKey: []byte(secretKey),
-	}
+	return &Authenticator{secretKey: []byte(secretKey)}
 }
 
 func (a *Authenticator) Middleware(next http.Handler) http.Handler {
@@ -57,9 +53,9 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		userID, ok := claims["sub"].(string)
+		userID, ok := claims["userID"].(string)
 		if !ok {
-			http.Error(w, "Invalid user identifier", http.StatusUnauthorized)
+			http.Error(w, "User ID not found in token", http.StatusUnauthorized)
 			return
 		}
 

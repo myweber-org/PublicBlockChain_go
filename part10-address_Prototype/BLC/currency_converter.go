@@ -213,4 +213,101 @@ func main() {
 		return
 	}
 	fmt.Printf("%.2f EUR = %.2f CAD\n", 50.0, result)
+}package main
+
+import (
+	"fmt"
+	"math"
+)
+
+type Currency string
+
+const (
+	USD Currency = "USD"
+	EUR Currency = "EUR"
+	GBP Currency = "GBP"
+	JPY Currency = "JPY"
+)
+
+type ExchangeRates struct {
+	rates map[Currency]map[Currency]float64
+}
+
+func NewExchangeRates() *ExchangeRates {
+	er := &ExchangeRates{
+		rates: make(map[Currency]map[Currency]float64),
+	}
+	
+	er.rates[USD] = map[Currency]float64{
+		EUR: 0.92,
+		GBP: 0.79,
+		JPY: 148.50,
+		USD: 1.0,
+	}
+	
+	er.rates[EUR] = map[Currency]float64{
+		USD: 1.09,
+		GBP: 0.86,
+		JPY: 161.41,
+		EUR: 1.0,
+	}
+	
+	er.rates[GBP] = map[Currency]float64{
+		USD: 1.27,
+		EUR: 1.16,
+		JPY: 187.97,
+		GBP: 1.0,
+	}
+	
+	er.rates[JPY] = map[Currency]float64{
+		USD: 0.0067,
+		EUR: 0.0062,
+		GBP: 0.0053,
+		JPY: 1.0,
+	}
+	
+	return er
+}
+
+func (er *ExchangeRates) Convert(amount float64, from, to Currency) (float64, error) {
+	if from == to {
+		return amount, nil
+	}
+	
+	rate, exists := er.rates[from][to]
+	if !exists {
+		return 0, fmt.Errorf("exchange rate not available from %s to %s", from, to)
+	}
+	
+	converted := amount * rate
+	return math.Round(converted*100) / 100, nil
+}
+
+func (er *ExchangeRates) UpdateRate(from, to Currency, rate float64) {
+	if er.rates[from] == nil {
+		er.rates[from] = make(map[Currency]float64)
+	}
+	er.rates[from][to] = rate
+	
+	if er.rates[to] == nil {
+		er.rates[to] = make(map[Currency]float64)
+	}
+	er.rates[to][from] = 1.0 / rate
+}
+
+func main() {
+	rates := NewExchangeRates()
+	
+	amount := 100.0
+	converted, err := rates.Convert(amount, USD, EUR)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	
+	fmt.Printf("%.2f %s = %.2f %s\n", amount, USD, converted, EUR)
+	
+	rates.UpdateRate(USD, EUR, 0.95)
+	converted, _ = rates.Convert(amount, USD, EUR)
+	fmt.Printf("After update: %.2f %s = %.2f %s\n", amount, USD, converted, EUR)
 }

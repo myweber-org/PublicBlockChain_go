@@ -77,30 +77,47 @@ func decryptFile(inputPath, outputPath string, key []byte) error {
 func main() {
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
-		fmt.Printf("Generate key failed: %v\n", err)
+		fmt.Printf("Generate key error: %v\n", err)
 		return
 	}
 
-	inputFile := "test.txt"
-	encryptedFile := "test.enc"
-	decryptedFile := "test_decrypted.txt"
+	testData := []byte("Sensitive information requiring encryption")
+	tmpInput := "test_input.txt"
+	tmpEncrypted := "test_encrypted.bin"
+	tmpDecrypted := "test_decrypted.txt"
 
-	if err := os.WriteFile(inputFile, []byte("Secret data for encryption test"), 0644); err != nil {
-		fmt.Printf("Create test file failed: %v\n", err)
+	defer func() {
+		os.Remove(tmpInput)
+		os.Remove(tmpEncrypted)
+		os.Remove(tmpDecrypted)
+	}()
+
+	if err := os.WriteFile(tmpInput, testData, 0644); err != nil {
+		fmt.Printf("Create test file error: %v\n", err)
 		return
 	}
 
-	fmt.Println("Encrypting file...")
-	if err := encryptFile(inputFile, encryptedFile, key); err != nil {
-		fmt.Printf("Encryption failed: %v\n", err)
+	if err := encryptFile(tmpInput, tmpEncrypted, key); err != nil {
+		fmt.Printf("Encryption error: %v\n", err)
+		return
+	}
+	fmt.Println("File encrypted successfully")
+
+	if err := decryptFile(tmpEncrypted, tmpDecrypted, key); err != nil {
+		fmt.Printf("Decryption error: %v\n", err)
+		return
+	}
+	fmt.Println("File decrypted successfully")
+
+	decryptedData, err := os.ReadFile(tmpDecrypted)
+	if err != nil {
+		fmt.Printf("Read decrypted file error: %v\n", err)
 		return
 	}
 
-	fmt.Println("Decrypting file...")
-	if err := decryptFile(encryptedFile, decryptedFile, key); err != nil {
-		fmt.Printf("Decryption failed: %v\n", err)
-		return
+	if string(decryptedData) == string(testData) {
+		fmt.Println("Encryption/decryption verification passed")
+	} else {
+		fmt.Println("Encryption/decryption verification failed")
 	}
-
-	fmt.Println("Operation completed successfully")
 }

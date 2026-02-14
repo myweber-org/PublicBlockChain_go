@@ -198,3 +198,147 @@ func main() {
 	fmt.Println("Original data:", data)
 	fmt.Println("Cleaned data:", cleanedData)
 }
+package main
+
+import (
+	"encoding/csv"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+	"strings"
+)
+
+type DataRecord struct {
+	ID    int
+	Name  string
+	Email string
+	Score float64
+}
+
+func readCSVFile(filename string) ([]DataRecord, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	var records []DataRecord
+	lineNumber := 0
+
+	for {
+		line, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		lineNumber++
+		if lineNumber == 1 {
+			continue
+		}
+
+		if len(line) != 4 {
+			continue
+		}
+
+		id, err := strconv.Atoi(strings.TrimSpace(line[0]))
+		if err != nil {
+			continue
+		}
+
+		name := strings.TrimSpace(line[1])
+		email := strings.TrimSpace(line[2])
+		score, err := strconv.ParseFloat(strings.TrimSpace(line[3]), 64)
+		if err != nil {
+			continue
+		}
+
+		record := DataRecord{
+			ID:    id,
+			Name:  name,
+			Email: email,
+			Score: score,
+		}
+		records = append(records, record)
+	}
+
+	return records, nil
+}
+
+func validateEmail(email string) bool {
+	if !strings.Contains(email, "@") {
+		return false
+	}
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return false
+	}
+	if len(parts[0]) == 0 || len(parts[1]) == 0 {
+		return false
+	}
+	return true
+}
+
+func cleanData(records []DataRecord) []DataRecord {
+	var cleaned []DataRecord
+	for _, record := range records {
+		if record.ID <= 0 {
+			continue
+		}
+		if len(record.Name) == 0 {
+			continue
+		}
+		if !validateEmail(record.Email) {
+			continue
+		}
+		if record.Score < 0 || record.Score > 100 {
+			continue
+		}
+		cleaned = append(cleaned, record)
+	}
+	return cleaned
+}
+
+func calculateAverageScore(records []DataRecord) float64 {
+	if len(records) == 0 {
+		return 0
+	}
+	var total float64
+	for _, record := range records {
+		total += record.Score
+	}
+	return total / float64(len(records))
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: go run data_cleaner.go <csv_file>")
+		return
+	}
+
+	filename := os.Args[1]
+	records, err := readCSVFile(filename)
+	if err != nil {
+		fmt.Printf("Error reading file: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Read %d records from %s\n", len(records), filename)
+
+	cleaned := cleanData(records)
+	fmt.Printf("After cleaning: %d valid records\n", len(cleaned))
+
+	average := calculateAverageScore(cleaned)
+	fmt.Printf("Average score: %.2f\n", average)
+
+	for i, record := range cleaned {
+		if i < 5 {
+			fmt.Printf("Record %d: ID=%d, Name=%s, Email=%s, Score=%.1f\n",
+				i+1, record.ID, record.Name, record.Email, record.Score)
+		}
+	}
+}

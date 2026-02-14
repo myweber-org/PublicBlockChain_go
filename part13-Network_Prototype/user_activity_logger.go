@@ -382,4 +382,61 @@ type responseRecorder struct {
 func (rr *responseRecorder) WriteHeader(code int) {
 	rr.statusCode = code
 	rr.ResponseWriter.WriteHeader(code)
+}package main
+
+import (
+    "fmt"
+    "log"
+    "net/http"
+    "time"
+)
+
+type ActivityLog struct {
+    UserID    string
+    Action    string
+    Timestamp time.Time
+    IPAddress string
+}
+
+var activityLogs []ActivityLog
+
+func logActivity(userID, action, ipAddress string) {
+    logEntry := ActivityLog{
+        UserID:    userID,
+        Action:    action,
+        Timestamp: time.Now(),
+        IPAddress: ipAddress,
+    }
+    activityLogs = append(activityLogs, logEntry)
+    fmt.Printf("Logged: %s - %s at %s from %s\n", userID, action, logEntry.Timestamp.Format(time.RFC3339), ipAddress)
+}
+
+func handleRequest(w http.ResponseWriter, r *http.Request) {
+    userID := r.URL.Query().Get("user")
+    action := r.URL.Query().Get("action")
+    ipAddress := r.RemoteAddr
+
+    if userID == "" || action == "" {
+        http.Error(w, "Missing parameters", http.StatusBadRequest)
+        return
+    }
+
+    logActivity(userID, action, ipAddress)
+    fmt.Fprintf(w, "Activity logged successfully for user: %s", userID)
+}
+
+func displayLogs(w http.ResponseWriter, r *http.Request) {
+    fmt.Fprintln(w, "Activity Logs:")
+    for _, logEntry := range activityLogs {
+        fmt.Fprintf(w, "User: %s | Action: %s | Time: %s | IP: %s\n",
+            logEntry.UserID, logEntry.Action, logEntry.Timestamp.Format(time.RFC3339), logEntry.IPAddress)
+    }
+}
+
+func main() {
+    http.HandleFunc("/log", handleRequest)
+    http.HandleFunc("/logs", displayLogs)
+
+    fmt.Println("Starting activity logger server on :8080")
+    log.Fatal(http.ListenAndServe(":8080", nil))
 }

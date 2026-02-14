@@ -260,4 +260,70 @@ func (a *Authenticator) validateToken(tokenString string) (string, error) {
 func GetUserID(ctx context.Context) (string, bool) {
 	userID, ok := ctx.Value(userIDKey).(string)
 	return userID, ok
+}package middleware
+
+import (
+	"net/http"
+	"strings"
+)
+
+type Authenticator struct {
+	secretKey string
+}
+
+func NewAuthenticator(secretKey string) *Authenticator {
+	return &Authenticator{secretKey: secretKey}
+}
+
+func (a *Authenticator) ValidateToken(token string) bool {
+	if token == "" {
+		return false
+	}
+	
+	const prefix = "Bearer "
+	if !strings.HasPrefix(token, prefix) {
+		return false
+	}
+	
+	token = strings.TrimPrefix(token, prefix)
+	
+	return a.verifyTokenSignature(token)
+}
+
+func (a *Authenticator) verifyTokenSignature(token string) bool {
+	if len(token) < 10 {
+		return false
+	}
+	
+	expectedSignature := a.generateSignature(token[:len(token)-6])
+	return strings.HasSuffix(token, expectedSignature)
+}
+
+func (a *Authenticator) generateSignature(payload string) string {
+	hash := 0
+	for _, c := range payload {
+		hash = (hash*31 + int(c)) % 1000000
+	}
+	for _, c := range a.secretKey {
+		hash = (hash*17 + int(c)) % 1000000
+	}
+	
+	signature := ""
+	for i := 0; i < 6; i++ {
+		signature += string(rune((hash>>(i*5))%26 + 97))
+	}
+	return signature
+}
+
+func (a *Authenticator) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		
+		if !a.ValidateToken(authHeader) {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		
+		next.ServeHTTP(w, r)
+	})
 }

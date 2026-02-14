@@ -212,4 +212,63 @@ func main() {
 
 	avg, varValue := calculateStats(records)
 	fmt.Printf("Average: %.2f, Variance: %.2f\n", avg, varValue)
+}package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+type Config struct {
+	ServerAddress string `json:"server_address"`
+	Port          int    `json:"port"`
+	EnableLogging bool   `json:"enable_logging"`
+	MaxRetries    int    `json:"max_retries"`
+}
+
+func LoadConfig(filename string) (*Config, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open config file: %w", err)
+	}
+	defer file.Close()
+
+	var config Config
+	decoder := json.NewDecoder(file)
+	if err := decoder.Decode(&config); err != nil {
+		return nil, fmt.Errorf("failed to decode config: %w", err)
+	}
+
+	if err := validateConfig(&config); err != nil {
+		return nil, err
+	}
+
+	return &config, nil
+}
+
+func validateConfig(c *Config) error {
+	if c.ServerAddress == "" {
+		return fmt.Errorf("server_address cannot be empty")
+	}
+	if c.Port <= 0 || c.Port > 65535 {
+		return fmt.Errorf("port must be between 1 and 65535")
+	}
+	if c.MaxRetries < 0 {
+		return fmt.Errorf("max_retries cannot be negative")
+	}
+	return nil
+}
+
+func main() {
+	config, err := LoadConfig("config.json")
+	if err != nil {
+		fmt.Printf("Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Loaded configuration:\n")
+	fmt.Printf("  Server: %s:%d\n", config.ServerAddress, config.Port)
+	fmt.Printf("  Logging enabled: %v\n", config.EnableLogging)
+	fmt.Printf("  Max retries: %d\n", config.MaxRetries)
 }

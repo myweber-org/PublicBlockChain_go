@@ -228,4 +228,125 @@ func main() {
 	}
 	
 	fmt.Printf("Concurrent validation: %d/%d records valid\n", validCount, len(records))
+}package main
+
+import (
+	"bufio"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+)
+
+type FileProcessor struct {
+	BatchSize   int
+	WorkerCount int
+	mu          sync.Mutex
+	processed   int
+}
+
+func NewFileProcessor(batchSize, workerCount int) *FileProcessor {
+	return &FileProcessor{
+		BatchSize:   batchSize,
+		WorkerCount: workerCount,
+	}
+}
+
+func (fp *FileProcessor) ProcessFiles(paths []string) error {
+	if len(paths) == 0 {
+		return errors.New("no files to process")
+	}
+
+	fileChan := make(chan string, len(paths))
+	resultChan := make(chan bool, len(paths))
+	var wg sync.WaitGroup
+
+	for i := 0; i < fp.WorkerCount; i++ {
+		wg.Add(1)
+		go fp.worker(fileChan, resultChan, &wg)
+	}
+
+	for _, path := range paths {
+		fileChan <- path
+	}
+	close(fileChan)
+
+	wg.Wait()
+	close(resultChan)
+
+	successCount := 0
+	for result := range resultChan {
+		if result {
+			successCount++
+		}
+	}
+
+	fp.mu.Lock()
+	fp.processed += successCount
+	fp.mu.Unlock()
+
+	fmt.Printf("Processed %d files successfully\n", successCount)
+	return nil
+}
+
+func (fp *FileProcessor) worker(files <-chan string, results chan<- bool, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	for file := range files {
+		success := fp.processSingleFile(file)
+		results <- success
+	}
+}
+
+func (fp *FileProcessor) processSingleFile(path string) bool {
+	file, err := os.Open(path)
+	if err != nil {
+		fmt.Printf("Error opening file %s: %v\n", path, err)
+		return false
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	lineCount := 0
+	for scanner.Scan() {
+		lineCount++
+		if lineCount >= fp.BatchSize {
+			break
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Printf("Error scanning file %s: %v\n", path, err)
+		return false
+	}
+
+	time.Sleep(10 * time.Millisecond)
+	fmt.Printf("Processed %s (%d lines)\n", filepath.Base(path), lineCount)
+	return true
+}
+
+func (fp *FileProcessor) GetProcessedCount() int {
+	fp.mu.Lock()
+	defer fp.mu.Unlock()
+	return fp.processed
+}
+
+func main() {
+	processor := NewFileProcessor(100, 4)
+
+	files := []string{
+		"data/file1.txt",
+		"data/file2.txt",
+		"data/file3.txt",
+		"data/file4.txt",
+	}
+
+	if err := processor.ProcessFiles(files); err != nil {
+		fmt.Printf("Processing failed: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Total files processed: %d\n", processor.GetProcessedCount())
 }

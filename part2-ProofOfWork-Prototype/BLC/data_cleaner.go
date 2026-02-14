@@ -59,4 +59,22 @@ func main() {
 	for _, record := range cleaned {
 		fmt.Printf("ID: %d, Email: %s, Valid: %v\n", record.ID, record.Email, record.Valid)
 	}
+}package datautils
+
+func RemoveDuplicates(input []int) []int {
+    if len(input) == 0 {
+        return input
+    }
+    
+    seen := make(map[int]bool)
+    result := make([]int, 0, len(input))
+    
+    for _, value := range input {
+        if !seen[value] {
+            seen[value] = true
+            result = append(result, value)
+        }
+    }
+    
+    return result
 }

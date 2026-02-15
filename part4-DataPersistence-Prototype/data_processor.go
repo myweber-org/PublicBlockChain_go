@@ -194,3 +194,79 @@ func main() {
 	}
 	fmt.Printf("Processed: %+v\n", processed)
 }
+package data
+
+import (
+	"errors"
+	"strings"
+	"time"
+)
+
+var (
+	ErrInvalidInput = errors.New("invalid input data")
+	ErrEmptyData    = errors.New("data cannot be empty")
+)
+
+type DataRecord struct {
+	ID        string
+	Timestamp time.Time
+	Value     float64
+	Tags      []string
+}
+
+func ValidateRecord(record DataRecord) error {
+	if record.ID == "" {
+		return ErrInvalidInput
+	}
+	if record.Value < 0 {
+		return errors.New("value cannot be negative")
+	}
+	if record.Timestamp.IsZero() {
+		return errors.New("timestamp must be set")
+	}
+	return nil
+}
+
+func NormalizeString(input string) string {
+	return strings.ToLower(strings.TrimSpace(input))
+}
+
+func FilterRecords(records []DataRecord, minValue float64) []DataRecord {
+	var filtered []DataRecord
+	for _, record := range records {
+		if record.Value >= minValue {
+			filtered = append(filtered, record)
+		}
+	}
+	return filtered
+}
+
+func CalculateAverage(records []DataRecord) (float64, error) {
+	if len(records) == 0 {
+		return 0, ErrEmptyData
+	}
+	
+	var sum float64
+	for _, record := range records {
+		sum += record.Value
+	}
+	return sum / float64(len(records)), nil
+}
+
+func MergeTags(records []DataRecord) []string {
+	tagMap := make(map[string]bool)
+	for _, record := range records {
+		for _, tag := range record.Tags {
+			normalized := NormalizeString(tag)
+			if normalized != "" {
+				tagMap[normalized] = true
+			}
+		}
+	}
+	
+	tags := make([]string, 0, len(tagMap))
+	for tag := range tagMap {
+		tags = append(tags, tag)
+	}
+	return tags
+}

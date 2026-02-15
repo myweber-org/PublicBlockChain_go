@@ -250,3 +250,94 @@ func main() {
 	eurAmount := ConvertUSDToEUR(usdAmount)
 	fmt.Printf("%.2f USD = %.2f EUR\n", usdAmount, eurAmount)
 }
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
+)
+
+type ExchangeRates struct {
+	Base  string             `json:"base"`
+	Rates map[string]float64 `json:"rates"`
+	Date  string             `json:"date"`
+}
+
+type CurrencyConverter struct {
+	rates     map[string]float64
+	lastFetch time.Time
+	apiKey    string
+}
+
+func NewCurrencyConverter(apiKey string) *CurrencyConverter {
+	return &CurrencyConverter{
+		rates:  make(map[string]float64),
+		apiKey: apiKey,
+	}
+}
+
+func (c *CurrencyConverter) fetchRates() error {
+	if time.Since(c.lastFetch) < 30*time.Minute && len(c.rates) > 0 {
+		return nil
+	}
+
+	url := fmt.Sprintf("https://api.exchangerate.host/latest?base=USD&access_key=%s", c.apiKey)
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("failed to fetch rates: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var rates ExchangeRates
+	if err := json.Unmarshal(body, &rates); err != nil {
+		return fmt.Errorf("failed to parse rates: %w", err)
+	}
+
+	c.rates = rates.Rates
+	c.rates["USD"] = 1.0
+	c.lastFetch = time.Now()
+	return nil
+}
+
+func (c *CurrencyConverter) Convert(amount float64, from, to string) (float64, error) {
+	if err := c.fetchRates(); err != nil {
+		return 0, err
+	}
+
+	fromRate, ok := c.rates[from]
+	if !ok {
+		return 0, fmt.Errorf("unsupported currency: %s", from)
+	}
+
+	toRate, ok := c.rates[to]
+	if !ok {
+		return 0, fmt.Errorf("unsupported currency: %s", to)
+	}
+
+	usdAmount := amount / fromRate
+	return usdAmount * toRate, nil
+}
+
+func main() {
+	converter := NewCurrencyConverter("your_api_key_here")
+	
+	amount := 100.0
+	from := "EUR"
+	to := "JPY"
+
+	result, err := converter.Convert(amount, from, to)
+	if err != nil {
+		fmt.Printf("Conversion error: %v\n", err)
+		return
+	}
+
+	fmt.Printf("%.2f %s = %.2f %s\n", amount, from, result, to)
+}

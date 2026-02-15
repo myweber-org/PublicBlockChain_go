@@ -410,4 +410,68 @@ func ValidateConfig(config *Config) bool {
 	}
 
 	return true
+}package config
+
+import (
+	"os"
+	"strconv"
+	"strings"
+)
+
+type Config struct {
+	ServerPort int
+	DBHost     string
+	DBPort     int
+	DebugMode  bool
+	FeatureFlags map[string]bool
+}
+
+func LoadConfig() (*Config, error) {
+	cfg := &Config{
+		FeatureFlags: make(map[string]bool),
+	}
+
+	port, err := strconv.Atoi(getEnv("SERVER_PORT", "8080"))
+	if err != nil {
+		return nil, err
+	}
+	cfg.ServerPort = port
+
+	cfg.DBHost = getEnv("DB_HOST", "localhost")
+
+	dbPort, err := strconv.Atoi(getEnv("DB_PORT", "5432"))
+	if err != nil {
+		return nil, err
+	}
+	cfg.DBPort = dbPort
+
+	debug, err := strconv.ParseBool(getEnv("DEBUG_MODE", "false"))
+	if err != nil {
+		return nil, err
+	}
+	cfg.DebugMode = debug
+
+	flags := getEnv("FEATURE_FLAGS", "")
+	if flags != "" {
+		flagList := strings.Split(flags, ",")
+		for _, flag := range flagList {
+			parts := strings.Split(flag, "=")
+			if len(parts) == 2 {
+				enabled, err := strconv.ParseBool(parts[1])
+				if err == nil {
+					cfg.FeatureFlags[parts[0]] = enabled
+				}
+			}
+		}
+	}
+
+	return cfg, nil
+}
+
+func getEnv(key, defaultValue string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	return value
 }

@@ -217,4 +217,99 @@ func (c *AppConfig) Validate() error {
         return fmt.Errorf("write timeout cannot be negative")
     }
     return nil
+}package config
+
+import (
+	"errors"
+	"io/ioutil"
+	"os"
+
+	"gopkg.in/yaml.v2"
+)
+
+type AppConfig struct {
+	Server struct {
+		Port    int    `yaml:"port"`
+		Host    string `yaml:"host"`
+		Timeout int    `yaml:"timeout"`
+	} `yaml:"server"`
+	Database struct {
+		Host     string `yaml:"host"`
+		Port     int    `yaml:"port"`
+		Username string `yaml:"username"`
+		Password string `yaml:"password"`
+		Name     string `yaml:"name"`
+		SSLMode  string `yaml:"ssl_mode"`
+	} `yaml:"database"`
+	Logging struct {
+		Level  string `yaml:"level"`
+		Format string `yaml:"format"`
+		Output string `yaml:"output"`
+	} `yaml:"logging"`
+}
+
+func LoadConfig(filePath string) (*AppConfig, error) {
+	if filePath == "" {
+		return nil, errors.New("config file path cannot be empty")
+	}
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	data, err := ioutil.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+
+	var config AppConfig
+	err = yaml.Unmarshal(data, &config)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := validateConfig(&config); err != nil {
+		return nil, err
+	}
+
+	return &config, nil
+}
+
+func validateConfig(config *AppConfig) error {
+	if config.Server.Port <= 0 || config.Server.Port > 65535 {
+		return errors.New("invalid server port")
+	}
+
+	if config.Server.Host == "" {
+		return errors.New("server host cannot be empty")
+	}
+
+	if config.Server.Timeout < 0 {
+		return errors.New("server timeout cannot be negative")
+	}
+
+	if config.Database.Host == "" {
+		return errors.New("database host cannot be empty")
+	}
+
+	if config.Database.Port <= 0 || config.Database.Port > 65535 {
+		return errors.New("invalid database port")
+	}
+
+	if config.Database.Name == "" {
+		return errors.New("database name cannot be empty")
+	}
+
+	return nil
+}
+
+func SaveConfig(config *AppConfig, filePath string) error {
+	data, err := yaml.Marshal(config)
+	if err != nil {
+		return err
+	}
+
+	return ioutil.WriteFile(filePath, data, 0644)
 }

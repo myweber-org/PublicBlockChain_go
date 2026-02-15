@@ -132,3 +132,68 @@ func CalculateStats(records []Record) (float64, float64, int) {
 	average := sum / float64(len(records))
 	return average, minValue, activeCount
 }
+package main
+
+import (
+    "encoding/csv"
+    "fmt"
+    "io"
+    "os"
+    "strings"
+)
+
+func processCSV(inputPath, outputPath string) error {
+    inputFile, err := os.Open(inputPath)
+    if err != nil {
+        return fmt.Errorf("failed to open input file: %w", err)
+    }
+    defer inputFile.Close()
+
+    outputFile, err := os.Create(outputPath)
+    if err != nil {
+        return fmt.Errorf("failed to create output file: %w", err)
+    }
+    defer outputFile.Close()
+
+    reader := csv.NewReader(inputFile)
+    writer := csv.NewWriter(outputFile)
+    defer writer.Flush()
+
+    for {
+        record, err := reader.Read()
+        if err == io.EOF {
+            break
+        }
+        if err != nil {
+            return fmt.Errorf("error reading CSV: %w", err)
+        }
+
+        processedRecord := make([]string, len(record))
+        for i, field := range record {
+            processedRecord[i] = strings.TrimSpace(strings.ToLower(field))
+        }
+
+        if err := writer.Write(processedRecord); err != nil {
+            return fmt.Errorf("error writing CSV: %w", err)
+        }
+    }
+
+    return nil
+}
+
+func main() {
+    if len(os.Args) != 3 {
+        fmt.Println("Usage: go run data_processor.go <input.csv> <output.csv>")
+        os.Exit(1)
+    }
+
+    inputFile := os.Args[1]
+    outputFile := os.Args[2]
+
+    if err := processCSV(inputFile, outputFile); err != nil {
+        fmt.Printf("Error processing CSV: %v\n", err)
+        os.Exit(1)
+    }
+
+    fmt.Printf("Successfully processed %s to %s\n", inputFile, outputFile)
+}

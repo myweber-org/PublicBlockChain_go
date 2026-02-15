@@ -406,3 +406,73 @@ func CalculateStatistics(records []DataRecord) (float64, float64, float64) {
     average := sum / float64(len(records))
     return average, min, max
 }
+package main
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+)
+
+type DataRecord struct {
+	ID        string
+	Value     float64
+	Timestamp time.Time
+	Category  string
+}
+
+func ValidateRecord(record DataRecord) error {
+	if record.ID == "" {
+		return errors.New("ID cannot be empty")
+	}
+	if record.Value < 0 {
+		return errors.New("value must be non-negative")
+	}
+	if record.Category == "" {
+		return errors.New("category cannot be empty")
+	}
+	if record.Timestamp.After(time.Now()) {
+		return errors.New("timestamp cannot be in the future")
+	}
+	return nil
+}
+
+func TransformRecord(record DataRecord) DataRecord {
+	transformed := record
+	transformed.Category = strings.ToUpper(record.Category)
+	transformed.Value = record.Value * 1.1
+	return transformed
+}
+
+func ProcessRecords(records []DataRecord) ([]DataRecord, error) {
+	var processed []DataRecord
+	for _, record := range records {
+		if err := ValidateRecord(record); err != nil {
+			return nil, fmt.Errorf("validation failed for record %s: %w", record.ID, err)
+		}
+		processed = append(processed, TransformRecord(record))
+	}
+	return processed, nil
+}
+
+func CalculateAverage(records []DataRecord) float64 {
+	if len(records) == 0 {
+		return 0
+	}
+	var sum float64
+	for _, record := range records {
+		sum += record.Value
+	}
+	return sum / float64(len(records))
+}
+
+func FilterByCategory(records []DataRecord, category string) []DataRecord {
+	var filtered []DataRecord
+	for _, record := range records {
+		if strings.EqualFold(record.Category, category) {
+			filtered = append(filtered, record)
+		}
+	}
+	return filtered
+}

@@ -222,4 +222,147 @@ func main() {
 	} else {
 		fmt.Println("Decryption result mismatch!")
 	}
+}package main
+
+import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"os"
+
+	"golang.org/x/crypto/pbkdf2"
+)
+
+const (
+	saltSize      = 16
+	keyIterations = 100000
+	keyLength     = 32
+)
+
+func deriveKey(password, salt []byte) []byte {
+	return pbkdf2.Key(password, salt, keyIterations, keyLength, sha256.New)
+}
+
+func encryptFile(inputPath, outputPath, password string) error {
+	inputFile, err := os.Open(inputPath)
+	if err != nil {
+		return fmt.Errorf("failed to open input file: %w", err)
+	}
+	defer inputFile.Close()
+
+	outputFile, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
+	}
+	defer outputFile.Close()
+
+	salt := make([]byte, saltSize)
+	if _, err := rand.Read(salt); err != nil {
+		return fmt.Errorf("failed to generate salt: %w", err)
+	}
+
+	key := deriveKey([]byte(password), salt)
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return fmt.Errorf("failed to create cipher: %w", err)
+	}
+
+	iv := make([]byte, aes.BlockSize)
+	if _, err := rand.Read(iv); err != nil {
+		return fmt.Errorf("failed to generate IV: %w", err)
+	}
+
+	stream := cipher.NewCFBEncrypter(block, iv)
+
+	if _, err := outputFile.Write(salt); err != nil {
+		return fmt.Errorf("failed to write salt: %w", err)
+	}
+
+	if _, err := outputFile.Write(iv); err != nil {
+		return fmt.Errorf("failed to write IV: %w", err)
+	}
+
+	writer := &cipher.StreamWriter{S: stream, W: outputFile}
+
+	if _, err := io.Copy(writer, inputFile); err != nil {
+		return fmt.Errorf("failed to encrypt data: %w", err)
+	}
+
+	return nil
+}
+
+func decryptFile(inputPath, outputPath, password string) error {
+	inputFile, err := os.Open(inputPath)
+	if err != nil {
+		return fmt.Errorf("failed to open input file: %w", err)
+	}
+	defer inputFile.Close()
+
+	salt := make([]byte, saltSize)
+	if _, err := io.ReadFull(inputFile, salt); err != nil {
+		return fmt.Errorf("failed to read salt: %w", err)
+	}
+
+	iv := make([]byte, aes.BlockSize)
+	if _, err := io.ReadFull(inputFile, iv); err != nil {
+		return fmt.Errorf("failed to read IV: %w", err)
+	}
+
+	key := deriveKey([]byte(password), salt)
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return fmt.Errorf("failed to create cipher: %w", err)
+	}
+
+	stream := cipher.NewCFBDecrypter(block, iv)
+
+	outputFile, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
+	}
+	defer outputFile.Close()
+
+	reader := &cipher.StreamReader{S: stream, R: inputFile}
+
+	if _, err := io.Copy(outputFile, reader); err != nil {
+		return fmt.Errorf("failed to decrypt data: %w", err)
+	}
+
+	return nil
+}
+
+func main() {
+	if len(os.Args) < 5 {
+		fmt.Println("Usage: file_encryptor <encrypt|decrypt> <input> <output> <password>")
+		os.Exit(1)
+	}
+
+	operation := os.Args[1]
+	inputPath := os.Args[2]
+	outputPath := os.Args[3]
+	password := os.Args[4]
+
+	switch operation {
+	case "encrypt":
+		if err := encryptFile(inputPath, outputPath, password); err != nil {
+			fmt.Printf("Encryption failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("File encrypted successfully")
+	case "decrypt":
+		if err := decryptFile(inputPath, outputPath, password); err != nil {
+			fmt.Printf("Decryption failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("File decrypted successfully")
+	default:
+		fmt.Println("Invalid operation. Use 'encrypt' or 'decrypt'")
+		os.Exit(1)
+	}
 }

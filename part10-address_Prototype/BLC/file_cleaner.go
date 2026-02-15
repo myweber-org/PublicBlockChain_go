@@ -85,4 +85,31 @@ func main() {
 	}
 
 	fmt.Printf("Cleaned %d temporary files older than 7 days\n", removedCount)
+}package main
+
+import (
+    "os"
+    "path/filepath"
+    "time"
+)
+
+func main() {
+    tempDir := os.TempDir()
+    cutoffTime := time.Now().AddDate(0, 0, -7)
+
+    filepath.Walk(tempDir, func(path string, info os.FileInfo, err error) error {
+        if err != nil {
+            return nil
+        }
+
+        if info.IsDir() {
+            return nil
+        }
+
+        if info.ModTime().Before(cutoffTime) {
+            os.Remove(path)
+        }
+
+        return nil
+    })
 }

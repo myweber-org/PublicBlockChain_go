@@ -251,4 +251,81 @@ func TransformUserData(rawEmail, rawUsername string) (string, string, error) {
 	normalizedEmail := strings.ToLower(strings.TrimSpace(rawEmail))
 	normalizedUsername := NormalizeUsername(rawUsername)
 	return normalizedEmail, normalizedUsername, nil
+}package data_processor
+
+import (
+	"encoding/csv"
+	"errors"
+	"io"
+	"strconv"
+)
+
+type Record struct {
+	ID    int
+	Name  string
+	Value float64
+}
+
+func ParseCSV(reader io.Reader) ([]Record, error) {
+	csvReader := csv.NewReader(reader)
+	records := make([]Record, 0)
+
+	// Skip header
+	if _, err := csvReader.Read(); err != nil {
+		return nil, err
+	}
+
+	for {
+		row, err := csvReader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		if len(row) != 3 {
+			return nil, errors.New("invalid csv format")
+		}
+
+		id, err := strconv.Atoi(row[0])
+		if err != nil {
+			return nil, err
+		}
+
+		name := row[1]
+
+		value, err := strconv.ParseFloat(row[2], 64)
+		if err != nil {
+			return nil, err
+		}
+
+		records = append(records, Record{
+			ID:    id,
+			Name:  name,
+			Value: value,
+		})
+	}
+
+	return records, nil
+}
+
+func ValidateRecords(records []Record) error {
+	seen := make(map[int]bool)
+	for _, rec := range records {
+		if rec.ID <= 0 {
+			return errors.New("invalid id")
+		}
+		if rec.Name == "" {
+			return errors.New("empty name")
+		}
+		if rec.Value < 0 {
+			return errors.New("negative value")
+		}
+		if seen[rec.ID] {
+			return errors.New("duplicate id")
+		}
+		seen[rec.ID] = true
+	}
+	return nil
 }

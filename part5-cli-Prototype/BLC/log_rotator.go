@@ -282,3 +282,183 @@ func main() {
 		time.Sleep(100 * time.Millisecond)
 	}
 }
+package main
+
+import (
+    "compress/gzip"
+    "fmt"
+    "io"
+    "os"
+    "path/filepath"
+    "strconv"
+    "strings"
+    "sync"
+    "time"
+)
+
+type RotatingLog struct {
+    mu           sync.Mutex
+    basePath     string
+    currentFile  *os.File
+    maxSize      int64
+    currentSize  int64
+    maxBackups   int
+}
+
+func NewRotatingLog(basePath string, maxSize int64, maxBackups int) (*RotatingLog, error) {
+    rl := &RotatingLog{
+        basePath:   basePath,
+        maxSize:    maxSize,
+        maxBackups: maxBackups,
+    }
+    if err := rl.openCurrentFile(); err != nil {
+        return nil, err
+    }
+    return rl, nil
+}
+
+func (rl *RotatingLog) openCurrentFile() error {
+    file, err := os.OpenFile(rl.basePath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+    if err != nil {
+        return err
+    }
+    info, err := file.Stat()
+    if err != nil {
+        file.Close()
+        return err
+    }
+    rl.currentFile = file
+    rl.currentSize = info.Size()
+    return nil
+}
+
+func (rl *RotatingLog) Write(p []byte) (int, error) {
+    rl.mu.Lock()
+    defer rl.mu.Unlock()
+
+    if rl.currentSize+int64(len(p)) > rl.maxSize {
+        if err := rl.rotate(); err != nil {
+            return 0, err
+        }
+    }
+
+    n, err := rl.currentFile.Write(p)
+    if err == nil {
+        rl.currentSize += int64(n)
+    }
+    return n, err
+}
+
+func (rl *RotatingLog) rotate() error {
+    if rl.currentFile != nil {
+        rl.currentFile.Close()
+    }
+
+    timestamp := time.Now().Format("20060102150405")
+    backupPath := fmt.Sprintf("%s.%s", rl.basePath, timestamp)
+
+    if err := os.Rename(rl.basePath, backupPath); err != nil {
+        return err
+    }
+
+    if err := rl.openCurrentFile(); err != nil {
+        return err
+    }
+
+    go rl.compressBackup(backupPath)
+    go rl.cleanOldBackups()
+
+    return nil
+}
+
+func (rl *RotatingLog) compressBackup(path string) {
+    compressedPath := path + ".gz"
+    src, err := os.Open(path)
+    if err != nil {
+        return
+    }
+    defer src.Close()
+
+    dst, err := os.Create(compressedPath)
+    if err != nil {
+        return
+    }
+    defer dst.Close()
+
+    gz := gzip.NewWriter(dst)
+    defer gz.Close()
+
+    if _, err := io.Copy(gz, src); err != nil {
+        return
+    }
+
+    os.Remove(path)
+}
+
+func (rl *RotatingLog) cleanOldBackups() {
+    dir := filepath.Dir(rl.basePath)
+    baseName := filepath.Base(rl.basePath)
+
+    entries, err := os.ReadDir(dir)
+    if err != nil {
+        return
+    }
+
+    var backups []string
+    for _, entry := range entries {
+        name := entry.Name()
+        if strings.HasPrefix(name, baseName+".") && strings.HasSuffix(name, ".gz") {
+            backups = append(backups, name)
+        }
+    }
+
+    if len(backups) <= rl.maxBackups {
+        return
+    }
+
+    sortBackups(backups)
+    for i := 0; i < len(backups)-rl.maxBackups; i++ {
+        os.Remove(filepath.Join(dir, backups[i]))
+    }
+}
+
+func sortBackups(backups []string) {
+    for i := 0; i < len(backups); i++ {
+        for j := i + 1; j < len(backups); j++ {
+            if extractTimestamp(backups[i]) > extractTimestamp(backups[j]) {
+                backups[i], backups[j] = backups[j], backups[i]
+            }
+        }
+    }
+}
+
+func extractTimestamp(filename string) int64 {
+    parts := strings.Split(filename, ".")
+    if len(parts) < 3 {
+        return 0
+    }
+    ts, _ := strconv.ParseInt(parts[len(parts)-2], 10, 64)
+    return ts
+}
+
+func (rl *RotatingLog) Close() error {
+    rl.mu.Lock()
+    defer rl.mu.Unlock()
+    if rl.currentFile != nil {
+        return rl.currentFile.Close()
+    }
+    return nil
+}
+
+func main() {
+    log, err := NewRotatingLog("/var/log/myapp/app.log", 10*1024*1024, 5)
+    if err != nil {
+        panic(err)
+    }
+    defer log.Close()
+
+    for i := 0; i < 1000; i++ {
+        log.Write([]byte(fmt.Sprintf("Log entry %d: Application event occurred at %v\n", i, time.Now())))
+        time.Sleep(100 * time.Millisecond)
+    }
+}

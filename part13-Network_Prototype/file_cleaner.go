@@ -1,55 +1,52 @@
 package main
 
 import (
-    "os"
-    "path/filepath"
-    "time"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"time"
 )
 
-func main() {
-    tempDir := os.TempDir()
-    cutoff := time.Now().AddDate(0, 0, -7)
-
-    filepath.Walk(tempDir, func(path string, info os.FileInfo, err error) error {
-        if err != nil {
-            return nil
-        }
-        if info.IsDir() {
-            return nil
-        }
-        if info.ModTime().Before(cutoff) {
-            os.Remove(path)
-        }
-        return nil
-    })
-}package main
-
-import (
-    "os"
-    "path/filepath"
-    "time"
-)
-
-func cleanOldFiles(dir string, maxAge time.Duration) error {
-    cutoff := time.Now().Add(-maxAge)
-    return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-        if err != nil {
-            return err
-        }
-        if info.IsDir() {
-            return nil
-        }
-        if info.ModTime().Before(cutoff) {
-            return os.Remove(path)
-        }
-        return nil
-    })
-}
+const retentionDays = 7
 
 func main() {
-    tempDir := os.TempDir()
-    err := cleanOldFiles(tempDir, 7*24*time.Hour)
-    if err != nil {
-        panic(err)
-    }
+	tempDir := os.TempDir()
+	fmt.Printf("Cleaning temporary files in: %s\n", tempDir)
+
+	cutoffTime := time.Now().AddDate(0, 0, -retentionDays)
+	var removedCount int
+	var totalSize int64
+
+	err := filepath.WalkDir(tempDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+
+		if d.IsDir() {
+			return nil
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+
+		if info.ModTime().Before(cutoffTime) {
+			size := info.Size()
+			if err := os.Remove(path); err == nil {
+				removedCount++
+				totalSize += size
+				fmt.Printf("Removed: %s (size: %d bytes)\n", filepath.Base(path), size)
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		fmt.Printf("Error during cleanup: %v\n", err)
+	}
+
+	fmt.Printf("Cleanup completed. Removed %d files, freed %d bytes.\n", removedCount, totalSize)
 }

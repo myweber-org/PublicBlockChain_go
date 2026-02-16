@@ -217,3 +217,135 @@ func main() {
 		fmt.Printf("ID: %d, Email: %s, Valid: %v\n", rec.ID, rec.Email, rec.Valid)
 	}
 }
+package main
+
+import (
+	"encoding/csv"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+)
+
+type DataRecord struct {
+	ID      string
+	Name    string
+	Email   string
+	Active  string
+}
+
+func readCSV(filename string) ([]DataRecord, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	var records []DataRecord
+
+	// Skip header
+	_, err = reader.Read()
+	if err != nil {
+		return nil, err
+	}
+
+	for {
+		row, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		if len(row) >= 4 {
+			records = append(records, DataRecord{
+				ID:     strings.TrimSpace(row[0]),
+				Name:   strings.TrimSpace(row[1]),
+				Email:  strings.TrimSpace(row[2]),
+				Active: strings.TrimSpace(row[3]),
+			})
+		}
+	}
+
+	return records, nil
+}
+
+func deduplicateByEmail(records []DataRecord) []DataRecord {
+	seen := make(map[string]bool)
+	var unique []DataRecord
+
+	for _, record := range records {
+		email := strings.ToLower(record.Email)
+		if !seen[email] {
+			seen[email] = true
+			unique = append(unique, record)
+		}
+	}
+
+	return unique
+}
+
+func validateEmail(email string) bool {
+	return strings.Contains(email, "@") && strings.Contains(email, ".")
+}
+
+func filterValidRecords(records []DataRecord) []DataRecord {
+	var valid []DataRecord
+	for _, record := range records {
+		if validateEmail(record.Email) && record.ID != "" && record.Name != "" {
+			valid = append(valid, record)
+		}
+	}
+	return valid
+}
+
+func writeCSV(filename string, records []DataRecord) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	header := []string{"ID", "Name", "Email", "Active"}
+	if err := writer.Write(header); err != nil {
+		return err
+	}
+
+	for _, record := range records {
+		row := []string{record.ID, record.Name, record.Email, record.Active}
+		if err := writer.Write(row); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func main() {
+	records, err := readCSV("input.csv")
+	if err != nil {
+		fmt.Printf("Error reading file: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Original records: %d\n", len(records))
+
+	uniqueRecords := deduplicateByEmail(records)
+	fmt.Printf("After deduplication: %d\n", len(uniqueRecords))
+
+	validRecords := filterValidRecords(uniqueRecords)
+	fmt.Printf("Valid records: %d\n", len(validRecords))
+
+	err = writeCSV("cleaned_data.csv", validRecords)
+	if err != nil {
+		fmt.Printf("Error writing file: %v\n", err)
+		return
+	}
+
+	fmt.Println("Data cleaning completed successfully")
+}

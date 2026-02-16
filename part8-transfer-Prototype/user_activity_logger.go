@@ -1,70 +1,45 @@
-package main
+package middleware
 
 import (
-	"encoding/json"
-	"fmt"
 	"log"
-	"os"
+	"net/http"
 	"time"
 )
 
-type ActivityEvent struct {
-	UserID    string    `json:"user_id"`
-	EventType string    `json:"event_type"`
-	Timestamp time.Time `json:"timestamp"`
-	Details   string    `json:"details,omitempty"`
-}
-
 type ActivityLogger struct {
-	logFile *os.File
+	handler http.Handler
 }
 
-func NewActivityLogger(filename string) (*ActivityLogger, error) {
-	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return nil, err
-	}
-	return &ActivityLogger{logFile: file}, nil
+func NewActivityLogger(handler http.Handler) *ActivityLogger {
+	return &ActivityLogger{handler: handler}
 }
 
-func (al *ActivityLogger) LogActivity(userID, eventType, details string) error {
-	event := ActivityEvent{
-		UserID:    userID,
-		EventType: eventType,
-		Timestamp: time.Now(),
-		Details:   details,
+func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	recorder := &responseRecorder{
+		ResponseWriter: w,
+		statusCode:     http.StatusOK,
 	}
 
-	eventJSON, err := json.Marshal(event)
-	if err != nil {
-		return err
-	}
+	al.handler.ServeHTTP(recorder, r)
 
-	eventJSON = append(eventJSON, '\n')
-	_, err = al.logFile.Write(eventJSON)
-	return err
+	duration := time.Since(start)
+	log.Printf(
+		"%s %s %d %s %s",
+		r.Method,
+		r.URL.Path,
+		recorder.statusCode,
+		duration,
+		r.RemoteAddr,
+	)
 }
 
-func (al *ActivityLogger) Close() error {
-	return al.logFile.Close()
+type responseRecorder struct {
+	http.ResponseWriter
+	statusCode int
 }
 
-func main() {
-	logger, err := NewActivityLogger("user_activities.log")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer logger.Close()
-
-	err = logger.LogActivity("user123", "login", "User logged in from web browser")
-	if err != nil {
-		log.Println("Failed to log activity:", err)
-	}
-
-	err = logger.LogActivity("user123", "view_page", "Viewed dashboard")
-	if err != nil {
-		log.Println("Failed to log activity:", err)
-	}
-
-	fmt.Println("Activities logged successfully")
+func (rr *responseRecorder) WriteHeader(code int) {
+	rr.statusCode = code
+	rr.ResponseWriter.WriteHeader(code)
 }

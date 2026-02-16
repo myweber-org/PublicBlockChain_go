@@ -296,4 +296,59 @@ func DefaultConfigPath() string {
         }
     }
     return ""
+}package config
+
+import (
+	"encoding/json"
+	"os"
+	"sync"
+)
+
+type Config struct {
+	ServerPort string `json:"server_port"`
+	DBHost     string `json:"db_host"`
+	DBPort     int    `json:"db_port"`
+	DebugMode  bool   `json:"debug_mode"`
+}
+
+var (
+	instance *Config
+	once     sync.Once
+)
+
+func Load() *Config {
+	once.Do(func() {
+		instance = &Config{
+			ServerPort: getEnv("SERVER_PORT", "8080"),
+			DBHost:     getEnv("DB_HOST", "localhost"),
+			DBPort:     5432,
+			DebugMode:  getEnv("DEBUG", "false") == "true",
+		}
+
+		if port := os.Getenv("DB_PORT"); port != "" {
+			if p, err := strconv.Atoi(port); err == nil {
+				instance.DBPort = p
+			}
+		}
+
+		if configFile := os.Getenv("CONFIG_FILE"); configFile != "" {
+			loadFromFile(configFile, instance)
+		}
+	})
+	return instance
+}
+
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+func loadFromFile(path string, cfg *Config) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	json.Unmarshal(data, cfg)
 }

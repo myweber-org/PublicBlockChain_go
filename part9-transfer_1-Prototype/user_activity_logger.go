@@ -3,161 +3,93 @@ package middleware
 import (
 	"log"
 	"net/http"
+	"sync"
 	"time"
 )
 
 type ActivityLogger struct {
-	handler http.Handler
+	mu          sync.RWMutex
+	rateLimiter map[string][]time.Time
+	windowSize  time.Duration
+	maxRequests int
 }
 
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	recorder := &responseRecorder{
-		ResponseWriter: w,
-		statusCode:     http.StatusOK,
+func NewActivityLogger(window time.Duration, max int) *ActivityLogger {
+	return &ActivityLogger{
+		rateLimiter: make(map[string][]time.Time),
+		windowSize:  window,
+		maxRequests: max,
 	}
-	
-	al.handler.ServeHTTP(recorder, r)
-	
-	duration := time.Since(start)
-	
-	log.Printf(
-		"Activity: %s %s | Status: %d | Duration: %v | User-Agent: %s",
-		r.Method,
-		r.URL.Path,
-		recorder.statusCode,
-		duration,
-		r.UserAgent(),
-	)
 }
 
-type responseRecorder struct {
-	http.ResponseWriter
-	statusCode int
+func (al *ActivityLogger) LogActivity(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		clientIP := r.RemoteAddr
+		userAgent := r.UserAgent()
+		path := r.URL.Path
+
+		if !al.checkRateLimit(clientIP) {
+			http.Error(w, "Too many requests", http.StatusTooManyRequests)
+			return
+		}
+
+		start := time.Now()
+		next.ServeHTTP(w, r)
+		duration := time.Since(start)
+
+		log.Printf("Activity: IP=%s, Agent=%s, Path=%s, Duration=%v", 
+			clientIP, userAgent, path, duration)
+	})
 }
 
-func (rr *responseRecorder) WriteHeader(code int) {
-	rr.statusCode = code
-	rr.ResponseWriter.WriteHeader(code)
-}package middleware
+func (al *ActivityLogger) checkRateLimit(clientIP string) bool {
+	al.mu.Lock()
+	defer al.mu.Unlock()
 
-import (
-	"log"
-	"net/http"
-	"time"
-)
+	now := time.Now()
+	windowStart := now.Add(-al.windowSize)
 
-type ActivityLogger struct {
-	handler http.Handler
-}
-
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	recorder := &responseRecorder{
-		ResponseWriter: w,
-		statusCode:     http.StatusOK,
+	if _, exists := al.rateLimiter[clientIP]; !exists {
+		al.rateLimiter[clientIP] = []time.Time{}
 	}
-	
-	al.handler.ServeHTTP(recorder, r)
-	
-	duration := time.Since(start)
-	log.Printf("%s %s %d %s %s",
-		r.Method,
-		r.URL.Path,
-		recorder.statusCode,
-		r.RemoteAddr,
-		duration.String(),
-	)
-}
 
-type responseRecorder struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (rr *responseRecorder) WriteHeader(code int) {
-	rr.statusCode = code
-	rr.ResponseWriter.WriteHeader(code)
-}package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLogger struct {
-	handler http.Handler
-}
-
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	
-	recorder := &responseRecorder{
-		ResponseWriter: w,
-		statusCode:     http.StatusOK,
+	requests := al.rateLimiter[clientIP]
+	var validRequests []time.Time
+	for _, t := range requests {
+		if t.After(windowStart) {
+			validRequests = append(validRequests, t)
+		}
 	}
-	
-	al.handler.ServeHTTP(recorder, r)
-	
-	duration := time.Since(start)
-	
-	log.Printf(
-		"Method: %s | Path: %s | Status: %d | Duration: %v | RemoteAddr: %s",
-		r.Method,
-		r.URL.Path,
-		recorder.statusCode,
-		duration,
-		r.RemoteAddr,
-	)
+
+	if len(validRequests) >= al.maxRequests {
+		return false
+	}
+
+	validRequests = append(validRequests, now)
+	al.rateLimiter[clientIP] = validRequests
+	return true
 }
 
-type responseRecorder struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (rr *responseRecorder) WriteHeader(code int) {
-	rr.statusCode = code
-	rr.ResponseWriter.WriteHeader(code)
-}package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLogger struct {
-	handler http.Handler
-}
-
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	al.handler.ServeHTTP(w, r)
-	duration := time.Since(start)
-
-	log.Printf(
-		"Method: %s | Path: %s | Duration: %v | Timestamp: %s",
-		r.Method,
-		r.URL.Path,
-		duration,
-		time.Now().Format(time.RFC3339),
-	)
+func (al *ActivityLogger) CleanupOldEntries() {
+	ticker := time.NewTicker(time.Hour)
+	go func() {
+		for range ticker.C {
+			al.mu.Lock()
+			windowStart := time.Now().Add(-al.windowSize)
+			for ip, requests := range al.rateLimiter {
+				var validRequests []time.Time
+				for _, t := range requests {
+					if t.After(windowStart) {
+						validRequests = append(validRequests, t)
+					}
+				}
+				if len(validRequests) == 0 {
+					delete(al.rateLimiter, ip)
+				} else {
+					al.rateLimiter[ip] = validRequests
+				}
+			}
+			al.mu.Unlock()
+		}
+	}()
 }

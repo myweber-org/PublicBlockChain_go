@@ -422,4 +422,53 @@ func GenerateReport(records []DataRecord) {
 	}
 	fmt.Printf("Active records: %d\n", activeCount)
 	fmt.Printf("Inactive records: %d\n", len(records)-activeCount)
+}package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+)
+
+// FormatJSONString attempts to parse a JSON string and returns it in a pretty-printed format.
+// If the input is invalid JSON, it returns an error message.
+func FormatJSONString(input string) (string, error) {
+	var data interface{}
+	err := json.Unmarshal([]byte(input), &data)
+	if err != nil {
+		return "", fmt.Errorf("invalid JSON: %w", err)
+	}
+
+	prettyJSON, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+	return string(prettyJSON), nil
+}
+
+// ValidateJSON checks if the provided string is valid JSON.
+func ValidateJSON(input string) bool {
+	var js json.RawMessage
+	return json.Unmarshal([]byte(input), &js) == nil
+}
+
+func main() {
+	// Example usage
+	testString := `{"name":"test","value":42,"active":true}`
+	fmt.Printf("Valid JSON: %v\n", ValidateJSON(testString))
+
+	formatted, err := FormatJSONString(testString)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+	} else {
+		fmt.Printf("Formatted JSON:\n%s\n", formatted)
+	}
+
+	// Test with invalid JSON
+	invalidString := `{"name": test}`
+	fmt.Printf("\nValid JSON: %v\n", ValidateJSON(invalidString))
+	_, err = FormatJSONString(invalidString)
+	if err != nil {
+		fmt.Printf("Expected error: %v\n", strings.TrimSpace(err.Error()))
+	}
 }

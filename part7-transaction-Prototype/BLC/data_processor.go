@@ -484,4 +484,52 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("Parsed user: %+v\n", user)
+}package main
+
+import (
+	"regexp"
+	"strings"
+)
+
+type UserData struct {
+	Username string
+	Email    string
+	Input    string
+}
+
+var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+
+func SanitizeString(input string) string {
+	input = strings.TrimSpace(input)
+	re := regexp.MustCompile(`[<>"'&]`)
+	return re.ReplaceAllString(input, "")
+}
+
+func ValidateUserData(data UserData) (bool, []string) {
+	var errors []string
+
+	if len(data.Username) < 3 || len(data.Username) > 20 {
+		errors = append(errors, "Username must be between 3 and 20 characters")
+	}
+
+	if !emailRegex.MatchString(data.Email) {
+		errors = append(errors, "Invalid email format")
+	}
+
+	if len(data.Input) > 500 {
+		errors = append(errors, "Input exceeds maximum length of 500 characters")
+	}
+
+	data.Username = SanitizeString(data.Username)
+	data.Input = SanitizeString(data.Input)
+
+	return len(errors) == 0, errors
+}
+
+func ProcessUserInput(rawInput string) string {
+	sanitized := SanitizeString(rawInput)
+	if len(sanitized) == 0 {
+		return "No valid input provided"
+	}
+	return "Processed: " + sanitized
 }

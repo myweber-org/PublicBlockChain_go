@@ -146,4 +146,103 @@ func main() {
         log.Printf("Log entry %d: %s", i, time.Now().Format(time.RFC3339))
         time.Sleep(100 * time.Millisecond)
     }
+}package main
+
+import (
+	"log"
+	"os"
+	"path/filepath"
+	"strconv"
+)
+
+const maxLogSize = 1024 * 1024 // 1MB
+const backupCount = 5
+
+type RotatingLogger struct {
+	filePath string
+	currentSize int64
+}
+
+func NewRotatingLogger(path string) (*RotatingLogger, error) {
+	rl := &RotatingLogger{filePath: path}
+	
+	info, err := os.Stat(path)
+	if err == nil {
+		rl.currentSize = info.Size()
+	} else if os.IsNotExist(err) {
+		rl.currentSize = 0
+	} else {
+		return nil, err
+	}
+	
+	return rl, nil
+}
+
+func (rl *RotatingLogger) Write(p []byte) (int, error) {
+	if rl.currentSize+int64(len(p)) > maxLogSize {
+		err := rl.rotate()
+		if err != nil {
+			return 0, err
+		}
+	}
+	
+	file, err := os.OpenFile(rl.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+	
+	n, err := file.Write(p)
+	if err == nil {
+		rl.currentSize += int64(n)
+	}
+	
+	return n, err
+}
+
+func (rl *RotatingLogger) rotate() error {
+	// Close current file
+	rl.currentSize = 0
+	
+	// Rotate backup files
+	for i := backupCount - 1; i >= 0; i-- {
+		var source, dest string
+		
+		if i == 0 {
+			source = rl.filePath
+		} else {
+			source = rl.filePath + "." + strconv.Itoa(i)
+		}
+		
+		dest = rl.filePath + "." + strconv.Itoa(i+1)
+		
+		if _, err := os.Stat(source); err == nil {
+			err := os.Rename(source, dest)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	
+	// Create new log file
+	file, err := os.Create(rl.filePath)
+	if err != nil {
+		return err
+	}
+	file.Close()
+	
+	return nil
+}
+
+func main() {
+	logger, err := NewRotatingLogger("app.log")
+	if err != nil {
+		log.Fatal(err)
+	}
+	
+	log.SetOutput(logger)
+	
+	for i := 0; i < 1000; i++ {
+		log.Printf("Log entry number %d", i)
+	}
 }

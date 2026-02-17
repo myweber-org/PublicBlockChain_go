@@ -138,4 +138,106 @@ func main() {
 	fmt.Printf("Total size: %d bytes\n", totalSize)
 	fmt.Printf("Total lines: %d\n", totalLines)
 	fmt.Printf("Processing time: %v\n", duration)
+}package main
+
+import (
+	"bufio"
+	"errors"
+	"fmt"
+	"os"
+	"sync"
+)
+
+type FileProcessor struct {
+	mu       sync.RWMutex
+	filePath string
+	lines    []string
+}
+
+func NewFileProcessor(path string) *FileProcessor {
+	return &FileProcessor{
+		filePath: path,
+		lines:    make([]string, 0),
+	}
+}
+
+func (fp *FileProcessor) Load() error {
+	fp.mu.Lock()
+	defer fp.mu.Unlock()
+
+	file, err := os.Open(fp.filePath)
+	if err != nil {
+		return fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	fp.lines = make([]string, 0)
+
+	for scanner.Scan() {
+		fp.lines = append(fp.lines, scanner.Text())
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("error reading file: %w", err)
+	}
+
+	return nil
+}
+
+func (fp *FileProcessor) ProcessLines(workerCount int) ([]string, error) {
+	if len(fp.lines) == 0 {
+		return nil, errors.New("no data loaded")
+	}
+
+	var wg sync.WaitGroup
+	results := make([]string, len(fp.lines))
+	chunkSize := (len(fp.lines) + workerCount - 1) / workerCount
+
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		start := i * chunkSize
+		end := start + chunkSize
+		if end > len(fp.lines) {
+			end = len(fp.lines)
+		}
+
+		go func(workerID, s, e int) {
+			defer wg.Done()
+			for idx := s; idx < e; idx++ {
+				processed := fmt.Sprintf("Worker-%d: %s", workerID, fp.lines[idx])
+				results[idx] = processed
+			}
+		}(i, start, end)
+	}
+
+	wg.Wait()
+	return results, nil
+}
+
+func (fp *FileProcessor) GetLineCount() int {
+	fp.mu.RLock()
+	defer fp.mu.RUnlock()
+	return len(fp.lines)
+}
+
+func main() {
+	processor := NewFileProcessor("sample.txt")
+	
+	if err := processor.Load(); err != nil {
+		fmt.Printf("Error loading file: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Loaded %d lines\n", processor.GetLineCount())
+
+	results, err := processor.ProcessLines(4)
+	if err != nil {
+		fmt.Printf("Processing error: %v\n", err)
+		return
+	}
+
+	for _, line := range results {
+		fmt.Println(line)
+	}
 }

@@ -172,4 +172,72 @@ func main() {
 	}
 
 	fmt.Println("File processing completed successfully")
+}package main
+
+import (
+	"fmt"
+	"io/ioutil"
+	"os"
+)
+
+type FileProcessor struct {
+	FilePath string
+}
+
+func NewFileProcessor(path string) *FileProcessor {
+	return &FileProcessor{FilePath: path}
+}
+
+func (fp *FileProcessor) Read() (string, error) {
+	data, err := ioutil.ReadFile(fp.FilePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read file: %w", err)
+	}
+	return string(data), nil
+}
+
+func (fp *FileProcessor) Write(content string) error {
+	err := ioutil.WriteFile(fp.FilePath, []byte(content), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+	return nil
+}
+
+func (fp *FileProcessor) Append(content string) error {
+	file, err := os.OpenFile(fp.FilePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open file for append: %w", err)
+	}
+	defer file.Close()
+
+	_, err = file.WriteString(content)
+	if err != nil {
+		return fmt.Errorf("failed to append to file: %w", err)
+	}
+	return nil
+}
+
+func main() {
+	processor := NewFileProcessor("example.txt")
+	
+	err := processor.Write("Initial content\n")
+	if err != nil {
+		fmt.Printf("Write error: %v\n", err)
+		return
+	}
+	
+	err = processor.Append("Appended content\n")
+	if err != nil {
+		fmt.Printf("Append error: %v\n", err)
+		return
+	}
+	
+	content, err := processor.Read()
+	if err != nil {
+		fmt.Printf("Read error: %v\n", err)
+		return
+	}
+	
+	fmt.Printf("File content:\n%s", content)
 }

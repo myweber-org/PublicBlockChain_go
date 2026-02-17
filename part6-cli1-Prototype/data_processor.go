@@ -1,3 +1,4 @@
+
 package main
 
 import (
@@ -6,15 +7,17 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 )
 
-type Record struct {
-	ID    int
-	Name  string
-	Value float64
+type DataRecord struct {
+	ID        int
+	Name      string
+	Value     float64
+	Validated bool
 }
 
-func processCSV(filename string) ([]Record, error) {
+func parseCSVFile(filename string) ([]DataRecord, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
@@ -22,177 +25,112 @@ func processCSV(filename string) ([]Record, error) {
 	defer file.Close()
 
 	reader := csv.NewReader(file)
-	records := []Record{}
-	lineNum := 0
+	reader.TrimLeadingSpace = true
+
+	var records []DataRecord
+	lineNumber := 0
 
 	for {
-		lineNum++
+		lineNumber++
 		row, err := reader.Read()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("csv read error at line %d: %w", lineNum, err)
+			return nil, fmt.Errorf("csv read error at line %d: %w", lineNumber, err)
 		}
 
-		if len(row) != 3 {
-			return nil, fmt.Errorf("invalid column count at line %d: expected 3, got %d", lineNum, len(row))
+		if len(row) < 3 {
+			continue
 		}
 
-		id, err := strconv.Atoi(row[0])
-		if err != nil {
-			return nil, fmt.Errorf("invalid ID at line %d: %w", lineNum, err)
+		record, parseErr := parseRow(row, lineNumber)
+		if parseErr != nil {
+			fmt.Printf("Warning: Skipping line %d: %v\n", lineNumber, parseErr)
+			continue
 		}
 
-		name := row[1]
-		if name == "" {
-			return nil, fmt.Errorf("empty name at line %d", lineNum)
-		}
-
-		value, err := strconv.ParseFloat(row[2], 64)
-		if err != nil {
-			return nil, fmt.Errorf("invalid value at line %d: %w", lineNum, err)
-		}
-
-		records = append(records, Record{
-			ID:    id,
-			Name:  name,
-			Value: value,
-		})
+		records = append(records, record)
 	}
 
 	return records, nil
 }
 
-func calculateStats(records []Record) (float64, float64) {
+func parseRow(row []string, lineNum int) (DataRecord, error) {
+	var record DataRecord
+
+	id, err := strconv.Atoi(strings.TrimSpace(row[0]))
+	if err != nil {
+		return record, fmt.Errorf("invalid ID format: %s", row[0])
+	}
+	record.ID = id
+
+	name := strings.TrimSpace(row[1])
+	if name == "" {
+		return record, fmt.Errorf("empty name field")
+	}
+	record.Name = name
+
+	value, err := strconv.ParseFloat(strings.TrimSpace(row[2]), 64)
+	if err != nil {
+		return record, fmt.Errorf("invalid value format: %s", row[2])
+	}
+	record.Value = value
+
+	record.Validated = validateRecord(record)
+	return record, nil
+}
+
+func validateRecord(record DataRecord) bool {
+	if record.ID <= 0 {
+		return false
+	}
+	if record.Value < 0 {
+		return false
+	}
+	return true
+}
+
+func calculateStatistics(records []DataRecord) (float64, float64, int) {
 	if len(records) == 0 {
-		return 0, 0
+		return 0, 0, 0
 	}
 
 	var sum float64
-	var max float64 = records[0].Value
+	var validCount int
 
-	for _, r := range records {
-		sum += r.Value
-		if r.Value > max {
-			max = r.Value
+	for _, record := range records {
+		if record.Validated {
+			sum += record.Value
+			validCount++
 		}
 	}
 
-	average := sum / float64(len(records))
-	return average, max
+	if validCount == 0 {
+		return 0, 0, 0
+	}
+
+	average := sum / float64(validCount)
+	return sum, average, validCount
 }
 
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: data_processor <csv_file>")
-		os.Exit(1)
+		return
 	}
 
 	filename := os.Args[1]
-	records, err := processCSV(filename)
+	records, err := parseCSVFile(filename)
 	if err != nil {
 		fmt.Printf("Error processing file: %v\n", err)
-		os.Exit(1)
+		return
 	}
 
-	fmt.Printf("Successfully processed %d records\n", len(records))
-	
-	avg, max := calculateStats(records)
-	fmt.Printf("Average value: %.2f\n", avg)
-	fmt.Printf("Maximum value: %.2f\n", max)
-}
-package main
+	total, average, validCount := calculateStatistics(records)
 
-import (
-	"errors"
-	"fmt"
-	"strings"
-	"time"
-)
-
-type DataRecord struct {
-	ID        string
-	Value     float64
-	Timestamp time.Time
-	Tags      []string
-}
-
-func ValidateRecord(record DataRecord) error {
-	if record.ID == "" {
-		return errors.New("ID cannot be empty")
-	}
-	if record.Value < 0 {
-		return errors.New("value must be non-negative")
-	}
-	if record.Timestamp.IsZero() {
-		return errors.New("timestamp must be set")
-	}
-	return nil
-}
-
-func TransformRecord(record DataRecord) (DataRecord, error) {
-	if err := ValidateRecord(record); err != nil {
-		return DataRecord{}, err
-	}
-
-	transformed := record
-	transformed.Value = record.Value * 1.1
-	transformed.Tags = append(record.Tags, "processed")
-	transformed.Tags = normalizeTags(transformed.Tags)
-	return transformed, nil
-}
-
-func normalizeTags(tags []string) []string {
-	uniqueTags := make(map[string]bool)
-	var result []string
-
-	for _, tag := range tags {
-		normalized := strings.ToLower(strings.TrimSpace(tag))
-		if normalized != "" && !uniqueTags[normalized] {
-			uniqueTags[normalized] = true
-			result = append(result, normalized)
-		}
-	}
-	return result
-}
-
-func ProcessRecords(records []DataRecord) ([]DataRecord, error) {
-	var processed []DataRecord
-	var errors []string
-
-	for i, record := range records {
-		transformed, err := TransformRecord(record)
-		if err != nil {
-			errors = append(errors, fmt.Sprintf("record %d: %v", i, err))
-			continue
-		}
-		processed = append(processed, transformed)
-	}
-
-	if len(errors) > 0 {
-		return processed, fmt.Errorf("processing errors: %s", strings.Join(errors, "; "))
-	}
-	return processed, nil
-}
-
-func CalculateStatistics(records []DataRecord) (float64, float64, error) {
-	if len(records) == 0 {
-		return 0, 0, errors.New("no records provided")
-	}
-
-	var sum float64
-	for _, record := range records {
-		sum += record.Value
-	}
-	mean := sum / float64(len(records))
-
-	var varianceSum float64
-	for _, record := range records {
-		diff := record.Value - mean
-		varianceSum += diff * diff
-	}
-	variance := varianceSum / float64(len(records))
-
-	return mean, variance, nil
+	fmt.Printf("Processed %d total records\n", len(records))
+	fmt.Printf("Valid records: %d\n", validCount)
+	fmt.Printf("Total value: %.2f\n", total)
+	fmt.Printf("Average value: %.2f\n", average)
 }

@@ -1,10 +1,14 @@
 package middleware
 
 import (
-	"fmt"
+	"context"
 	"net/http"
 	"strings"
 )
+
+type contextKey string
+
+const userIDKey contextKey = "userID"
 
 func Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -21,19 +25,26 @@ func Authenticate(next http.Handler) http.Handler {
 		}
 
 		token := parts[1]
-		if !validateToken(token) {
-			http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
+		userID, err := validateToken(token)
+		if err != nil {
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
 		}
 
-		next.ServeHTTP(w, r)
+		ctx := context.WithValue(r.Context(), userIDKey, userID)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-func validateToken(token string) bool {
-	if token == "" {
-		return false
-	}
+func GetUserID(ctx context.Context) (string, bool) {
+	userID, ok := ctx.Value(userIDKey).(string)
+	return userID, ok
+}
 
-	return len(token) > 10
+func validateToken(token string) (string, error) {
+	// Simplified token validation - in production use proper JWT library
+	if token == "" || len(token) < 10 {
+		return "", http.ErrAbortHandler
+	}
+	return "user_" + token[:8], nil
 }

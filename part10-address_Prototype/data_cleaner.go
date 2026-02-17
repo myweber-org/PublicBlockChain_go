@@ -1,3 +1,4 @@
+
 package main
 
 import (
@@ -11,41 +12,54 @@ type DataRecord struct {
 	Valid bool
 }
 
-func RemoveDuplicates(records []DataRecord) []DataRecord {
+func DeduplicateEmails(emails []string) []string {
 	seen := make(map[string]bool)
-	var unique []DataRecord
-	for _, record := range records {
-		if !seen[record.Email] {
-			seen[record.Email] = true
-			unique = append(unique, record)
+	result := []string{}
+	for _, email := range emails {
+		normalized := strings.ToLower(strings.TrimSpace(email))
+		if !seen[normalized] {
+			seen[normalized] = true
+			result = append(result, normalized)
 		}
 	}
-	return unique
+	return result
 }
 
-func ValidateEmails(records []DataRecord) []DataRecord {
-	for i := range records {
-		records[i].Valid = strings.Contains(records[i].Email, "@") && strings.Contains(records[i].Email, ".")
+func ValidateEmail(email string) bool {
+	if len(email) < 3 || !strings.Contains(email, "@") {
+		return false
 	}
-	return records
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 || len(parts[0]) == 0 || len(parts[1]) == 0 {
+		return false
+	}
+	return strings.Contains(parts[1], ".")
 }
 
 func CleanData(records []DataRecord) []DataRecord {
-	unique := RemoveDuplicates(records)
-	validated := ValidateEmails(unique)
-	return validated
+	emailSet := make(map[string]bool)
+	cleaned := []DataRecord{}
+	for _, record := range records {
+		record.Email = strings.ToLower(strings.TrimSpace(record.Email))
+		if ValidateEmail(record.Email) && !emailSet[record.Email] {
+			record.Valid = true
+			emailSet[record.Email] = true
+			cleaned = append(cleaned, record)
+		}
+	}
+	return cleaned
 }
 
 func main() {
-	sampleData := []DataRecord{
-		{1, "test@example.com", false},
-		{2, "invalid-email", false},
-		{3, "test@example.com", false},
-		{4, "user@domain.org", false},
-	}
+	emails := []string{"test@example.com", "TEST@example.com", "invalid", "another@test.org"}
+	unique := DeduplicateEmails(emails)
+	fmt.Println("Deduplicated emails:", unique)
 
-	cleaned := CleanData(sampleData)
-	for _, record := range cleaned {
-		fmt.Printf("ID: %d, Email: %s, Valid: %t\n", record.ID, record.Email, record.Valid)
+	records := []DataRecord{
+		{1, "user@domain.com", false},
+		{2, "USER@domain.com", false},
+		{3, "bad-email", false},
 	}
+	cleaned := CleanData(records)
+	fmt.Printf("Cleaned records: %+v\n", cleaned)
 }

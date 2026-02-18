@@ -472,3 +472,104 @@ func main() {
 		fmt.Printf("Expected error: %v\n", strings.TrimSpace(err.Error()))
 	}
 }
+package main
+
+import (
+    "encoding/csv"
+    "fmt"
+    "io"
+    "os"
+    "strings"
+)
+
+type DataProcessor struct {
+    InputPath  string
+    OutputPath string
+}
+
+func NewDataProcessor(input, output string) *DataProcessor {
+    return &DataProcessor{
+        InputPath:  input,
+        OutputPath: output,
+    }
+}
+
+func (dp *DataProcessor) ValidateAndClean() error {
+    inputFile, err := os.Open(dp.InputPath)
+    if err != nil {
+        return fmt.Errorf("failed to open input file: %w", err)
+    }
+    defer inputFile.Close()
+
+    outputFile, err := os.Create(dp.OutputPath)
+    if err != nil {
+        return fmt.Errorf("failed to create output file: %w", err)
+    }
+    defer outputFile.Close()
+
+    reader := csv.NewReader(inputFile)
+    writer := csv.NewWriter(outputFile)
+    defer writer.Flush()
+
+    header, err := reader.Read()
+    if err != nil {
+        return fmt.Errorf("failed to read header: %w", err)
+    }
+
+    if err := writer.Write(header); err != nil {
+        return fmt.Errorf("failed to write header: %w", err)
+    }
+
+    recordCount := 0
+    for {
+        record, err := reader.Read()
+        if err == io.EOF {
+            break
+        }
+        if err != nil {
+            continue
+        }
+
+        if dp.isValidRecord(record) {
+            cleanedRecord := dp.cleanRecord(record)
+            if err := writer.Write(cleanedRecord); err != nil {
+                return fmt.Errorf("failed to write record: %w", err)
+            }
+            recordCount++
+        }
+    }
+
+    fmt.Printf("Processed %d valid records\n", recordCount)
+    return nil
+}
+
+func (dp *DataProcessor) isValidRecord(record []string) bool {
+    if len(record) == 0 {
+        return false
+    }
+
+    for _, field := range record {
+        if strings.TrimSpace(field) == "" {
+            return false
+        }
+    }
+
+    return true
+}
+
+func (dp *DataProcessor) cleanRecord(record []string) []string {
+    cleaned := make([]string, len(record))
+    for i, field := range record {
+        cleaned[i] = strings.TrimSpace(field)
+        cleaned[i] = strings.ToLower(cleaned[i])
+    }
+    return cleaned
+}
+
+func main() {
+    processor := NewDataProcessor("input.csv", "output.csv")
+    if err := processor.ValidateAndClean(); err != nil {
+        fmt.Printf("Error: %v\n", err)
+        os.Exit(1)
+    }
+}

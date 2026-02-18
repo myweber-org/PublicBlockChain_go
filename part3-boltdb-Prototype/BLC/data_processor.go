@@ -371,4 +371,56 @@ func GenerateReport(records []DataRecord) {
 	active := FilterActiveRecords(records)
 	fmt.Printf("Active records: %d\n", len(active))
 	fmt.Printf("Inactive records: %d\n", len(records)-len(active))
+}package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+type UserData struct {
+	ID    int
+	Name  string
+	Email string
+}
+
+func ValidateUser(data UserData) error {
+	if data.ID <= 0 {
+		return fmt.Errorf("invalid user ID: %d", data.ID)
+	}
+	if strings.TrimSpace(data.Name) == "" {
+		return fmt.Errorf("user name cannot be empty")
+	}
+	if !strings.Contains(data.Email, "@") {
+		return fmt.Errorf("invalid email format: %s", data.Email)
+	}
+	return nil
+}
+
+func TransformUserName(data *UserData) {
+	data.Name = strings.ToUpper(strings.TrimSpace(data.Name))
+}
+
+func ProcessUserInput(data UserData) (UserData, error) {
+	if err := ValidateUser(data); err != nil {
+		return UserData{}, err
+	}
+	TransformUserName(&data)
+	return data, nil
+}
+
+func main() {
+	user := UserData{
+		ID:    101,
+		Name:  "  john doe  ",
+		Email: "john@example.com",
+	}
+	
+	processed, err := ProcessUserInput(user)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	
+	fmt.Printf("Processed user: %+v\n", processed)
 }

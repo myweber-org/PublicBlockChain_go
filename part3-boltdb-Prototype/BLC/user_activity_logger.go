@@ -74,4 +74,32 @@ func main() {
     
     fmt.Println("Server starting on :8080")
     http.ListenAndServe(":8080", wrappedMux)
+}package middleware
+
+import (
+	"log"
+	"net/http"
+	"time"
+)
+
+type ActivityLogger struct {
+	handler http.Handler
+}
+
+func NewActivityLogger(handler http.Handler) *ActivityLogger {
+	return &ActivityLogger{handler: handler}
+}
+
+func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	al.handler.ServeHTTP(w, r)
+	duration := time.Since(start)
+
+	log.Printf(
+		"Method: %s | Path: %s | Duration: %v | RemoteAddr: %s",
+		r.Method,
+		r.URL.Path,
+		duration,
+		r.RemoteAddr,
+	)
 }

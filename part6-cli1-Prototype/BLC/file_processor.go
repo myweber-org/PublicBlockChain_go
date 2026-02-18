@@ -116,4 +116,93 @@ func main() {
 			fmt.Printf("  - %v\n", err)
 		}
 	}
+}package main
+
+import (
+	"errors"
+	"fmt"
+	"log"
+	"sync"
+	"time"
+)
+
+type DataChunk struct {
+	ID    int
+	Value string
+}
+
+type Processor struct {
+	mu      sync.Mutex
+	results map[int]string
+	wg      sync.WaitGroup
+}
+
+func NewProcessor() *Processor {
+	return &Processor{
+		results: make(map[int]string),
+	}
+}
+
+func (p *Processor) Process(chunk DataChunk) error {
+	if chunk.Value == "" {
+		return errors.New("empty value provided")
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	p.mu.Lock()
+	p.results[chunk.ID] = fmt.Sprintf("processed-%s", chunk.Value)
+	p.mu.Unlock()
+
+	return nil
+}
+
+func (p *Processor) Worker(id int, jobs <-chan DataChunk, errors chan<- error) {
+	defer p.wg.Done()
+	for job := range jobs {
+		log.Printf("Worker %d processing job ID %d", id, job.ID)
+		if err := p.Process(job); err != nil {
+			errors <- fmt.Errorf("worker %d: %v", id, err)
+		}
+	}
+}
+
+func main() {
+	processor := NewProcessor()
+	jobs := make(chan DataChunk, 10)
+	errChan := make(chan error, 5)
+
+	numWorkers := 3
+	for w := 1; w <= numWorkers; w++ {
+		processor.wg.Add(1)
+		go processor.Worker(w, jobs, errChan)
+	}
+
+	data := []DataChunk{
+		{1, "alpha"},
+		{2, "beta"},
+		{3, "gamma"},
+		{4, "delta"},
+		{5, ""},
+		{6, "epsilon"},
+	}
+
+	go func() {
+		for _, chunk := range data {
+			jobs <- chunk
+		}
+		close(jobs)
+	}()
+
+	go func() {
+		processor.wg.Wait()
+		close(errChan)
+	}()
+
+	for err := range errChan {
+		log.Printf("Processing error: %v", err)
+	}
+
+	log.Println("Processing completed")
+	fmt.Printf("Results: %v\n", processor.results)
 }

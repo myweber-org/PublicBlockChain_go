@@ -6,61 +6,49 @@ import (
 	"strings"
 )
 
-type DataRecord struct {
-	ID    int
-	Name  string
-	Email string
-	Valid bool
+type DataCleaner struct {
+	seen map[string]bool
 }
 
-func deduplicateRecords(records []DataRecord) []DataRecord {
-	seen := make(map[string]bool)
-	var unique []DataRecord
+func NewDataCleaner() *DataCleaner {
+	return &DataCleaner{
+		seen: make(map[string]bool),
+	}
+}
 
-	for _, record := range records {
-		key := fmt.Sprintf("%s|%s", record.Name, record.Email)
-		if !seen[key] {
-			seen[key] = true
-			unique = append(unique, record)
+func (dc *DataCleaner) Normalize(input string) string {
+	return strings.ToLower(strings.TrimSpace(input))
+}
+
+func (dc *DataCleaner) IsDuplicate(value string) bool {
+	normalized := dc.Normalize(value)
+	if dc.seen[normalized] {
+		return true
+	}
+	dc.seen[normalized] = true
+	return false
+}
+
+func (dc *DataCleaner) Deduplicate(values []string) []string {
+	dc.seen = make(map[string]bool)
+	var result []string
+	for _, v := range values {
+		if !dc.IsDuplicate(v) {
+			result = append(result, v)
 		}
 	}
-	return unique
-}
-
-func validateEmail(email string) bool {
-	return strings.Contains(email, "@") && strings.Contains(email, ".")
-}
-
-func validateRecords(records []DataRecord) []DataRecord {
-	var validated []DataRecord
-	for _, record := range records {
-		record.Valid = validateEmail(record.Email)
-		validated = append(validated, record)
-	}
-	return validated
-}
-
-func processData(records []DataRecord) []DataRecord {
-	deduped := deduplicateRecords(records)
-	validated := validateRecords(deduped)
-	return validated
+	return result
 }
 
 func main() {
-	sampleData := []DataRecord{
-		{1, "John Doe", "john@example.com", false},
-		{2, "Jane Smith", "jane@example.com", false},
-		{3, "John Doe", "john@example.com", false},
-		{4, "Bob Wilson", "bob.wilson", false},
-	}
-
-	processed := processData(sampleData)
-
-	for _, record := range processed {
-		status := "INVALID"
-		if record.Valid {
-			status = "VALID"
-		}
-		fmt.Printf("ID: %d, Name: %s, Status: %s\n", record.ID, record.Name, status)
-	}
+	cleaner := NewDataCleaner()
+	
+	data := []string{"Apple", "apple ", " BANANA", "banana", "Cherry"}
+	fmt.Println("Original:", data)
+	
+	deduped := cleaner.Deduplicate(data)
+	fmt.Println("Deduplicated:", deduped)
+	
+	testValue := "  APPLE  "
+	fmt.Printf("Is '%s' duplicate? %v\n", testValue, cleaner.IsDuplicate(testValue))
 }

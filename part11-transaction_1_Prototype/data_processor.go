@@ -156,4 +156,56 @@ func main() {
 	} else {
 		fmt.Printf("Parsed data: %+v\n", parsedData)
 	}
+}package main
+
+import (
+	"encoding/json"
+	"fmt"
+)
+
+type DataValidator struct {
+	MaxSize int
+}
+
+func NewDataValidator(maxSize int) *DataValidator {
+	return &DataValidator{MaxSize: maxSize}
+}
+
+func (dv *DataValidator) ValidateJSON(input []byte) (map[string]interface{}, error) {
+	if len(input) > dv.MaxSize {
+		return nil, fmt.Errorf("input size %d exceeds maximum allowed size %d", len(input), dv.MaxSize)
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal(input, &data); err != nil {
+		return nil, fmt.Errorf("failed to parse JSON: %w", err)
+	}
+
+	if len(data) == 0 {
+		return nil, fmt.Errorf("empty JSON object")
+	}
+
+	return data, nil
+}
+
+func ProcessJSONData(jsonStr string) error {
+	validator := NewDataValidator(1024 * 1024)
+	data, err := validator.ValidateJSON([]byte(jsonStr))
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Successfully validated JSON with %d fields\n", len(data))
+	for key, value := range data {
+		fmt.Printf("Key: %s, Type: %T\n", key, value)
+	}
+
+	return nil
+}
+
+func main() {
+	sampleJSON := `{"name": "test", "value": 42, "active": true}`
+	if err := ProcessJSONData(sampleJSON); err != nil {
+		fmt.Printf("Error: %v\n", err)
+	}
 }

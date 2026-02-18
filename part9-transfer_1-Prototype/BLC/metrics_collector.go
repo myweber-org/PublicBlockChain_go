@@ -130,4 +130,60 @@ func main() {
 		displayMetrics(metrics)
 		<-ticker.C
 	}
+}package main
+
+import (
+    "fmt"
+    "runtime"
+    "time"
+)
+
+type SystemMetrics struct {
+    Timestamp   time.Time
+    CPUPercent  float64
+    MemoryUsage uint64
+    Goroutines  int
+}
+
+func collectMetrics() SystemMetrics {
+    var m runtime.MemStats
+    runtime.ReadMemStats(&m)
+
+    metrics := SystemMetrics{
+        Timestamp:   time.Now(),
+        MemoryUsage: m.Alloc,
+        Goroutines:  runtime.NumGoroutine(),
+    }
+
+    // Simulate CPU usage calculation
+    metrics.CPUPercent = calculateCPUUsage()
+
+    return metrics
+}
+
+func calculateCPUUsage() float64 {
+    // Placeholder for actual CPU calculation logic
+    // In production, use gopsutil or similar library
+    return 15.7 // Simulated value
+}
+
+func printMetrics(metrics SystemMetrics) {
+    fmt.Printf("Timestamp: %s\n", metrics.Timestamp.Format(time.RFC3339))
+    fmt.Printf("CPU Usage: %.2f%%\n", metrics.CPUPercent)
+    fmt.Printf("Memory Usage: %d bytes\n", metrics.MemoryUsage)
+    fmt.Printf("Active Goroutines: %d\n", metrics.Goroutines)
+    fmt.Println("---")
+}
+
+func main() {
+    ticker := time.NewTicker(5 * time.Second)
+    defer ticker.Stop()
+
+    for {
+        select {
+        case <-ticker.C:
+            metrics := collectMetrics()
+            printMetrics(metrics)
+        }
+    }
 }

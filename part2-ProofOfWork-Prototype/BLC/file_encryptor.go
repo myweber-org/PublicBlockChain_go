@@ -1,97 +1,34 @@
+
 package main
 
 import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 )
 
-func encryptData(plaintext []byte, key []byte) ([]byte, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-
-	ciphertext := make([]byte, aes.BlockSize+len(plaintext))
-	iv := ciphertext[:aes.BlockSize]
-	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
-		return nil, err
-	}
-
-	stream := cipher.NewCFBEncrypter(block, iv)
-	stream.XORKeyStream(ciphertext[aes.BlockSize:], plaintext)
-
-	return ciphertext, nil
+type Encryptor struct {
+	key []byte
 }
 
-func decryptData(ciphertext []byte, key []byte) ([]byte, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
+func NewEncryptor(key string) (*Encryptor, error) {
+	if len(key) != 32 {
+		return nil, errors.New("encryption key must be 32 bytes")
 	}
-
-	if len(ciphertext) < aes.BlockSize {
-		return nil, errors.New("ciphertext too short")
-	}
-
-	iv := ciphertext[:aes.BlockSize]
-	ciphertext = ciphertext[aes.BlockSize:]
-
-	stream := cipher.NewCFBDecrypter(block, iv)
-	stream.XORKeyStream(ciphertext, ciphertext)
-
-	return ciphertext, nil
+	return &Encryptor{key: []byte(key)}, nil
 }
 
-func main() {
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		fmt.Fprintf(os.Stderr, "Error generating key: %v\n", err)
-		os.Exit(1)
-	}
-
-	originalText := "Sensitive data requiring protection"
-	fmt.Printf("Original: %s\n", originalText)
-
-	encrypted, err := encryptData([]byte(originalText), key)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Encryption error: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Encrypted (base64): %s\n", base64.StdEncoding.EncodeToString(encrypted))
-
-	decrypted, err := decryptData(encrypted, key)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Decryption error: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Decrypted: %s\n", string(decrypted))
-}package main
-
-import (
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
-	"errors"
-	"fmt"
-	"io"
-	"os"
-)
-
-func encryptFile(inputPath, outputPath string, key []byte) error {
+func (e *Encryptor) EncryptFile(inputPath, outputPath string) error {
 	plaintext, err := os.ReadFile(inputPath)
 	if err != nil {
 		return fmt.Errorf("read input file: %w", err)
 	}
 
-	block, err := aes.NewCipher(key)
+	block, err := aes.NewCipher(e.key)
 	if err != nil {
 		return fmt.Errorf("create cipher: %w", err)
 	}
@@ -115,13 +52,13 @@ func encryptFile(inputPath, outputPath string, key []byte) error {
 	return nil
 }
 
-func decryptFile(inputPath, outputPath string, key []byte) error {
+func (e *Encryptor) DecryptFile(inputPath, outputPath string) error {
 	ciphertext, err := os.ReadFile(inputPath)
 	if err != nil {
 		return fmt.Errorf("read input file: %w", err)
 	}
 
-	block, err := aes.NewCipher(key)
+	block, err := aes.NewCipher(e.key)
 	if err != nil {
 		return fmt.Errorf("create cipher: %w", err)
 	}
@@ -150,32 +87,36 @@ func decryptFile(inputPath, outputPath string, key []byte) error {
 }
 
 func main() {
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		fmt.Printf("Failed to generate key: %v\n", err)
-		return
+	if len(os.Args) != 5 {
+		fmt.Println("Usage: file_encryptor <encrypt|decrypt> <key> <input> <output>")
+		os.Exit(1)
 	}
 
-	inputFile := "test.txt"
-	encryptedFile := "test.enc"
-	decryptedFile := "test_decrypted.txt"
+	operation := os.Args[1]
+	key := os.Args[2]
+	inputPath := os.Args[3]
+	outputPath := os.Args[4]
 
-	if err := os.WriteFile(inputFile, []byte("Sensitive data to protect"), 0644); err != nil {
-		fmt.Printf("Failed to create test file: %v\n", err)
-		return
+	encryptor, err := NewEncryptor(key)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
 	}
 
-	fmt.Println("Encrypting file...")
-	if err := encryptFile(inputFile, encryptedFile, key); err != nil {
-		fmt.Printf("Encryption failed: %v\n", err)
-		return
+	switch operation {
+	case "encrypt":
+		err = encryptor.EncryptFile(inputPath, outputPath)
+	case "decrypt":
+		err = encryptor.DecryptFile(inputPath, outputPath)
+	default:
+		fmt.Println("Invalid operation. Use 'encrypt' or 'decrypt'")
+		os.Exit(1)
 	}
 
-	fmt.Println("Decrypting file...")
-	if err := decryptFile(encryptedFile, decryptedFile, key); err != nil {
-		fmt.Printf("Decryption failed: %v\n", err)
-		return
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
 	}
 
-	fmt.Println("Operation completed successfully")
+	fmt.Printf("Operation completed successfully: %s -> %s\n", inputPath, outputPath)
 }

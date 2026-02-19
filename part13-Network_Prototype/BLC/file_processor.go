@@ -157,4 +157,120 @@ func main() {
 			fmt.Printf("  - %s\n", err)
 		}
 	}
+}package main
+
+import (
+	"bufio"
+	"errors"
+	"fmt"
+	"os"
+	"sync"
+	"time"
+)
+
+type DataRecord struct {
+	ID        int
+	Content   string
+	Timestamp time.Time
+}
+
+type FileProcessor struct {
+	records []DataRecord
+	mu      sync.RWMutex
+}
+
+func NewFileProcessor() *FileProcessor {
+	return &FileProcessor{
+		records: make([]DataRecord, 0),
+	}
+}
+
+func (fp *FileProcessor) AddRecord(content string) {
+	fp.mu.Lock()
+	defer fp.mu.Unlock()
+
+	record := DataRecord{
+		ID:        len(fp.records) + 1,
+		Content:   content,
+		Timestamp: time.Now(),
+	}
+	fp.records = append(fp.records, record)
+}
+
+func (fp *FileProcessor) ProcessRecords() error {
+	if len(fp.records) == 0 {
+		return errors.New("no records to process")
+	}
+
+	var wg sync.WaitGroup
+	results := make(chan string, len(fp.records))
+
+	for _, record := range fp.records {
+		wg.Add(1)
+		go func(r DataRecord) {
+			defer wg.Done()
+			processed := fmt.Sprintf("Processed ID %d: %s at %v", r.ID, r.Content, r.Timestamp.Format(time.RFC3339))
+			results <- processed
+		}(record)
+	}
+
+	wg.Wait()
+	close(results)
+
+	fp.mu.RLock()
+	fmt.Printf("Total records processed: %d\n", len(fp.records))
+	fp.mu.RUnlock()
+
+	for result := range results {
+		fmt.Println(result)
+	}
+
+	return nil
+}
+
+func (fp *FileProcessor) SaveToFile(filename string) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return fmt.Errorf("failed to create file: %w", err)
+	}
+	defer file.Close()
+
+	writer := bufio.NewWriter(file)
+	fp.mu.RLock()
+	for _, record := range fp.records {
+		line := fmt.Sprintf("%d|%s|%s\n", record.ID, record.Content, record.Timestamp.Format(time.RFC3339))
+		_, err := writer.WriteString(line)
+		if err != nil {
+			fp.mu.RUnlock()
+			return fmt.Errorf("failed to write record: %w", err)
+		}
+	}
+	fp.mu.RUnlock()
+
+	err = writer.Flush()
+	if err != nil {
+		return fmt.Errorf("failed to flush writer: %w", err)
+	}
+
+	return nil
+}
+
+func main() {
+	processor := NewFileProcessor()
+
+	processor.AddRecord("First data entry")
+	processor.AddRecord("Second data entry")
+	processor.AddRecord("Third data entry")
+
+	err := processor.ProcessRecords()
+	if err != nil {
+		fmt.Printf("Processing error: %v\n", err)
+	}
+
+	err = processor.SaveToFile("output.txt")
+	if err != nil {
+		fmt.Printf("Save error: %v\n", err)
+	} else {
+		fmt.Println("Data successfully saved to output.txt")
+	}
 }

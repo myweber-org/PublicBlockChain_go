@@ -639,3 +639,23 @@ func main() {
 
 	fmt.Println("Data processing completed successfully")
 }
+package main
+
+import "fmt"
+
+func FilterAndDouble(numbers []int) []int {
+    var result []int
+    for _, num := range numbers {
+        if num > 10 {
+            result = append(result, num*2)
+        }
+    }
+    return result
+}
+
+func main() {
+    input := []int{5, 12, 8, 20, 3, 15}
+    output := FilterAndDouble(input)
+    fmt.Printf("Input: %v\n", input)
+    fmt.Printf("Output: %v\n", output)
+}

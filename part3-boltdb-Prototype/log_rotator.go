@@ -156,4 +156,116 @@ func main() {
 	}
 
 	fmt.Println("Log rotation demo completed")
+}package main
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+)
+
+type LogRotator struct {
+	mu         sync.Mutex
+	filePath   string
+	maxSize    int64
+	currentSize int64
+	file       *os.File
+}
+
+func NewLogRotator(filePath string, maxSize int64) (*LogRotator, error) {
+	lr := &LogRotator{
+		filePath: filePath,
+		maxSize:  maxSize,
+	}
+
+	if err := lr.openFile(); err != nil {
+		return nil, err
+	}
+
+	return lr, nil
+}
+
+func (lr *LogRotator) openFile() error {
+	info, err := os.Stat(lr.filePath)
+	if err == nil {
+		lr.currentSize = info.Size()
+	} else if os.IsNotExist(err) {
+		lr.currentSize = 0
+	} else {
+		return err
+	}
+
+	file, err := os.OpenFile(lr.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	lr.file = file
+	return nil
+}
+
+func (lr *LogRotator) rotate() error {
+	if lr.file != nil {
+		lr.file.Close()
+	}
+
+	dir := filepath.Dir(lr.filePath)
+	base := filepath.Base(lr.filePath)
+	backupPath := filepath.Join(dir, fmt.Sprintf("%s.1", base))
+
+	if err := os.Rename(lr.filePath, backupPath); err != nil {
+		return err
+	}
+
+	if err := lr.openFile(); err != nil {
+		return err
+	}
+
+	lr.currentSize = 0
+	return nil
+}
+
+func (lr *LogRotator) Write(p []byte) (int, error) {
+	lr.mu.Lock()
+	defer lr.mu.Unlock()
+
+	if lr.currentSize+int64(len(p)) > lr.maxSize {
+		if err := lr.rotate(); err != nil {
+			return 0, err
+		}
+	}
+
+	n, err := lr.file.Write(p)
+	if err == nil {
+		lr.currentSize += int64(n)
+	}
+	return n, err
+}
+
+func (lr *LogRotator) Close() error {
+	lr.mu.Lock()
+	defer lr.mu.Unlock()
+
+	if lr.file != nil {
+		return lr.file.Close()
+	}
+	return nil
+}
+
+func main() {
+	rotator, err := NewLogRotator("app.log", 1024*1024) // 1MB max size
+	if err != nil {
+		fmt.Printf("Failed to create log rotator: %v\n", err)
+		return
+	}
+	defer rotator.Close()
+
+	for i := 0; i < 100; i++ {
+		message := fmt.Sprintf("Log entry %d: This is a sample log message.\n", i)
+		if _, err := rotator.Write([]byte(message)); err != nil {
+			fmt.Printf("Write error: %v\n", err)
+		}
+	}
+
+	fmt.Println("Log rotation test completed")
 }

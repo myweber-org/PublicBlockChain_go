@@ -173,3 +173,51 @@ func main() {
 	filtered := FilterRecords(records, 10.0, 100.0)
 	fmt.Printf("Records between 10.0 and 100.0: %d\n", len(filtered))
 }
+package main
+
+import (
+	"errors"
+	"strings"
+	"time"
+)
+
+type DataRecord struct {
+	ID        string
+	Value     float64
+	Timestamp time.Time
+	Category  string
+}
+
+func ValidateRecord(record DataRecord) error {
+	if record.ID == "" {
+		return errors.New("ID cannot be empty")
+	}
+	if record.Value < 0 {
+		return errors.New("value must be non-negative")
+	}
+	if record.Timestamp.After(time.Now()) {
+		return errors.New("timestamp cannot be in the future")
+	}
+	return nil
+}
+
+func TransformRecord(record DataRecord) DataRecord {
+	record.Category = strings.ToUpper(strings.TrimSpace(record.Category))
+	record.Value = roundToTwoDecimals(record.Value)
+	return record
+}
+
+func roundToTwoDecimals(value float64) float64 {
+	return float64(int(value*100+0.5)) / 100
+}
+
+func ProcessRecords(records []DataRecord) ([]DataRecord, error) {
+	var processed []DataRecord
+	for _, record := range records {
+		if err := ValidateRecord(record); err != nil {
+			return nil, err
+		}
+		processed = append(processed, TransformRecord(record))
+	}
+	return processed, nil
+}

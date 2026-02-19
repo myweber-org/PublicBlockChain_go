@@ -135,4 +135,85 @@ func main() {
 	for err := range processor.ErrorChan {
 		fmt.Printf("Error: %v\n", err)
 	}
+}package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"sync"
+	"time"
+)
+
+type FileProcessor struct {
+	workers int
+	results chan string
+	wg      sync.WaitGroup
+}
+
+func NewFileProcessor(workers int) *FileProcessor {
+	return &FileProcessor{
+		workers: workers,
+		results: make(chan string, 100),
+	}
+}
+
+func (fp *FileProcessor) ProcessFile(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	lines := make(chan string, fp.workers)
+
+	for i := 0; i < fp.workers; i++ {
+		fp.wg.Add(1)
+		go fp.worker(lines)
+	}
+
+	go func() {
+		for scanner.Scan() {
+			lines <- scanner.Text()
+		}
+		close(lines)
+	}()
+
+	go func() {
+		fp.wg.Wait()
+		close(fp.results)
+	}()
+
+	return scanner.Err()
+}
+
+func (fp *FileProcessor) worker(lines <-chan string) {
+	defer fp.wg.Done()
+	for line := range lines {
+		processed := fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), line)
+		fp.results <- processed
+	}
+}
+
+func (fp *FileProcessor) GetResults() <-chan string {
+	return fp.results
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: file_processor <filename>")
+		os.Exit(1)
+	}
+
+	processor := NewFileProcessor(4)
+	
+	if err := processor.ProcessFile(os.Args[1]); err != nil {
+		fmt.Printf("Error processing file: %v\n", err)
+		os.Exit(1)
+	}
+
+	for result := range processor.GetResults() {
+		fmt.Println(result)
+	}
 }

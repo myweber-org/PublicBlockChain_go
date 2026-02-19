@@ -228,3 +228,121 @@ func (w *RotatingWriter) Close() error {
     }
     return nil
 }
+package main
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+)
+
+type RotatingLogger struct {
+	mu           sync.Mutex
+	currentSize  int64
+	maxFileSize  int64
+	basePath     string
+	currentFile  *os.File
+	fileCounter  int
+}
+
+func NewRotatingLogger(basePath string, maxSize int64) (*RotatingLogger, error) {
+	rl := &RotatingLogger{
+		basePath:    basePath,
+		maxFileSize: maxSize,
+		fileCounter: 0,
+	}
+
+	if err := rl.openOrCreateLog(); err != nil {
+		return nil, err
+	}
+
+	return rl, nil
+}
+
+func (rl *RotatingLogger) openOrCreateLog() error {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	if rl.currentFile != nil {
+		rl.currentFile.Close()
+	}
+
+	filename := fmt.Sprintf("%s_%d.log", rl.basePath, rl.fileCounter)
+	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return err
+	}
+
+	rl.currentFile = file
+	rl.currentSize = info.Size()
+	return nil
+}
+
+func (rl *RotatingLogger) rotateIfNeeded() error {
+	if rl.currentSize < rl.maxFileSize {
+		return nil
+	}
+
+	rl.fileCounter++
+	return rl.openOrCreateLog()
+}
+
+func (rl *RotatingLogger) Write(p []byte) (n int, err error) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	if err := rl.rotateIfNeeded(); err != nil {
+		return 0, err
+	}
+
+	n, err = rl.currentFile.Write(p)
+	if err == nil {
+		rl.currentSize += int64(n)
+	}
+	return n, err
+}
+
+func (rl *RotatingLogger) WriteString(s string) (n int, err error) {
+	return rl.Write([]byte(s))
+}
+
+func (rl *RotatingLogger) Log(message string) {
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	logEntry := fmt.Sprintf("[%s] %s\n", timestamp, message)
+	rl.WriteString(logEntry)
+}
+
+func (rl *RotatingLogger) Close() error {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	if rl.currentFile != nil {
+		return rl.currentFile.Close()
+	}
+	return nil
+}
+
+func main() {
+	logger, err := NewRotatingLogger("app_log", 1024*1024) // 1MB max size
+	if err != nil {
+		fmt.Printf("Failed to create logger: %v\n", err)
+		return
+	}
+	defer logger.Close()
+
+	for i := 0; i < 100; i++ {
+		logger.Log(fmt.Sprintf("Test log entry number %d", i))
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	fmt.Println("Log rotation test completed")
+}

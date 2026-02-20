@@ -313,4 +313,54 @@ func main() {
 	fmt.Printf("Total records: %d\n", len(records))
 	fmt.Printf("Valid records: %d\n", len(validRecords))
 	fmt.Printf("Total value: %.2f\n", total)
+}package data
+
+import (
+	"strings"
+	"unicode"
+)
+
+// CleanString removes extra whitespace and normalizes line endings
+func CleanString(input string) string {
+	// Trim leading and trailing whitespace
+	trimmed := strings.TrimSpace(input)
+	
+	// Replace multiple spaces with single space
+	var result strings.Builder
+	result.Grow(len(trimmed))
+	prevSpace := false
+	
+	for _, r := range trimmed {
+		if unicode.IsSpace(r) {
+			if !prevSpace {
+				result.WriteRune(' ')
+				prevSpace = true
+			}
+		} else {
+			result.WriteRune(r)
+			prevSpace = false
+		}
+	}
+	
+	return result.String()
+}
+
+// NormalizeWhitespace converts all whitespace characters to standard spaces
+func NormalizeWhitespace(input string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return ' '
+		}
+		return r
+	}, input)
+}
+
+// ContainsOnlyLetters checks if string contains only letter characters
+func ContainsOnlyLetters(s string) bool {
+	for _, r := range s {
+		if !unicode.IsLetter(r) {
+			return false
+		}
+	}
+	return true
 }

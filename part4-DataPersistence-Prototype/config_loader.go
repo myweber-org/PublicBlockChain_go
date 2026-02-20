@@ -510,4 +510,78 @@ func getEnvAsBool(key string, defaultValue bool) bool {
         return defaultValue
     }
     return value
+}package config
+
+import (
+    "encoding/json"
+    "errors"
+    "os"
+    "path/filepath"
+)
+
+type Config struct {
+    ServerPort int    `json:"server_port"`
+    LogLevel   string `json:"log_level"`
+    CacheSize  int    `json:"cache_size"`
+    EnableTLS  bool   `json:"enable_tls"`
+}
+
+func LoadConfig(configPath string) (*Config, error) {
+    if configPath == "" {
+        configPath = filepath.Join(".", "config.json")
+    }
+
+    fileData, err := os.ReadFile(configPath)
+    if err != nil {
+        return nil, err
+    }
+
+    var cfg Config
+    if err := json.Unmarshal(fileData, &cfg); err != nil {
+        return nil, err
+    }
+
+    if err := validateConfig(&cfg); err != nil {
+        return nil, err
+    }
+
+    setDefaults(&cfg)
+    return &cfg, nil
+}
+
+func validateConfig(cfg *Config) error {
+    if cfg.ServerPort < 1 || cfg.ServerPort > 65535 {
+        return errors.New("invalid server port")
+    }
+
+    validLogLevels := map[string]bool{
+        "debug": true,
+        "info":  true,
+        "warn":  true,
+        "error": true,
+    }
+
+    if !validLogLevels[cfg.LogLevel] {
+        return errors.New("invalid log level")
+    }
+
+    if cfg.CacheSize < 0 {
+        return errors.New("cache size cannot be negative")
+    }
+
+    return nil
+}
+
+func setDefaults(cfg *Config) {
+    if cfg.ServerPort == 0 {
+        cfg.ServerPort = 8080
+    }
+
+    if cfg.LogLevel == "" {
+        cfg.LogLevel = "info"
+    }
+
+    if cfg.CacheSize == 0 {
+        cfg.CacheSize = 100
+    }
 }

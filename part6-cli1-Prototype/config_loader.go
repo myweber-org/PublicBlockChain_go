@@ -62,4 +62,62 @@ func ValidateConfig(config *ServerConfig) error {
         return fmt.Errorf("database name is required")
     }
     return nil
+}package config
+
+import (
+    "fmt"
+    "os"
+    "strconv"
+    "strings"
+)
+
+type AppConfig struct {
+    ServerPort int
+    DatabaseURL string
+    CacheEnabled bool
+    LogLevel string
+}
+
+func LoadConfig() (*AppConfig, error) {
+    cfg := &AppConfig{
+        ServerPort:   8080,
+        DatabaseURL:  "localhost:5432",
+        CacheEnabled: true,
+        LogLevel:     "info",
+    }
+
+    if portStr := os.Getenv("APP_PORT"); portStr != "" {
+        port, err := strconv.Atoi(portStr)
+        if err != nil {
+            return nil, fmt.Errorf("invalid APP_PORT: %v", err)
+        }
+        cfg.ServerPort = port
+    }
+
+    if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
+        cfg.DatabaseURL = dbURL
+    }
+
+    if cacheStr := os.Getenv("CACHE_ENABLED"); cacheStr != "" {
+        cacheEnabled, err := strconv.ParseBool(cacheStr)
+        if err != nil {
+            return nil, fmt.Errorf("invalid CACHE_ENABLED: %v", err)
+        }
+        cfg.CacheEnabled = cacheEnabled
+    }
+
+    if logLevel := os.Getenv("LOG_LEVEL"); logLevel != "" {
+        validLevels := map[string]bool{
+            "debug": true,
+            "info":  true,
+            "warn":  true,
+            "error": true,
+        }
+        if !validLevels[strings.ToLower(logLevel)] {
+            return nil, fmt.Errorf("invalid LOG_LEVEL: %s", logLevel)
+        }
+        cfg.LogLevel = strings.ToLower(logLevel)
+    }
+
+    return cfg, nil
 }

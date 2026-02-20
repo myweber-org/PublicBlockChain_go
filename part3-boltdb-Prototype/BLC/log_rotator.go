@@ -151,3 +151,164 @@ func main() {
 
     fmt.Println("Log rotation test completed")
 }
+package main
+
+import (
+	"compress/gzip"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+)
+
+type RotatingLogger struct {
+	mu          sync.Mutex
+	currentFile *os.File
+	basePath    string
+	maxSize     int64
+	fileCount   int
+	maxFiles    int
+	currentSize int64
+}
+
+func NewRotatingLogger(basePath string, maxSizeMB int, maxFiles int) (*RotatingLogger, error) {
+	maxSize := int64(maxSizeMB) * 1024 * 1024
+	rl := &RotatingLogger{
+		basePath: basePath,
+		maxSize:  maxSize,
+		maxFiles: maxFiles,
+	}
+
+	if err := rl.openCurrentFile(); err != nil {
+		return nil, err
+	}
+
+	return rl, nil
+}
+
+func (rl *RotatingLogger) openCurrentFile() error {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	if rl.currentFile != nil {
+		rl.currentFile.Close()
+	}
+
+	file, err := os.OpenFile(rl.basePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return err
+	}
+
+	rl.currentFile = file
+	rl.currentSize = info.Size()
+	rl.fileCount = 1
+
+	return nil
+}
+
+func (rl *RotatingLogger) rotate() error {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	if rl.currentFile == nil {
+		return fmt.Errorf("no current file open")
+	}
+
+	rl.currentFile.Close()
+
+	timestamp := time.Now().Format("20060102_150405")
+	archivePath := fmt.Sprintf("%s.%s.gz", rl.basePath, timestamp)
+
+	source, err := os.Open(rl.basePath)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+
+	dest, err := os.Create(archivePath)
+	if err != nil {
+		return err
+	}
+	defer dest.Close()
+
+	gzWriter := gzip.NewWriter(dest)
+	defer gzWriter.Close()
+
+	_, err = io.Copy(gzWriter, source)
+	if err != nil {
+		return err
+	}
+
+	os.Remove(rl.basePath)
+
+	rl.cleanupOldFiles()
+	return rl.openCurrentFile()
+}
+
+func (rl *RotatingLogger) cleanupOldFiles() {
+	pattern := rl.basePath + ".*.gz"
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return
+	}
+
+	if len(matches) > rl.maxFiles {
+		toDelete := len(matches) - rl.maxFiles
+		for i := 0; i < toDelete; i++ {
+			os.Remove(matches[i])
+		}
+	}
+}
+
+func (rl *RotatingLogger) Write(p []byte) (n int, err error) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	if rl.currentSize+int64(len(p)) > rl.maxSize {
+		rl.mu.Unlock()
+		err := rl.rotate()
+		rl.mu.Lock()
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	n, err = rl.currentFile.Write(p)
+	if err == nil {
+		rl.currentSize += int64(n)
+	}
+	return n, err
+}
+
+func (rl *RotatingLogger) Close() error {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	if rl.currentFile != nil {
+		return rl.currentFile.Close()
+	}
+	return nil
+}
+
+func main() {
+	logger, err := NewRotatingLogger("app.log", 10, 5)
+	if err != nil {
+		fmt.Printf("Failed to create logger: %v\n", err)
+		return
+	}
+	defer logger.Close()
+
+	for i := 0; i < 1000; i++ {
+		msg := fmt.Sprintf("Log entry %d: %s\n", i, time.Now().Format(time.RFC3339))
+		logger.Write([]byte(msg))
+		time.Sleep(10 * time.Millisecond)
+	}
+}

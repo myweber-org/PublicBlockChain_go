@@ -135,4 +135,47 @@ type ConfigError struct {
 
 func (e *ConfigError) Error() string {
     return "config error: " + e.Field + " - " + e.Message
+}package config
+
+import (
+	"encoding/json"
+	"os"
+	"strings"
+)
+
+type Config struct {
+	ServerPort string `json:"server_port"`
+	DBHost     string `json:"db_host"`
+	DBPort     string `json:"db_port"`
+	DebugMode  bool   `json:"debug_mode"`
+}
+
+func LoadConfig(filePath string) (*Config, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var config Config
+	decoder := json.NewDecoder(file)
+	if err := decoder.Decode(&config); err != nil {
+		return nil, err
+	}
+
+	config.ServerPort = replaceWithEnv(config.ServerPort, "SERVER_PORT")
+	config.DBHost = replaceWithEnv(config.DBHost, "DB_HOST")
+	config.DBPort = replaceWithEnv(config.DBPort, "DB_PORT")
+
+	return &config, nil
+}
+
+func replaceWithEnv(value, envKey string) string {
+	if strings.HasPrefix(value, "$") {
+		envValue := os.Getenv(envKey)
+		if envValue != "" {
+			return envValue
+		}
+	}
+	return value
 }

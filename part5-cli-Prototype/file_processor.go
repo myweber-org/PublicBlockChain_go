@@ -240,4 +240,60 @@ func main() {
 	for _, line := range results {
 		fmt.Println(line)
 	}
+}package main
+
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
+type FileProcessor struct {
+	mu       sync.Mutex
+	wg       sync.WaitGroup
+	files    []string
+	results  map[string]string
+}
+
+func NewFileProcessor(files []string) *FileProcessor {
+	return &FileProcessor{
+		files:   files,
+		results: make(map[string]string),
+	}
+}
+
+func (fp *FileProcessor) ProcessFile(filename string) {
+	defer fp.wg.Done()
+	
+	time.Sleep(100 * time.Millisecond)
+	
+	result := fmt.Sprintf("Processed: %s at %v", filename, time.Now().UnixNano())
+	
+	fp.mu.Lock()
+	fp.results[filename] = result
+	fp.mu.Unlock()
+}
+
+func (fp *FileProcessor) Run() {
+	for _, file := range fp.files {
+		fp.wg.Add(1)
+		go fp.ProcessFile(file)
+	}
+	fp.wg.Wait()
+}
+
+func (fp *FileProcessor) GetResults() map[string]string {
+	return fp.results
+}
+
+func main() {
+	files := []string{"data1.txt", "data2.txt", "data3.txt", "data4.txt"}
+	
+	processor := NewFileProcessor(files)
+	processor.Run()
+	
+	results := processor.GetResults()
+	for file, result := range results {
+		fmt.Printf("%s -> %s\n", file, result)
+	}
 }

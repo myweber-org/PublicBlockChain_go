@@ -128,3 +128,87 @@ func validateConfig(config *ServerConfig) error {
 
     return nil
 }
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+
+	"gopkg.in/yaml.v3"
+)
+
+type Config struct {
+	Server struct {
+		Host string `yaml:"host" env:"SERVER_HOST"`
+		Port int    `yaml:"port" env:"SERVER_PORT"`
+	} `yaml:"server"`
+	Database struct {
+		URL      string `yaml:"url" env:"DB_URL"`
+		PoolSize int    `yaml:"pool_size" env:"DB_POOL_SIZE"`
+	} `yaml:"database"`
+	LogLevel string `yaml:"log_level" env:"LOG_LEVEL"`
+}
+
+func LoadConfig(configPath string) (*Config, error) {
+	cfg := &Config{}
+
+	if configPath == "" {
+		configPath = "config.yaml"
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return nil, err
+	}
+
+	overrideFromEnv(cfg)
+
+	return cfg, nil
+}
+
+func overrideFromEnv(cfg *Config) {
+	cfg.Server.Host = getEnvOrDefault("SERVER_HOST", cfg.Server.Host)
+	if port := os.Getenv("SERVER_PORT"); port != "" {
+		if p, err := strconv.Atoi(port); err == nil {
+			cfg.Server.Port = p
+		}
+	}
+
+	cfg.Database.URL = getEnvOrDefault("DB_URL", cfg.Database.URL)
+	if poolSize := os.Getenv("DB_POOL_SIZE"); poolSize != "" {
+		if ps, err := strconv.Atoi(poolSize); err == nil {
+			cfg.Database.PoolSize = ps
+		}
+	}
+
+	cfg.LogLevel = getEnvOrDefault("LOG_LEVEL", cfg.LogLevel)
+}
+
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+func FindConfigFile() (string, error) {
+	possiblePaths := []string{
+		"config.yaml",
+		"config.yml",
+		filepath.Join("config", "config.yaml"),
+		filepath.Join("config", "config.yml"),
+	}
+
+	for _, path := range possiblePaths {
+		if _, err := os.Stat(path); err == nil {
+			return path, nil
+		}
+	}
+
+	return "", os.ErrNotExist
+}

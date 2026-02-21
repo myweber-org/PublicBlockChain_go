@@ -640,4 +640,118 @@ func main() {
 	}
 
 	fmt.Printf("Operation completed successfully: %s -> %s\n", inputPath, outputPath)
+}package main
+
+import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"fmt"
+	"io"
+	"os"
+)
+
+func deriveKey(passphrase string, salt []byte) []byte {
+	hash := sha256.New()
+	hash.Write([]byte(passphrase))
+	hash.Write(salt)
+	return hash.Sum(nil)
+}
+
+func encrypt(plaintext, passphrase string) (string, error) {
+	salt := make([]byte, 16)
+	if _, err := rand.Read(salt); err != nil {
+		return "", err
+	}
+
+	key := deriveKey(passphrase, salt)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", err
+	}
+
+	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
+	ciphertext = append(salt, ciphertext...)
+	return base64.StdEncoding.EncodeToString(ciphertext), nil
+}
+
+func decrypt(encodedCiphertext, passphrase string) (string, error) {
+	ciphertext, err := base64.StdEncoding.DecodeString(encodedCiphertext)
+	if err != nil {
+		return "", err
+	}
+
+	if len(ciphertext) < 16 {
+		return "", fmt.Errorf("ciphertext too short")
+	}
+
+	salt := ciphertext[:16]
+	ciphertext = ciphertext[16:]
+
+	key := deriveKey(passphrase, salt)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+
+	nonceSize := gcm.NonceSize()
+	if len(ciphertext) < nonceSize {
+		return "", fmt.Errorf("ciphertext too short")
+	}
+
+	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", err
+	}
+
+	return string(plaintext), nil
+}
+
+func main() {
+	if len(os.Args) != 4 {
+		fmt.Println("Usage: go run file_encryption_utility.go <encrypt|decrypt> <input> <passphrase>")
+		os.Exit(1)
+	}
+
+	operation := os.Args[1]
+	input := os.Args[2]
+	passphrase := os.Args[3]
+
+	switch operation {
+	case "encrypt":
+		result, err := encrypt(input, passphrase)
+		if err != nil {
+			fmt.Printf("Encryption error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(result)
+	case "decrypt":
+		result, err := decrypt(input, passphrase)
+		if err != nil {
+			fmt.Printf("Decryption error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(result)
+	default:
+		fmt.Println("Invalid operation. Use 'encrypt' or 'decrypt'")
+		os.Exit(1)
+	}
 }

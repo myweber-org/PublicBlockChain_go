@@ -389,3 +389,77 @@ func getEnvAsBool(key string, defaultValue bool) bool {
     strValue = strings.ToLower(strValue)
     return strValue == "true" || strValue == "1" || strValue == "yes"
 }
+package config
+
+import (
+	"errors"
+	"os"
+	"strconv"
+	"strings"
+)
+
+type AppConfig struct {
+	ServerPort int
+	DebugMode  bool
+	DatabaseURL string
+	CacheTTL   int
+	FeatureFlags map[string]bool
+}
+
+func LoadConfig() (*AppConfig, error) {
+	cfg := &AppConfig{
+		FeatureFlags: make(map[string]bool),
+	}
+
+	portStr := os.Getenv("SERVER_PORT")
+	if portStr == "" {
+		portStr = "8080"
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return nil, errors.New("invalid SERVER_PORT value")
+	}
+	cfg.ServerPort = port
+
+	debugStr := os.Getenv("DEBUG_MODE")
+	cfg.DebugMode = strings.ToLower(debugStr) == "true"
+
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		return nil, errors.New("DATABASE_URL is required")
+	}
+	cfg.DatabaseURL = dbURL
+
+	ttlStr := os.Getenv("CACHE_TTL")
+	if ttlStr == "" {
+		ttlStr = "300"
+	}
+	ttl, err := strconv.Atoi(ttlStr)
+	if err != nil {
+		return nil, errors.New("invalid CACHE_TTL value")
+	}
+	cfg.CacheTTL = ttl
+
+	flagsStr := os.Getenv("FEATURE_FLAGS")
+	if flagsStr != "" {
+		flags := strings.Split(flagsStr, ",")
+		for _, flag := range flags {
+			parts := strings.Split(flag, "=")
+			if len(parts) == 2 {
+				cfg.FeatureFlags[parts[0]] = strings.ToLower(parts[1]) == "true"
+			}
+		}
+	}
+
+	return cfg, nil
+}
+
+func ValidateConfig(cfg *AppConfig) error {
+	if cfg.ServerPort < 1 || cfg.ServerPort > 65535 {
+		return errors.New("server port must be between 1 and 65535")
+	}
+	if cfg.CacheTTL < 0 {
+		return errors.New("cache TTL cannot be negative")
+	}
+	return nil
+}

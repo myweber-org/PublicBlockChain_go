@@ -178,4 +178,108 @@ func replaceWithEnv(value, envKey string) string {
 		}
 	}
 	return value
+}package config
+
+import (
+    "fmt"
+    "os"
+    "strconv"
+    "strings"
+)
+
+type DatabaseConfig struct {
+    Host     string
+    Port     int
+    Username string
+    Password string
+    Database string
+}
+
+type ServerConfig struct {
+    Port         int
+    DebugMode    bool
+    ReadTimeout  int
+    WriteTimeout int
+}
+
+type Config struct {
+    Database DatabaseConfig
+    Server   ServerConfig
+}
+
+func LoadConfig() (*Config, error) {
+    dbConfig, err := loadDatabaseConfig()
+    if err != nil {
+        return nil, fmt.Errorf("failed to load database config: %w", err)
+    }
+
+    serverConfig, err := loadServerConfig()
+    if err != nil {
+        return nil, fmt.Errorf("failed to load server config: %w", err)
+    }
+
+    return &Config{
+        Database: *dbConfig,
+        Server:   *serverConfig,
+    }, nil
+}
+
+func loadDatabaseConfig() (*DatabaseConfig, error) {
+    host := getEnvWithDefault("DB_HOST", "localhost")
+    port, err := strconv.Atoi(getEnvWithDefault("DB_PORT", "5432"))
+    if err != nil {
+        return nil, fmt.Errorf("invalid DB_PORT: %w", err)
+    }
+
+    username := getEnvRequired("DB_USERNAME")
+    password := getEnvRequired("DB_PASSWORD")
+    database := getEnvWithDefault("DB_NAME", "app_database")
+
+    return &DatabaseConfig{
+        Host:     host,
+        Port:     port,
+        Username: username,
+        Password: password,
+        Database: database,
+    }, nil
+}
+
+func loadServerConfig() (*ServerConfig, error) {
+    port, err := strconv.Atoi(getEnvWithDefault("SERVER_PORT", "8080"))
+    if err != nil {
+        return nil, fmt.Errorf("invalid SERVER_PORT: %w", err)
+    }
+
+    debugMode := strings.ToLower(getEnvWithDefault("DEBUG_MODE", "false")) == "true"
+    readTimeout, err := strconv.Atoi(getEnvWithDefault("READ_TIMEOUT", "30"))
+    if err != nil {
+        return nil, fmt.Errorf("invalid READ_TIMEOUT: %w", err)
+    }
+
+    writeTimeout, err := strconv.Atoi(getEnvWithDefault("WRITE_TIMEOUT", "30"))
+    if err != nil {
+        return nil, fmt.Errorf("invalid WRITE_TIMEOUT: %w", err)
+    }
+
+    return &ServerConfig{
+        Port:         port,
+        DebugMode:    debugMode,
+        ReadTimeout:  readTimeout,
+        WriteTimeout: writeTimeout,
+    }, nil
+}
+
+func getEnvWithDefault(key, defaultValue string) string {
+    if value := os.Getenv(key); value != "" {
+        return value
+    }
+    return defaultValue
+}
+
+func getEnvRequired(key string) string {
+    value := os.Getenv(key)
+    if value == "" {
+        panic(fmt.Sprintf("required environment variable %s is not set", key))
+    }
+    return value
 }

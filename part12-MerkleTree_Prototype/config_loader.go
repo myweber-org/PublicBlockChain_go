@@ -282,4 +282,110 @@ func getEnvRequired(key string) string {
         panic(fmt.Sprintf("required environment variable %s is not set", key))
     }
     return value
+}package config
+
+import (
+    "fmt"
+    "os"
+    "strconv"
+    "strings"
+)
+
+type DatabaseConfig struct {
+    Host     string
+    Port     int
+    Username string
+    Password string
+    Database string
+}
+
+type ServerConfig struct {
+    Port         int
+    DebugMode    bool
+    ReadTimeout  int
+    WriteTimeout int
+}
+
+type Config struct {
+    Database DatabaseConfig
+    Server   ServerConfig
+    LogLevel string
+}
+
+func LoadConfig() (*Config, error) {
+    cfg := &Config{}
+
+    dbHost := getEnv("DB_HOST", "localhost")
+    dbPort := getEnvAsInt("DB_PORT", 5432)
+    dbUser := getEnv("DB_USER", "postgres")
+    dbPass := getEnv("DB_PASS", "")
+    dbName := getEnv("DB_NAME", "appdb")
+
+    if dbPort < 1 || dbPort > 65535 {
+        return nil, fmt.Errorf("invalid database port: %d", dbPort)
+    }
+
+    cfg.Database = DatabaseConfig{
+        Host:     dbHost,
+        Port:     dbPort,
+        Username: dbUser,
+        Password: dbPass,
+        Database: dbName,
+    }
+
+    serverPort := getEnvAsInt("SERVER_PORT", 8080)
+    debugMode := getEnvAsBool("DEBUG_MODE", false)
+    readTimeout := getEnvAsInt("READ_TIMEOUT", 30)
+    writeTimeout := getEnvAsInt("WRITE_TIMEOUT", 30)
+
+    if serverPort < 1 || serverPort > 65535 {
+        return nil, fmt.Errorf("invalid server port: %d", serverPort)
+    }
+
+    cfg.Server = ServerConfig{
+        Port:         serverPort,
+        DebugMode:    debugMode,
+        ReadTimeout:  readTimeout,
+        WriteTimeout: writeTimeout,
+    }
+
+    logLevel := strings.ToUpper(getEnv("LOG_LEVEL", "INFO"))
+    validLevels := map[string]bool{"DEBUG": true, "INFO": true, "WARN": true, "ERROR": true}
+    if !validLevels[logLevel] {
+        return nil, fmt.Errorf("invalid log level: %s", logLevel)
+    }
+
+    cfg.LogLevel = logLevel
+
+    return cfg, nil
+}
+
+func getEnv(key, defaultValue string) string {
+    if value, exists := os.LookupEnv(key); exists {
+        return value
+    }
+    return defaultValue
+}
+
+func getEnvAsInt(key string, defaultValue int) int {
+    strValue := getEnv(key, "")
+    if strValue == "" {
+        return defaultValue
+    }
+
+    value, err := strconv.Atoi(strValue)
+    if err != nil {
+        return defaultValue
+    }
+    return value
+}
+
+func getEnvAsBool(key string, defaultValue bool) bool {
+    strValue := getEnv(key, "")
+    if strValue == "" {
+        return defaultValue
+    }
+
+    strValue = strings.ToLower(strValue)
+    return strValue == "true" || strValue == "1" || strValue == "yes"
 }

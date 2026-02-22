@@ -201,3 +201,104 @@ func ValidateConfig(config *ServerConfig) error {
     }
     return nil
 }
+package config
+
+import (
+	"encoding/json"
+	"errors"
+	"os"
+	"reflect"
+	"strconv"
+	"strings"
+)
+
+type Config struct {
+	ServerPort int    `env:"SERVER_PORT" default:"8080"`
+	LogLevel   string `env:"LOG_LEVEL" default:"info"`
+	Database   struct {
+		Host     string `env:"DB_HOST" default:"localhost"`
+		Port     int    `env:"DB_PORT" default:"5432"`
+		Username string `env:"DB_USER"`
+		Password string `env:"DB_PASS"`
+	}
+}
+
+func LoadConfig() (*Config, error) {
+	cfg := &Config{}
+	err := loadFromEnv(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+func loadFromEnv(cfg interface{}) error {
+	v := reflect.ValueOf(cfg).Elem()
+	t := v.Type()
+
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		fieldValue := v.Field(i)
+
+		if field.Type.Kind() == reflect.Struct {
+			nestedPtr := fieldValue.Addr().Interface()
+			err := loadFromEnv(nestedPtr)
+			if err != nil {
+				return err
+			}
+			continue
+		}
+
+		envTag := field.Tag.Get("env")
+		if envTag == "" {
+			continue
+		}
+
+		envValue := os.Getenv(envTag)
+		if envValue == "" {
+			defaultVal := field.Tag.Get("default")
+			if defaultVal != "" {
+				envValue = defaultVal
+			}
+		}
+
+		if envValue == "" && field.Tag.Get("required") == "true" {
+			return errors.New("required environment variable missing: " + envTag)
+		}
+
+		err := setFieldValue(fieldValue, envValue)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func setFieldValue(field reflect.Value, value string) error {
+	switch field.Kind() {
+	case reflect.String:
+		field.SetString(value)
+	case reflect.Int:
+		intVal, err := strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+		field.SetInt(int64(intVal))
+	case reflect.Bool:
+		boolVal, err := strconv.ParseBool(strings.ToLower(value))
+		if err != nil {
+			return err
+		}
+		field.SetBool(boolVal)
+	case reflect.Slice:
+		var slice []interface{}
+		err := json.Unmarshal([]byte(value), &slice)
+		if err != nil {
+			return err
+		}
+		field.Set(reflect.ValueOf(slice))
+	default:
+		return errors.New("unsupported field type")
+	}
+	return nil
+}

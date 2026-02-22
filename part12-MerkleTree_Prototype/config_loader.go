@@ -504,4 +504,92 @@ func getEnv(key, defaultValue string) string {
         return defaultValue
     }
     return value
+}package config
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"reflect"
+	"strconv"
+	"strings"
+)
+
+type Config struct {
+	ServerPort int    `env:"SERVER_PORT" default:"8080"`
+	DBHost     string `env:"DB_HOST" default:"localhost"`
+	DBPort     int    `env:"DB_PORT" default:"5432"`
+	DBName     string `env:"DB_NAME" default:"appdb"`
+	DebugMode  bool   `env:"DEBUG_MODE" default:"false"`
+}
+
+func LoadConfig() (*Config, error) {
+	cfg := &Config{}
+	v := reflect.ValueOf(cfg).Elem()
+	t := v.Type()
+
+	for i := 0; i < v.NumField(); i++ {
+		field := v.Field(i)
+		structField := t.Field(i)
+		
+		envKey := structField.Tag.Get("env")
+		defaultVal := structField.Tag.Get("default")
+		
+		var value string
+		if envVal, exists := os.LookupEnv(envKey); exists {
+			value = envVal
+		} else {
+			value = defaultVal
+		}
+		
+		if err := setField(field, structField.Type, value); err != nil {
+			return nil, fmt.Errorf("failed to set field %s: %w", structField.Name, err)
+		}
+	}
+	
+	return cfg, nil
+}
+
+func setField(field reflect.Value, fieldType reflect.Type, value string) error {
+	switch fieldType.Kind() {
+	case reflect.String:
+		field.SetString(value)
+	case reflect.Int:
+		intVal, err := strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+		field.SetInt(int64(intVal))
+	case reflect.Bool:
+		boolVal, err := strconv.ParseBool(value)
+		if err != nil {
+			return err
+		}
+		field.SetBool(boolVal)
+	default:
+		return errors.New("unsupported field type")
+	}
+	return nil
+}
+
+func (c *Config) Validate() error {
+	if c.ServerPort <= 0 || c.ServerPort > 65535 {
+		return errors.New("invalid server port")
+	}
+	if c.DBHost == "" {
+		return errors.New("database host cannot be empty")
+	}
+	if c.DBPort <= 0 || c.DBPort > 65535 {
+		return errors.New("invalid database port")
+	}
+	if c.DBName == "" {
+		return errors.New("database name cannot be empty")
+	}
+	return nil
+}
+
+func (c *Config) String() string {
+	data, _ := json.MarshalIndent(c, "", "  ")
+	return string(data)
 }

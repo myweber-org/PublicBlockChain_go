@@ -817,3 +817,94 @@ func main() {
 
     fmt.Printf("Log rotation completed %d times\n", logger.rotationCount)
 }
+package main
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"time"
+)
+
+const (
+	maxLogSize    = 1024 * 1024
+	logFileName   = "application.log"
+	archivePrefix = "application.archive"
+)
+
+func rotateLogIfNeeded() error {
+	fileInfo, err := os.Stat(logFileName)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	if fileInfo.Size() < maxLogSize {
+		return nil
+	}
+
+	timestamp := time.Now().Unix()
+	archiveName := fmt.Sprintf("%s.%d.log", archivePrefix, timestamp)
+
+	err = os.Rename(logFileName, archiveName)
+	if err != nil {
+		return err
+	}
+
+	newFile, err := os.Create(logFileName)
+	if err != nil {
+		return err
+	}
+	newFile.Close()
+
+	fmt.Printf("Log rotated: %s -> %s\n", logFileName, archiveName)
+	return nil
+}
+
+func writeLogEntry(message string) error {
+	err := rotateLogIfNeeded()
+	if err != nil {
+		return err
+	}
+
+	file, err := os.OpenFile(logFileName, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	timestamp := time.Now().Format(time.RFC3339)
+	logEntry := fmt.Sprintf("[%s] %s\n", timestamp, message)
+
+	_, err = file.WriteString(logEntry)
+	return err
+}
+
+func listArchivedLogs() ([]string, error) {
+	pattern := fmt.Sprintf("%s.*.log", archivePrefix)
+	return filepath.Glob(pattern)
+}
+
+func main() {
+	for i := 1; i <= 15; i++ {
+		message := "Test log entry number " + strconv.Itoa(i)
+		err := writeLogEntry(message)
+		if err != nil {
+			fmt.Printf("Error writing log: %v\n", err)
+		}
+	}
+
+	archives, err := listArchivedLogs()
+	if err != nil {
+		fmt.Printf("Error listing archives: %v\n", err)
+		return
+	}
+
+	fmt.Println("Archived logs:")
+	for _, archive := range archives {
+		fmt.Println(archive)
+	}
+}

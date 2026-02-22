@@ -452,3 +452,111 @@ func main() {
     fmt.Printf("Average value: %.2f\n", avg)
     fmt.Printf("Maximum value: %.2f\n", max)
 }
+package main
+
+import (
+    "encoding/csv"
+    "errors"
+    "fmt"
+    "io"
+    "os"
+    "strings"
+)
+
+type DataRecord struct {
+    ID      string
+    Name    string
+    Email   string
+    Active  string
+}
+
+func ReadCSVFile(filename string) ([]DataRecord, error) {
+    file, err := os.Open(filename)
+    if err != nil {
+        return nil, fmt.Errorf("failed to open file: %w", err)
+    }
+    defer file.Close()
+
+    reader := csv.NewReader(file)
+    records := []DataRecord{}
+    lineNumber := 0
+
+    for {
+        line, err := reader.Read()
+        if err == io.EOF {
+            break
+        }
+        if err != nil {
+            return nil, fmt.Errorf("csv read error at line %d: %w", lineNumber, err)
+        }
+
+        lineNumber++
+        if lineNumber == 1 {
+            continue
+        }
+
+        if len(line) < 4 {
+            return nil, fmt.Errorf("invalid columns at line %d", lineNumber)
+        }
+
+        record := DataRecord{
+            ID:     strings.TrimSpace(line[0]),
+            Name:   strings.TrimSpace(line[1]),
+            Email:  strings.TrimSpace(line[2]),
+            Active: strings.TrimSpace(line[3]),
+        }
+
+        if err := validateRecord(record); err != nil {
+            return nil, fmt.Errorf("validation failed at line %d: %w", lineNumber, err)
+        }
+
+        records = append(records, record)
+    }
+
+    return records, nil
+}
+
+func validateRecord(record DataRecord) error {
+    if record.ID == "" {
+        return errors.New("ID cannot be empty")
+    }
+    if record.Name == "" {
+        return errors.New("name cannot be empty")
+    }
+    if !strings.Contains(record.Email, "@") {
+        return errors.New("invalid email format")
+    }
+    if record.Active != "true" && record.Active != "false" {
+        return errors.New("active field must be 'true' or 'false'")
+    }
+    return nil
+}
+
+func ProcessRecords(records []DataRecord) (int, int) {
+    activeCount := 0
+    for _, record := range records {
+        if record.Active == "true" {
+            activeCount++
+        }
+    }
+    return len(records), activeCount
+}
+
+func main() {
+    if len(os.Args) < 2 {
+        fmt.Println("Usage: data_processor <csv_file>")
+        os.Exit(1)
+    }
+
+    filename := os.Args[1]
+    records, err := ReadCSVFile(filename)
+    if err != nil {
+        fmt.Printf("Error: %v\n", err)
+        os.Exit(1)
+    }
+
+    total, active := ProcessRecords(records)
+    fmt.Printf("Total records: %d\n", total)
+    fmt.Printf("Active records: %d\n", active)
+    fmt.Printf("Inactive records: %d\n", total-active)
+}

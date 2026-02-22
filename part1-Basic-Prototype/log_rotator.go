@@ -590,3 +590,97 @@ func main() {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+package main
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+type LogRotator struct {
+	LogDir      string
+	BaseName    string
+	MaxFiles    int
+	CurrentFile *os.File
+}
+
+func NewLogRotator(logDir, baseName string, maxFiles int) (*LogRotator, error) {
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create log directory: %w", err)
+	}
+
+	return &LogRotator{
+		LogDir:   logDir,
+		BaseName: baseName,
+		MaxFiles: maxFiles,
+	}, nil
+}
+
+func (lr *LogRotator) Rotate() error {
+	if lr.CurrentFile != nil {
+		lr.CurrentFile.Close()
+	}
+
+	for i := lr.MaxFiles - 1; i > 0; i-- {
+		oldPath := filepath.Join(lr.LogDir, fmt.Sprintf("%s.%d.log", lr.BaseName, i))
+		newPath := filepath.Join(lr.LogDir, fmt.Sprintf("%s.%d.log", lr.BaseName, i+1))
+
+		if _, err := os.Stat(oldPath); err == nil {
+			os.Rename(oldPath, newPath)
+		}
+	}
+
+	firstArchive := filepath.Join(lr.LogDir, fmt.Sprintf("%s.1.log", lr.BaseName))
+	if _, err := os.Stat(firstArchive); err == nil {
+		os.Rename(firstArchive, filepath.Join(lr.LogDir, fmt.Sprintf("%s.2.log", lr.BaseName)))
+	}
+
+	currentPath := filepath.Join(lr.LogDir, lr.BaseName+".log")
+	if _, err := os.Stat(currentPath); err == nil {
+		os.Rename(currentPath, firstArchive)
+	}
+
+	file, err := os.Create(currentPath)
+	if err != nil {
+		return fmt.Errorf("failed to create new log file: %w", err)
+	}
+
+	lr.CurrentFile = file
+	return nil
+}
+
+func (lr *LogRotator) WriteLog(level, message string) {
+	if lr.CurrentFile == nil {
+		lr.Rotate()
+	}
+
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	logEntry := fmt.Sprintf("[%s] %s: %s\n", timestamp, level, message)
+
+	lr.CurrentFile.WriteString(logEntry)
+	lr.CurrentFile.Sync()
+}
+
+func (lr *LogRotator) Close() error {
+	if lr.CurrentFile != nil {
+		return lr.CurrentFile.Close()
+	}
+	return nil
+}
+
+func main() {
+	rotator, err := NewLogRotator("./logs", "app", 5)
+	if err != nil {
+		fmt.Printf("Failed to create log rotator: %v\n", err)
+		return
+	}
+	defer rotator.Close()
+
+	rotator.WriteLog("INFO", "Application started")
+	rotator.WriteLog("WARNING", "High memory usage detected")
+	rotator.WriteLog("ERROR", "Failed to connect to database")
+
+	fmt.Println("Log rotation example completed. Check ./logs directory")
+}

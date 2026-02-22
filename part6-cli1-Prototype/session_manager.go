@@ -10,46 +10,48 @@ import (
 type Session struct {
 	ID        string
 	UserID    int
-	CreatedAt time.Time
 	ExpiresAt time.Time
+	Data      map[string]interface{}
 }
 
 type Manager struct {
-	sessions map[string]Session
+	sessions map[string]*Session
+	duration time.Duration
 }
 
-func NewManager() *Manager {
+func NewManager(duration time.Duration) *Manager {
 	return &Manager{
-		sessions: make(map[string]Session),
+		sessions: make(map[string]*Session),
+		duration: duration,
 	}
 }
 
-func (m *Manager) CreateSession(userID int, duration time.Duration) (string, error) {
+func (m *Manager) CreateSession(userID int, data map[string]interface{}) (string, error) {
 	token, err := generateToken()
 	if err != nil {
 		return "", err
 	}
 
-	session := Session{
+	session := &Session{
 		ID:        token,
 		UserID:    userID,
-		CreatedAt: time.Now(),
-		ExpiresAt: time.Now().Add(duration),
+		ExpiresAt: time.Now().Add(m.duration),
+		Data:      data,
 	}
 
 	m.sessions[token] = session
 	return token, nil
 }
 
-func (m *Manager) ValidateSession(token string) (Session, error) {
+func (m *Manager) ValidateSession(token string) (*Session, error) {
 	session, exists := m.sessions[token]
 	if !exists {
-		return Session{}, errors.New("session not found")
+		return nil, errors.New("session not found")
 	}
 
 	if time.Now().After(session.ExpiresAt) {
 		delete(m.sessions, token)
-		return Session{}, errors.New("session expired")
+		return nil, errors.New("session expired")
 	}
 
 	return session, nil
@@ -59,10 +61,18 @@ func (m *Manager) InvalidateSession(token string) {
 	delete(m.sessions, token)
 }
 
+func (m *Manager) CleanupExpired() {
+	now := time.Now()
+	for token, session := range m.sessions {
+		if now.After(session.ExpiresAt) {
+			delete(m.sessions, token)
+		}
+	}
+}
+
 func generateToken() (string, error) {
 	bytes := make([]byte, 32)
-	_, err := rand.Read(bytes)
-	if err != nil {
+	if _, err := rand.Read(bytes); err != nil {
 		return "", err
 	}
 	return base64.URLEncoding.EncodeToString(bytes), nil

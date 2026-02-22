@@ -211,4 +211,95 @@ func FindConfigFile() (string, error) {
 	}
 
 	return "", os.ErrNotExist
+}package config
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+
+	"gopkg.in/yaml.v2"
+)
+
+type Config struct {
+	Server struct {
+		Host string `yaml:"host" env:"SERVER_HOST"`
+		Port int    `yaml:"port" env:"SERVER_PORT"`
+	} `yaml:"server"`
+	Database struct {
+		Host     string `yaml:"host" env:"DB_HOST"`
+		Port     int    `yaml:"port" env:"DB_PORT"`
+		Name     string `yaml:"name" env:"DB_NAME"`
+		User     string `yaml:"user" env:"DB_USER"`
+		Password string `yaml:"password" env:"DB_PASSWORD"`
+	} `yaml:"database"`
+	Logging struct {
+		Level  string `yaml:"level" env:"LOG_LEVEL"`
+		Output string `yaml:"output" env:"LOG_OUTPUT"`
+	} `yaml:"logging"`
+}
+
+func LoadConfig(configPath string) (*Config, error) {
+	cfg := &Config{}
+
+	if configPath == "" {
+		configPath = "config.yaml"
+	}
+
+	absPath, err := filepath.Abs(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return nil, err
+	}
+
+	overrideFromEnv(cfg)
+
+	return cfg, nil
+}
+
+func overrideFromEnv(cfg *Config) {
+	overrideStruct(cfg, "")
+}
+
+func overrideStruct(s interface{}, prefix string) {
+	v := reflect.ValueOf(s).Elem()
+	t := v.Type()
+
+	for i := 0; i < v.NumField(); i++ {
+		field := v.Field(i)
+		fieldType := t.Field(i)
+
+		envTag := fieldType.Tag.Get("env")
+		if envTag != "" && field.CanSet() {
+			if envValue := os.Getenv(envTag); envValue != "" {
+				switch field.Kind() {
+				case reflect.String:
+					field.SetString(envValue)
+				case reflect.Int:
+					if intVal, err := strconv.Atoi(envValue); err == nil {
+						field.SetInt(int64(intVal))
+					}
+				}
+			}
+		}
+
+		if field.Kind() == reflect.Struct {
+			newPrefix := prefix
+			if yamlTag := fieldType.Tag.Get("yaml"); yamlTag != "" {
+				if newPrefix != "" {
+					newPrefix += "_"
+				}
+				newPrefix += strings.ToUpper(yamlTag)
+			}
+			overrideStruct(field.Addr().Interface(), newPrefix)
+		}
+	}
 }

@@ -788,4 +788,141 @@ type ConfigError struct {
 
 func (e *ConfigError) Error() string {
     return "config error [" + e.Field + "]: " + e.Message
+}package config
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"reflect"
+	"strconv"
+	"strings"
+)
+
+type Config struct {
+	ServerPort int    `json:"server_port" env:"SERVER_PORT" default:"8080"`
+	DBHost     string `json:"db_host" env:"DB_HOST" default:"localhost"`
+	DBPort     int    `json:"db_port" env:"DB_PORT" default:"5432"`
+	DebugMode  bool   `json:"debug_mode" env:"DEBUG_MODE" default:"false"`
+	APIKey     string `json:"api_key" env:"API_KEY" required:"true"`
+}
+
+func LoadConfig(configPath string) (*Config, error) {
+	config := &Config{}
+	
+	if configPath != "" {
+		if err := loadFromFile(configPath, config); err != nil {
+			return nil, fmt.Errorf("failed to load config from file: %w", err)
+		}
+	}
+	
+	if err := loadFromEnv(config); err != nil {
+		return nil, fmt.Errorf("failed to load config from environment: %w", err)
+	}
+	
+	if err := validateConfig(config); err != nil {
+		return nil, fmt.Errorf("config validation failed: %w", err)
+	}
+	
+	return config, nil
+}
+
+func loadFromFile(path string, config *Config) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	
+	decoder := json.NewDecoder(file)
+	return decoder.Decode(config)
+}
+
+func loadFromEnv(config *Config) error {
+	configValue := reflect.ValueOf(config).Elem()
+	configType := configValue.Type()
+	
+	for i := 0; i < configType.NumField(); i++ {
+		field := configType.Field(i)
+		fieldValue := configValue.Field(i)
+		
+		envKey := field.Tag.Get("env")
+		if envKey == "" {
+			continue
+		}
+		
+		envValue := os.Getenv(envKey)
+		if envValue == "" {
+			defaultValue := field.Tag.Get("default")
+			if defaultValue != "" {
+				envValue = defaultValue
+			}
+		}
+		
+		if envValue != "" {
+			if err := setFieldValue(fieldValue, envValue); err != nil {
+				return fmt.Errorf("failed to set field %s: %w", field.Name, err)
+			}
+		}
+	}
+	
+	return nil
+}
+
+func setFieldValue(field reflect.Value, value string) error {
+	switch field.Kind() {
+	case reflect.String:
+		field.SetString(value)
+	case reflect.Int:
+		intVal, err := strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+		field.SetInt(int64(intVal))
+	case reflect.Bool:
+		boolVal, err := strconv.ParseBool(value)
+		if err != nil {
+			return err
+		}
+		field.SetBool(boolVal)
+	default:
+		return fmt.Errorf("unsupported field type: %s", field.Kind())
+	}
+	return nil
+}
+
+func validateConfig(config *Config) error {
+	configValue := reflect.ValueOf(config).Elem()
+	configType := configValue.Type()
+	
+	for i := 0; i < configType.NumField(); i++ {
+		field := configType.Field(i)
+		fieldValue := configValue.Field(i)
+		
+		if strings.ToLower(field.Tag.Get("required")) == "true" {
+			if isZeroValue(fieldValue) {
+				return errors.New(fmt.Sprintf("required field %s is not set", field.Name))
+			}
+		}
+	}
+	
+	if config.ServerPort < 1 || config.ServerPort > 65535 {
+		return errors.New("server port must be between 1 and 65535")
+	}
+	
+	return nil
+}
+
+func isZeroValue(v reflect.Value) bool {
+	switch v.Kind() {
+	case reflect.String:
+		return v.String() == ""
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return v.Int() == 0
+	case reflect.Bool:
+		return !v.Bool()
+	default:
+		return v.IsZero()
+	}
 }

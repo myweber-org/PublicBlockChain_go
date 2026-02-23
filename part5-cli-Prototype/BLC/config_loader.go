@@ -475,3 +475,99 @@ func getEnv(key, defaultValue string) string {
 	}
 	return value
 }
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+
+	"gopkg.in/yaml.v3"
+)
+
+type Config struct {
+	Server struct {
+		Host string `yaml:"host" env:"SERVER_HOST"`
+		Port int    `yaml:"port" env:"SERVER_PORT"`
+	} `yaml:"server"`
+	Database struct {
+		Host     string `yaml:"host" env:"DB_HOST"`
+		Port     int    `yaml:"port" env:"DB_PORT"`
+		Name     string `yaml:"name" env:"DB_NAME"`
+		User     string `yaml:"user" env:"DB_USER"`
+		Password string `yaml:"password" env:"DB_PASSWORD"`
+	} `yaml:"database"`
+	Logging struct {
+		Level  string `yaml:"level" env:"LOG_LEVEL"`
+		Output string `yaml:"output" env:"LOG_OUTPUT"`
+	} `yaml:"logging"`
+}
+
+func LoadConfig(configPath string) (*Config, error) {
+	cfg := &Config{}
+	
+	absPath, err := filepath.Abs(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	file, err := os.Open(absPath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	decoder := yaml.NewDecoder(file)
+	if err := decoder.Decode(cfg); err != nil {
+		return nil, err
+	}
+
+	overrideFromEnv(cfg)
+	return cfg, nil
+}
+
+func overrideFromEnv(cfg *Config) {
+	traverseAndOverride(cfg, "")
+}
+
+func traverseAndOverride(obj interface{}, prefix string) {
+	val := reflect.ValueOf(obj).Elem()
+	typ := val.Type()
+
+	for i := 0; i < val.NumField(); i++ {
+		field := val.Field(i)
+		fieldType := typ.Field(i)
+
+		envTag := fieldType.Tag.Get("env")
+		yamlTag := fieldType.Tag.Get("yaml")
+
+		if field.Kind() == reflect.Struct {
+			newPrefix := prefix
+			if yamlTag != "" {
+				newPrefix = strings.ToUpper(yamlTag) + "_"
+			}
+			traverseAndOverride(field.Addr().Interface(), newPrefix)
+			continue
+		}
+
+		if envTag == "" {
+			continue
+		}
+
+		envKey := prefix + envTag
+		if envValue := os.Getenv(envKey); envValue != "" {
+			switch field.Kind() {
+			case reflect.String:
+				field.SetString(envValue)
+			case reflect.Int:
+				if intVal, err := strconv.Atoi(envValue); err == nil {
+					field.SetInt(int64(intVal))
+				}
+			case reflect.Bool:
+				if boolVal, err := strconv.ParseBool(envValue); err == nil {
+					field.SetBool(boolVal)
+				}
+			}
+		}
+	}
+}

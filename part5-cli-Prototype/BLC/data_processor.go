@@ -124,4 +124,55 @@ func (dp *DataProcessor) ProcessUserData(name, email string) (string, bool) {
 	}
 
 	return sanitizedName + " <" + sanitizedEmail + ">", true
+}package main
+
+import (
+	"regexp"
+	"strings"
+)
+
+type UserData struct {
+	Username string
+	Email    string
+	Comments string
 }
+
+var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+
+func SanitizeInput(input string) string {
+	input = strings.TrimSpace(input)
+	re := regexp.MustCompile(`[<>"'&]`)
+	return re.ReplaceAllString(input, "")
+}
+
+func ValidateUsername(username string) bool {
+	if len(username) < 3 || len(username) > 20 {
+		return false
+	}
+	validPattern := regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+	return validPattern.MatchString(username)
+}
+
+func ValidateEmail(email string) bool {
+	return emailRegex.MatchString(email)
+}
+
+func ProcessUserData(data UserData) (UserData, error) {
+	data.Username = SanitizeInput(data.Username)
+	data.Email = SanitizeInput(data.Email)
+	data.Comments = SanitizeInput(data.Comments)
+
+	if !ValidateUsername(data.Username) {
+		return data, ErrInvalidUsername
+	}
+	if !ValidateEmail(data.Email) {
+		return data, ErrInvalidEmail
+	}
+
+	return data, nil
+}
+
+var (
+	ErrInvalidUsername = errors.New("invalid username format")
+	ErrInvalidEmail    = errors.New("invalid email format")
+)

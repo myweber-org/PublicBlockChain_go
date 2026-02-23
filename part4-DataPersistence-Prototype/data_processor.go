@@ -80,4 +80,49 @@ func main() {
 	}
 
 	fmt.Printf("Successfully processed %s -> %s\n", inputFile, outputFile)
+}package main
+
+import (
+	"errors"
+	"strings"
+)
+
+type UserData struct {
+	Email    string
+	Username string
+	Age      int
+}
+
+func ValidateAndTransform(data UserData) (UserData, error) {
+	var errs []string
+
+	if data.Email == "" {
+		errs = append(errs, "email is required")
+	} else if !strings.Contains(data.Email, "@") {
+		errs = append(errs, "invalid email format")
+	}
+
+	if data.Username == "" {
+		errs = append(errs, "username is required")
+	} else if len(data.Username) < 3 {
+		errs = append(errs, "username must be at least 3 characters")
+	}
+
+	if data.Age < 0 {
+		errs = append(errs, "age cannot be negative")
+	} else if data.Age < 18 {
+		errs = append(errs, "user must be at least 18 years old")
+	}
+
+	if len(errs) > 0 {
+		return UserData{}, errors.New(strings.Join(errs, "; "))
+	}
+
+	transformed := UserData{
+		Email:    strings.ToLower(strings.TrimSpace(data.Email)),
+		Username: strings.TrimSpace(data.Username),
+		Age:      data.Age,
+	}
+
+	return transformed, nil
 }

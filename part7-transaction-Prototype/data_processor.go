@@ -565,3 +565,154 @@ func ProcessUserProfile(p UserProfile) (UserProfile, error) {
 	}
 	return TransformProfile(p), nil
 }
+package main
+
+import (
+	"encoding/csv"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+	"strings"
+)
+
+type DataRecord struct {
+	ID        int
+	Name      string
+	Value     float64
+	Timestamp string
+}
+
+func parseCSVFile(filename string) ([]DataRecord, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	reader.TrimLeadingSpace = true
+
+	var records []DataRecord
+	lineNumber := 0
+
+	for {
+		lineNumber++
+		row, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("csv read error at line %d: %w", lineNumber, err)
+		}
+
+		if len(row) != 4 {
+			return nil, fmt.Errorf("invalid column count at line %d: expected 4, got %d", lineNumber, len(row))
+		}
+
+		id, err := strconv.Atoi(strings.TrimSpace(row[0]))
+		if err != nil {
+			return nil, fmt.Errorf("invalid ID at line %d: %w", lineNumber, err)
+		}
+
+		name := strings.TrimSpace(row[1])
+		if name == "" {
+			return nil, fmt.Errorf("empty name at line %d", lineNumber)
+		}
+
+		value, err := strconv.ParseFloat(strings.TrimSpace(row[2]), 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid value at line %d: %w", lineNumber, err)
+		}
+
+		timestamp := strings.TrimSpace(row[3])
+		if timestamp == "" {
+			return nil, fmt.Errorf("empty timestamp at line %d", lineNumber)
+		}
+
+		record := DataRecord{
+			ID:        id,
+			Name:      name,
+			Value:     value,
+			Timestamp: timestamp,
+		}
+
+		records = append(records, record)
+	}
+
+	return records, nil
+}
+
+func validateRecords(records []DataRecord) error {
+	seenIDs := make(map[int]bool)
+
+	for _, record := range records {
+		if record.ID <= 0 {
+			return fmt.Errorf("invalid ID %d: must be positive", record.ID)
+		}
+
+		if seenIDs[record.ID] {
+			return fmt.Errorf("duplicate ID %d found", record.ID)
+		}
+		seenIDs[record.ID] = true
+
+		if record.Value < 0 {
+			return fmt.Errorf("negative value %f for ID %d", record.Value, record.ID)
+		}
+	}
+
+	return nil
+}
+
+func calculateStatistics(records []DataRecord) (float64, float64, int) {
+	if len(records) == 0 {
+		return 0, 0, 0
+	}
+
+	var sum float64
+	var maxValue float64
+	count := len(records)
+
+	for i, record := range records {
+		sum += record.Value
+		if i == 0 || record.Value > maxValue {
+			maxValue = record.Value
+		}
+	}
+
+	average := sum / float64(count)
+	return average, maxValue, count
+}
+
+func processDataFile(filename string) error {
+	records, err := parseCSVFile(filename)
+	if err != nil {
+		return fmt.Errorf("parsing failed: %w", err)
+	}
+
+	if err := validateRecords(records); err != nil {
+		return fmt.Errorf("validation failed: %w", err)
+	}
+
+	average, maxValue, count := calculateStatistics(records)
+
+	fmt.Printf("Data processing complete\n")
+	fmt.Printf("Records processed: %d\n", count)
+	fmt.Printf("Average value: %.2f\n", average)
+	fmt.Printf("Maximum value: %.2f\n", maxValue)
+
+	return nil
+}
+
+func main() {
+	if len(os.Args) != 2 {
+		fmt.Println("Usage: data_processor <csv_file>")
+		os.Exit(1)
+	}
+
+	filename := os.Args[1]
+	if err := processDataFile(filename); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+}

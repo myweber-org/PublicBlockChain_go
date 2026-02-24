@@ -716,3 +716,72 @@ func main() {
 		os.Exit(1)
 	}
 }
+package data
+
+import (
+	"errors"
+	"regexp"
+	"strings"
+	"time"
+)
+
+type Record struct {
+	ID        string
+	Email     string
+	Timestamp time.Time
+	Metadata  map[string]interface{}
+}
+
+var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+
+func ValidateEmail(email string) error {
+	if !emailRegex.MatchString(email) {
+		return errors.New("invalid email format")
+	}
+	return nil
+}
+
+func NormalizeString(input string) string {
+	return strings.TrimSpace(strings.ToLower(input))
+}
+
+func TransformRecord(record Record) (Record, error) {
+	if err := ValidateEmail(record.Email); err != nil {
+		return Record{}, err
+	}
+
+	normalizedEmail := NormalizeString(record.Email)
+	processedMetadata := make(map[string]interface{})
+
+	for key, value := range record.Metadata {
+		switch v := value.(type) {
+		case string:
+			processedMetadata[key] = NormalizeString(v)
+		default:
+			processedMetadata[key] = v
+		}
+	}
+
+	return Record{
+		ID:        strings.ToUpper(record.ID),
+		Email:     normalizedEmail,
+		Timestamp: record.Timestamp.UTC(),
+		Metadata:  processedMetadata,
+	}, nil
+}
+
+func BatchProcess(records []Record) ([]Record, []error) {
+	var processed []Record
+	var errs []error
+
+	for i, record := range records {
+		transformed, err := TransformRecord(record)
+		if err != nil {
+			errs = append(errs, errors.New("record " + record.ID + " at index " + string(rune(i)) + ": " + err.Error()))
+			continue
+		}
+		processed = append(processed, transformed)
+	}
+
+	return processed, errs
+}

@@ -205,4 +205,79 @@ func getEnv(key, defaultValue string) string {
 		return defaultValue
 	}
 	return value
+}package config
+
+import (
+    "fmt"
+    "os"
+    "path/filepath"
+
+    "gopkg.in/yaml.v3"
+)
+
+type DatabaseConfig struct {
+    Host     string `yaml:"host"`
+    Port     int    `yaml:"port"`
+    Username string `yaml:"username"`
+    Password string `yaml:"password"`
+    Name     string `yaml:"name"`
+}
+
+type ServerConfig struct {
+    Port         int    `yaml:"port"`
+    ReadTimeout  int    `yaml:"read_timeout"`
+    WriteTimeout int    `yaml:"write_timeout"`
+}
+
+type AppConfig struct {
+    Database DatabaseConfig `yaml:"database"`
+    Server   ServerConfig   `yaml:"server"`
+    Debug    bool           `yaml:"debug"`
+}
+
+func LoadConfig(configPath string) (*AppConfig, error) {
+    if configPath == "" {
+        configPath = "config.yaml"
+    }
+
+    absPath, err := filepath.Abs(configPath)
+    if err != nil {
+        return nil, fmt.Errorf("failed to resolve config path: %w", err)
+    }
+
+    data, err := os.ReadFile(absPath)
+    if err != nil {
+        return nil, fmt.Errorf("failed to read config file: %w", err)
+    }
+
+    var config AppConfig
+    if err := yaml.Unmarshal(data, &config); err != nil {
+        return nil, fmt.Errorf("failed to parse YAML config: %w", err)
+    }
+
+    if config.Server.Port == 0 {
+        config.Server.Port = 8080
+    }
+
+    if config.Database.Host == "" {
+        config.Database.Host = "localhost"
+    }
+
+    return &config, nil
+}
+
+func ValidateConfig(config *AppConfig) error {
+    if config.Database.Port <= 0 || config.Database.Port > 65535 {
+        return fmt.Errorf("invalid database port: %d", config.Database.Port)
+    }
+
+    if config.Server.Port <= 0 || config.Server.Port > 65535 {
+        return fmt.Errorf("invalid server port: %d", config.Server.Port)
+    }
+
+    if config.Database.Name == "" {
+        return fmt.Errorf("database name is required")
+    }
+
+    return nil
 }

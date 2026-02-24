@@ -162,4 +162,93 @@ func main() {
 	fmt.Printf("Found %d files\n", processor.GetFileCount())
 	processor.ProcessFiles(4)
 	fmt.Println("Processing completed")
+}package main
+
+import (
+	"errors"
+	"fmt"
+	"log"
+	"sync"
+	"time"
+)
+
+type DataChunk struct {
+	ID    int
+	Value string
+}
+
+type Processor struct {
+	mu      sync.RWMutex
+	results map[int]string
+	wg      sync.WaitGroup
+}
+
+func NewProcessor() *Processor {
+	return &Processor{
+		results: make(map[int]string),
+	}
+}
+
+func (p *Processor) Process(chunk DataChunk) error {
+	if chunk.Value == "" {
+		return errors.New("empty value not allowed")
+	}
+
+	p.wg.Add(1)
+	go func() {
+		defer p.wg.Done()
+
+		time.Sleep(50 * time.Millisecond)
+
+		processed := fmt.Sprintf("processed-%s", chunk.Value)
+
+		p.mu.Lock()
+		p.results[chunk.ID] = processed
+		p.mu.Unlock()
+
+		log.Printf("Chunk %d processed: %s", chunk.ID, processed)
+	}()
+
+	return nil
+}
+
+func (p *Processor) Wait() {
+	p.wg.Wait()
+}
+
+func (p *Processor) GetResults() map[int]string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	copied := make(map[int]string, len(p.results))
+	for k, v := range p.results {
+		copied[k] = v
+	}
+	return copied
+}
+
+func main() {
+	processor := NewProcessor()
+
+	chunks := []DataChunk{
+		{ID: 1, Value: "alpha"},
+		{ID: 2, Value: "beta"},
+		{ID: 3, Value: "gamma"},
+		{ID: 4, Value: ""},
+		{ID: 5, Value: "delta"},
+	}
+
+	for _, chunk := range chunks {
+		if err := processor.Process(chunk); err != nil {
+			log.Printf("Failed to process chunk %d: %v", chunk.ID, err)
+		}
+	}
+
+	processor.Wait()
+
+	results := processor.GetResults()
+	fmt.Println("Processing completed. Results:")
+	for id, value := range results {
+		fmt.Printf("  %d -> %s\n", id, value)
+	}
 }

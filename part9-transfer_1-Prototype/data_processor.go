@@ -305,3 +305,44 @@ func main() {
     fmt.Printf("Data: %v\n", sampleData)
     fmt.Printf("Moving average (window=%d): %v\n", window, averages)
 }
+package main
+
+import (
+	"regexp"
+	"strings"
+)
+
+type DataProcessor struct {
+	allowedPattern *regexp.Regexp
+}
+
+func NewDataProcessor() *DataProcessor {
+	return &DataProcessor{
+		allowedPattern: regexp.MustCompile(`^[a-zA-Z0-9\s\-_.,!?]+$`),
+	}
+}
+
+func (dp *DataProcessor) SanitizeInput(input string) (string, bool) {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		return "", false
+	}
+
+	if !dp.allowedPattern.MatchString(trimmed) {
+		return "", false
+	}
+
+	return trimmed, true
+}
+
+func (dp *DataProcessor) ProcessData(input string) (string, error) {
+	sanitized, valid := dp.SanitizeInput(input)
+	if !valid {
+		return "", ErrInvalidInput
+	}
+
+	processed := strings.ToUpper(sanitized)
+	return processed, nil
+}
+
+var ErrInvalidInput = errors.New("input contains invalid characters")

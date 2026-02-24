@@ -260,4 +260,63 @@ func main() {
 	}
 
 	server.ListenAndServe()
+}package main
+
+import (
+    "fmt"
+    "runtime"
+    "time"
+)
+
+type SystemMetrics struct {
+    Timestamp   time.Time
+    CPUPercent  float64
+    MemAlloc    uint64
+    MemTotal    uint64
+    Goroutines  int
+}
+
+func collectMetrics() SystemMetrics {
+    var m runtime.MemStats
+    runtime.ReadMemStats(&m)
+
+    return SystemMetrics{
+        Timestamp:  time.Now(),
+        CPUPercent: getCPUUsage(),
+        MemAlloc:   m.Alloc,
+        MemTotal:   m.Sys,
+        Goroutines: runtime.NumGoroutine(),
+    }
+}
+
+func getCPUUsage() float64 {
+    start := time.Now()
+    startCPU := runtime.NumCPU()
+    time.Sleep(100 * time.Millisecond)
+    elapsed := time.Since(start)
+    usedCPU := runtime.NumCPU() - startCPU
+    
+    return float64(usedCPU) / float64(runtime.NumCPU()) * 100
+}
+
+func printMetrics(metrics SystemMetrics) {
+    fmt.Printf("Timestamp: %s\n", metrics.Timestamp.Format(time.RFC3339))
+    fmt.Printf("CPU Usage: %.2f%%\n", metrics.CPUPercent)
+    fmt.Printf("Memory Allocated: %d bytes\n", metrics.MemAlloc)
+    fmt.Printf("Total Memory: %d bytes\n", metrics.MemTotal)
+    fmt.Printf("Active Goroutines: %d\n", metrics.Goroutines)
+    fmt.Println("---")
+}
+
+func main() {
+    ticker := time.NewTicker(5 * time.Second)
+    defer ticker.Stop()
+
+    for {
+        select {
+        case <-ticker.C:
+            metrics := collectMetrics()
+            printMetrics(metrics)
+        }
+    }
 }

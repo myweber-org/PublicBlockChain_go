@@ -244,3 +244,90 @@ func main() {
 			rec.ID, rec.Value, rec.Tags)
 	}
 }
+package main
+
+import (
+	"encoding/csv"
+	"errors"
+	"io"
+	"os"
+	"strconv"
+)
+
+type DataRecord struct {
+	ID    int
+	Name  string
+	Value float64
+}
+
+func ReadCSVFile(filename string) ([]DataRecord, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	records := []DataRecord{}
+	lineNum := 0
+
+	for {
+		line, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		lineNum++
+		if lineNum == 1 {
+			continue
+		}
+
+		if len(line) != 3 {
+			return nil, errors.New("invalid number of columns")
+		}
+
+		id, err := strconv.Atoi(line[0])
+		if err != nil {
+			return nil, errors.New("invalid ID format")
+		}
+
+		name := line[1]
+		if name == "" {
+			return nil, errors.New("name cannot be empty")
+		}
+
+		value, err := strconv.ParseFloat(line[2], 64)
+		if err != nil {
+			return nil, errors.New("invalid value format")
+		}
+
+		record := DataRecord{
+			ID:    id,
+			Name:  name,
+			Value: value,
+		}
+		records = append(records, record)
+	}
+
+	return records, nil
+}
+
+func ValidateRecords(records []DataRecord) error {
+	seenIDs := make(map[int]bool)
+	for _, record := range records {
+		if record.ID <= 0 {
+			return errors.New("ID must be positive")
+		}
+		if seenIDs[record.ID] {
+			return errors.New("duplicate ID found")
+		}
+		seenIDs[record.ID] = true
+		if record.Value < 0 {
+			return errors.New("value cannot be negative")
+		}
+	}
+	return nil
+}

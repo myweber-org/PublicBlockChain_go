@@ -1,61 +1,69 @@
 package main
 
 import (
-    "fmt"
-    "log"
     "net/http"
     "time"
+
+    "github.com/prometheus/client_golang/prometheus"
+    "github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-type Metrics struct {
-    RequestCount    int
-    TotalLatency    time.Duration
-    ErrorCount      int
+var (
+    httpRequestDuration = prometheus.NewHistogramVec(
+        prometheus.HistogramOpts{
+            Name:    "http_request_duration_seconds",
+            Help:    "Duration of HTTP requests in seconds",
+            Buckets: prometheus.DefBuckets,
+        },
+        []string{"method", "path", "status"},
+    )
+
+    httpRequestTotal = prometheus.NewCounterVec(
+        prometheus.CounterOpts{
+            Name: "http_requests_total",
+            Help: "Total number of HTTP requests",
+        },
+        []string{"method", "path", "status"},
+    )
+)
+
+func init() {
+    prometheus.MustRegister(httpRequestDuration)
+    prometheus.MustRegister(httpRequestTotal)
 }
 
-var metrics = Metrics{}
+func metricsMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        start := time.Now()
+        rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+        
+        next.ServeHTTP(rw, r)
 
-func handler(w http.ResponseWriter, r *http.Request) {
-    start := time.Now()
-    
-    defer func() {
-        latency := time.Since(start)
-        metrics.RequestCount++
-        metrics.TotalLatency += latency
-        
-        if r.URL.Path == "/error" {
-            metrics.ErrorCount++
-            w.WriteHeader(http.StatusInternalServerError)
-            fmt.Fprintf(w, "Error occurred")
-            return
-        }
-        
-        fmt.Fprintf(w, "Request processed in %v", latency)
-    }()
-    
-    time.Sleep(10 * time.Millisecond)
+        duration := time.Since(start).Seconds()
+        status := http.StatusText(rw.statusCode)
+
+        httpRequestDuration.WithLabelValues(r.Method, r.URL.Path, status).Observe(duration)
+        httpRequestTotal.WithLabelValues(r.Method, r.URL.Path, status).Inc()
+    })
 }
 
-func metricsHandler(w http.ResponseWriter, r *http.Request) {
-    avgLatency := time.Duration(0)
-    if metrics.RequestCount > 0 {
-        avgLatency = metrics.TotalLatency / time.Duration(metrics.RequestCount)
-    }
-    
-    errorRate := 0.0
-    if metrics.RequestCount > 0 {
-        errorRate = float64(metrics.ErrorCount) / float64(metrics.RequestCount) * 100
-    }
-    
-    fmt.Fprintf(w, "Requests: %d\n", metrics.RequestCount)
-    fmt.Fprintf(w, "Average Latency: %v\n", avgLatency)
-    fmt.Fprintf(w, "Error Rate: %.2f%%\n", errorRate)
+type responseWriter struct {
+    http.ResponseWriter
+    statusCode int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+    rw.statusCode = code
+    rw.ResponseWriter.WriteHeader(code)
 }
 
 func main() {
-    http.HandleFunc("/", handler)
-    http.HandleFunc("/metrics", metricsHandler)
-    
-    log.Println("Server starting on :8080")
-    log.Fatal(http.ListenAndServe(":8080", nil))
+    mux := http.NewServeMux()
+    mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+        w.Write([]byte("Hello, World!"))
+    })
+    mux.Handle("/metrics", promhttp.Handler())
+
+    handler := metricsMiddleware(mux)
+    http.ListenAndServe(":8080", handler)
 }

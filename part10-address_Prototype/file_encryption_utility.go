@@ -5,6 +5,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -18,39 +19,48 @@ func deriveKey(passphrase string, salt []byte) []byte {
 	return hash.Sum(nil)
 }
 
-func encryptData(plaintext []byte, passphrase string) ([]byte, error) {
+func encrypt(plaintext []byte, passphrase string) (string, error) {
 	salt := make([]byte, 16)
 	if _, err := rand.Read(salt); err != nil {
-		return nil, err
+		return "", err
 	}
 
 	key := deriveKey(passphrase, salt)
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
-		return nil, err
+		return "", err
 	}
 
 	ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
-	return append(salt, ciphertext...), nil
+	result := make([]byte, len(salt)+len(ciphertext))
+	copy(result[:16], salt)
+	copy(result[16:], ciphertext)
+
+	return base64.StdEncoding.EncodeToString(result), nil
 }
 
-func decryptData(ciphertext []byte, passphrase string) ([]byte, error) {
-	if len(ciphertext) < 16 {
-		return nil, errors.New("ciphertext too short")
+func decrypt(encodedCiphertext string, passphrase string) ([]byte, error) {
+	data, err := base64.StdEncoding.DecodeString(encodedCiphertext)
+	if err != nil {
+		return nil, err
 	}
 
-	salt := ciphertext[:16]
-	ciphertext = ciphertext[16:]
+	if len(data) < 16 {
+		return nil, errors.New("invalid ciphertext length")
+	}
+
+	salt := data[:16]
+	ciphertext := data[16:]
 
 	key := deriveKey(passphrase, salt)
 	block, err := aes.NewCipher(key)
@@ -75,17 +85,17 @@ func decryptData(ciphertext []byte, passphrase string) ([]byte, error) {
 func main() {
 	if len(os.Args) < 4 {
 		fmt.Println("Usage: go run file_encryption_utility.go <encrypt|decrypt> <input_file> <output_file>")
-		fmt.Println("Passphrase will be read from environment variable ENCRYPTION_KEY")
+		fmt.Println("Set environment variable ENCRYPTION_PASSPHRASE for the encryption key")
 		os.Exit(1)
 	}
 
-	action := os.Args[1]
+	operation := os.Args[1]
 	inputFile := os.Args[2]
 	outputFile := os.Args[3]
 
-	passphrase := os.Getenv("ENCRYPTION_KEY")
+	passphrase := os.Getenv("ENCRYPTION_PASSPHRASE")
 	if passphrase == "" {
-		fmt.Println("Error: ENCRYPTION_KEY environment variable not set")
+		fmt.Println("Error: ENCRYPTION_PASSPHRASE environment variable not set")
 		os.Exit(1)
 	}
 
@@ -95,26 +105,35 @@ func main() {
 		os.Exit(1)
 	}
 
-	var outputData []byte
-	switch action {
+	switch operation {
 	case "encrypt":
-		outputData, err = encryptData(inputData, passphrase)
+		encrypted, err := encrypt(inputData, passphrase)
+		if err != nil {
+			fmt.Printf("Encryption error: %v\n", err)
+			os.Exit(1)
+		}
+		err = os.WriteFile(outputFile, []byte(encrypted), 0644)
+		if err != nil {
+			fmt.Printf("Error writing output file: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("File encrypted successfully")
+
 	case "decrypt":
-		outputData, err = decryptData(inputData, passphrase)
+		decrypted, err := decrypt(string(inputData), passphrase)
+		if err != nil {
+			fmt.Printf("Decryption error: %v\n", err)
+			os.Exit(1)
+		}
+		err = os.WriteFile(outputFile, decrypted, 0644)
+		if err != nil {
+			fmt.Printf("Error writing output file: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("File decrypted successfully")
+
 	default:
-		fmt.Println("Error: action must be 'encrypt' or 'decrypt'")
+		fmt.Println("Invalid operation. Use 'encrypt' or 'decrypt'")
 		os.Exit(1)
 	}
-
-	if err != nil {
-		fmt.Printf("Error during %s: %v\n", action, err)
-		os.Exit(1)
-	}
-
-	if err := os.WriteFile(outputFile, outputData, 0644); err != nil {
-		fmt.Printf("Error writing output file: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Successfully completed %s operation\n", action)
 }

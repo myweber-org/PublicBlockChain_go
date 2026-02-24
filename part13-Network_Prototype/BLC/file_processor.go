@@ -273,4 +273,133 @@ func main() {
 	} else {
 		fmt.Println("Data successfully saved to output.txt")
 	}
+}package main
+
+import (
+	"bufio"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+)
+
+type FileProcessor struct {
+	mu          sync.RWMutex
+	processed   map[string]bool
+	maxWorkers  int
+	results     chan string
+	errors      chan error
+}
+
+func NewFileProcessor(workers int) *FileProcessor {
+	return &FileProcessor{
+		processed:  make(map[string]bool),
+		maxWorkers: workers,
+		results:    make(chan string, 100),
+		errors:     make(chan error, 100),
+	}
+}
+
+func (fp *FileProcessor) ProcessFile(path string) error {
+	fp.mu.Lock()
+	if fp.processed[path] {
+		fp.mu.Unlock()
+		return errors.New("file already processed")
+	}
+	fp.processed[path] = true
+	fp.mu.Unlock()
+
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	lineCount := 0
+	for scanner.Scan() {
+		lineCount++
+		line := scanner.Text()
+		if len(line) > 0 {
+			fp.results <- fmt.Sprintf("%s:%d:%s", filepath.Base(path), lineCount, line[:min(50, len(line))])
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("scanner error: %w", err)
+	}
+
+	return nil
+}
+
+func (fp *FileProcessor) Worker(fileQueue <-chan string, wg *sync.WaitGroup) {
+	defer wg.Done()
+	for path := range fileQueue {
+		if err := fp.ProcessFile(path); err != nil {
+			fp.errors <- err
+		}
+	}
+}
+
+func (fp *FileProcessor) Run(files []string) {
+	fileQueue := make(chan string, len(files))
+	var wg sync.WaitGroup
+
+	for i := 0; i < fp.maxWorkers; i++ {
+		wg.Add(1)
+		go fp.Worker(fileQueue, &wg)
+	}
+
+	for _, file := range files {
+		fileQueue <- file
+	}
+	close(fileQueue)
+
+	wg.Wait()
+	close(fp.results)
+	close(fp.errors)
+}
+
+func (fp *FileProcessor) GetResults() []string {
+	var output []string
+	for result := range fp.results {
+		output = append(output, result)
+	}
+	return output
+}
+
+func (fp *FileProcessor) GetErrors() []error {
+	var errs []error
+	for err := range fp.errors {
+		errs = append(errs, err)
+	}
+	return errs
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func main() {
+	processor := NewFileProcessor(4)
+	files := []string{"data1.txt", "data2.txt", "data3.txt"}
+
+	go func() {
+		processor.Run(files)
+	}()
+
+	results := processor.GetResults()
+	errors := processor.GetErrors()
+
+	fmt.Println("Processing completed")
+	fmt.Printf("Results: %d\n", len(results))
+	fmt.Printf("Errors: %d\n", len(errors))
+
+	for _, err := range errors {
+		fmt.Printf("Error: %v\n", err)
+	}
 }

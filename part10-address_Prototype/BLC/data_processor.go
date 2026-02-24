@@ -265,3 +265,43 @@ func main() {
 	}
 	fmt.Printf("Parsed user: %+v\n", user)
 }
+package main
+
+import (
+	"regexp"
+	"strings"
+)
+
+type DataProcessor struct {
+	emailRegex *regexp.Regexp
+}
+
+func NewDataProcessor() *DataProcessor {
+	return &DataProcessor{
+		emailRegex: regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`),
+	}
+}
+
+func (dp *DataProcessor) SanitizeInput(input string) string {
+	trimmed := strings.TrimSpace(input)
+	return strings.ToLower(trimmed)
+}
+
+func (dp *DataProcessor) ValidateEmail(email string) bool {
+	return dp.emailRegex.MatchString(email)
+}
+
+func (dp *DataProcessor) ProcessUserData(name, email string) (bool, string) {
+	sanitizedName := dp.SanitizeInput(name)
+	sanitizedEmail := dp.SanitizeInput(email)
+
+	if sanitizedName == "" {
+		return false, "Name cannot be empty"
+	}
+
+	if !dp.ValidateEmail(sanitizedEmail) {
+		return false, "Invalid email format"
+	}
+
+	return true, "Data processed successfully"
+}

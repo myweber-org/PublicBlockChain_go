@@ -357,4 +357,53 @@ func LoadConfig(configPath string) (*AppConfig, error) {
 func overrideFromEnv(config interface{}) {
     // Environment variable override logic would be implemented here
     // This is a placeholder for the actual implementation
+}package config
+
+import (
+	"io/ioutil"
+	"log"
+
+	"gopkg.in/yaml.v2"
+)
+
+type AppConfig struct {
+	Server struct {
+		Port    int    `yaml:"port"`
+		Host    string `yaml:"host"`
+		Timeout int    `yaml:"timeout"`
+	} `yaml:"server"`
+	Database struct {
+		Host     string `yaml:"host"`
+		Port     int    `yaml:"port"`
+		Username string `yaml:"username"`
+		Password string `yaml:"password"`
+		Name     string `yaml:"name"`
+	} `yaml:"database"`
+	Logging struct {
+		Level  string `yaml:"level"`
+		Output string `yaml:"output"`
+	} `yaml:"logging"`
+}
+
+func LoadConfig(filename string) (*AppConfig, error) {
+	data, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	var config AppConfig
+	err = yaml.Unmarshal(data, &config)
+	if err != nil {
+		return nil, err
+	}
+
+	return &config, nil
+}
+
+func LoadConfigOrExit(filename string) *AppConfig {
+	config, err := LoadConfig(filename)
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
+	return config
 }

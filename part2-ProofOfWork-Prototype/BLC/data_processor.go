@@ -1,42 +1,41 @@
+
 package main
 
 import (
-	"encoding/json"
-	"fmt"
-	"log"
+	"errors"
+	"regexp"
+	"strings"
 )
 
-// ValidateJSON checks if the provided byte slice contains valid JSON.
-func ValidateJSON(data []byte) (bool, error) {
-	var js interface{}
-	err := json.Unmarshal(data, &js)
-	if err != nil {
-		return false, fmt.Errorf("invalid JSON: %w", err)
-	}
-	return true, nil
+type UserProfile struct {
+	Email    string
+	Username string
+	Age      int
 }
 
-// ParseUserData attempts to parse JSON data into a map.
-func ParseUserData(jsonData []byte) (map[string]interface{}, error) {
-	valid, err := ValidateJSON(jsonData)
-	if !valid {
-		return nil, err
-	}
+var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 
-	var result map[string]interface{}
-	if err := json.Unmarshal(jsonData, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse JSON: %w", err)
+func ValidateProfile(p UserProfile) error {
+	if !emailRegex.MatchString(p.Email) {
+		return errors.New("invalid email format")
 	}
-	return result, nil
+	if strings.TrimSpace(p.Username) == "" {
+		return errors.New("username cannot be empty")
+	}
+	if p.Age < 0 || p.Age > 150 {
+		return errors.New("age must be between 0 and 150")
+	}
+	return nil
 }
 
-func main() {
-	sampleJSON := []byte(`{"name": "Alice", "age": 30, "active": true}`)
+func TransformUsername(p *UserProfile) {
+	p.Username = strings.ToLower(strings.TrimSpace(p.Username))
+}
 
-	parsed, err := ParseUserData(sampleJSON)
-	if err != nil {
-		log.Fatalf("Error: %v", err)
+func ProcessUserProfile(p UserProfile) (UserProfile, error) {
+	if err := ValidateProfile(p); err != nil {
+		return p, err
 	}
-
-	fmt.Printf("Parsed data: %v\n", parsed)
+	TransformUsername(&p)
+	return p, nil
 }

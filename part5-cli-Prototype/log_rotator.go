@@ -346,3 +346,125 @@ func main() {
 
 	fmt.Println("Log rotation test completed")
 }
+package main
+
+import (
+    "compress/gzip"
+    "fmt"
+    "io"
+    "os"
+    "path/filepath"
+    "time"
+)
+
+const (
+    maxFileSize = 10 * 1024 * 1024 // 10MB
+    maxBackups  = 5
+)
+
+type RotatingLog struct {
+    currentFile *os.File
+    filePath    string
+    bytesWritten int64
+}
+
+func NewRotatingLog(path string) (*RotatingLog, error) {
+    rl := &RotatingLog{filePath: path}
+    if err := rl.openCurrentFile(); err != nil {
+        return nil, err
+    }
+    return rl, nil
+}
+
+func (rl *RotatingLog) Write(p []byte) (int, error) {
+    if rl.bytesWritten+int64(len(p)) > maxFileSize {
+        if err := rl.rotate(); err != nil {
+            return 0, err
+        }
+    }
+
+    n, err := rl.currentFile.Write(p)
+    if err == nil {
+        rl.bytesWritten += int64(n)
+    }
+    return n, err
+}
+
+func (rl *RotatingLog) rotate() error {
+    if err := rl.currentFile.Close(); err != nil {
+        return err
+    }
+
+    timestamp := time.Now().Format("20060102_150405")
+    archivedPath := fmt.Sprintf("%s.%s.gz", rl.filePath, timestamp)
+
+    if err := compressFile(rl.filePath, archivedPath); err != nil {
+        return err
+    }
+
+    if err := os.Remove(rl.filePath); err != nil {
+        return err
+    }
+
+    cleanupOldBackups(rl.filePath)
+    return rl.openCurrentFile()
+}
+
+func compressFile(src, dst string) error {
+    in, err := os.Open(src)
+    if err != nil {
+        return err
+    }
+    defer in.Close()
+
+    out, err := os.Create(dst)
+    if err != nil {
+        return err
+    }
+    defer out.Close()
+
+    gz := gzip.NewWriter(out)
+    defer gz.Close()
+
+    _, err = io.Copy(gz, in)
+    return err
+}
+
+func cleanupOldBackups(basePath string) {
+    pattern := basePath + ".*.gz"
+    matches, err := filepath.Glob(pattern)
+    if err != nil {
+        return
+    }
+
+    if len(matches) > maxBackups {
+        toDelete := matches[:len(matches)-maxBackups]
+        for _, f := range toDelete {
+            os.Remove(f)
+        }
+    }
+}
+
+func (rl *RotatingLog) openCurrentFile() error {
+    file, err := os.OpenFile(rl.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        return err
+    }
+
+    info, err := file.Stat()
+    if err != nil {
+        file.Close()
+        return err
+    }
+
+    rl.currentFile = file
+    rl.bytesWritten = info.Size()
+    return nil
+}
+
+func (rl *RotatingLog) Close() error {
+    if rl.currentFile != nil {
+        return rl.currentFile.Close()
+    }
+    return nil
+}

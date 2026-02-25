@@ -1076,4 +1076,138 @@ func (rl *RotatingLogger) Close() error {
 		return rl.currentFile.Close()
 	}
 	return nil
+}package main
+
+import (
+    "fmt"
+    "os"
+    "path/filepath"
+    "sync"
+    "time"
+)
+
+type Rotator struct {
+    filePath    string
+    maxSize     int64
+    maxAge      time.Duration
+    currentFile *os.File
+    currentSize int64
+    mu          sync.Mutex
+}
+
+func NewRotator(filePath string, maxSize int64, maxAge time.Duration) (*Rotator, error) {
+    r := &Rotator{
+        filePath: filePath,
+        maxSize:  maxSize,
+        maxAge:   maxAge,
+    }
+
+    if err := r.openCurrentFile(); err != nil {
+        return nil, err
+    }
+
+    go r.ageMonitor()
+    return r, nil
+}
+
+func (r *Rotator) openCurrentFile() error {
+    if err := os.MkdirAll(filepath.Dir(r.filePath), 0755); err != nil {
+        return err
+    }
+
+    file, err := os.OpenFile(r.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        return err
+    }
+
+    info, err := file.Stat()
+    if err != nil {
+        file.Close()
+        return err
+    }
+
+    r.currentFile = file
+    r.currentSize = info.Size()
+    return nil
+}
+
+func (r *Rotator) Write(p []byte) (int, error) {
+    r.mu.Lock()
+    defer r.mu.Unlock()
+
+    if r.currentSize+int64(len(p)) > r.maxSize {
+        if err := r.rotate(); err != nil {
+            return 0, err
+        }
+    }
+
+    n, err := r.currentFile.Write(p)
+    if err == nil {
+        r.currentSize += int64(n)
+    }
+    return n, err
+}
+
+func (r *Rotator) rotate() error {
+    if r.currentFile != nil {
+        r.currentFile.Close()
+    }
+
+    timestamp := time.Now().Format("20060102_150405")
+    rotatedPath := fmt.Sprintf("%s.%s", r.filePath, timestamp)
+    if err := os.Rename(r.filePath, rotatedPath); err != nil {
+        return err
+    }
+
+    if err := r.openCurrentFile(); err != nil {
+        return err
+    }
+
+    r.cleanupOldFiles()
+    return nil
+}
+
+func (r *Rotator) ageMonitor() {
+    ticker := time.NewTicker(time.Hour)
+    defer ticker.Stop()
+
+    for range ticker.C {
+        r.mu.Lock()
+        info, err := os.Stat(r.filePath)
+        if err == nil && time.Since(info.ModTime()) > r.maxAge {
+            r.rotate()
+        }
+        r.mu.Unlock()
+    }
+}
+
+func (r *Rotator) cleanupOldFiles() {
+    dir := filepath.Dir(r.filePath)
+    base := filepath.Base(r.filePath)
+
+    files, err := os.ReadDir(dir)
+    if err != nil {
+        return
+    }
+
+    cutoff := time.Now().Add(-r.maxAge)
+    for _, file := range files {
+        if info, err := file.Info(); err == nil {
+            if info.ModTime().Before(cutoff) && filepath.Ext(file.Name()) != "" {
+                if matched, _ := filepath.Match(base+".*", file.Name()); matched {
+                    os.Remove(filepath.Join(dir, file.Name()))
+                }
+            }
+        }
+    }
+}
+
+func (r *Rotator) Close() error {
+    r.mu.Lock()
+    defer r.mu.Unlock()
+
+    if r.currentFile != nil {
+        return r.currentFile.Close()
+    }
+    return nil
 }

@@ -10,7 +10,7 @@ type contextKey string
 
 const userIDKey contextKey = "userID"
 
-func AuthMiddleware(next http.Handler) http.Handler {
+func Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
@@ -24,8 +24,8 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		tokenString := parts[1]
-		userID, err := validateToken(tokenString)
+		token := parts[1]
+		userID, err := validateToken(token)
 		if err != nil {
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
@@ -36,18 +36,16 @@ func AuthMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func validateToken(tokenString string) (string, error) {
-	// Simplified token validation
-	// In production, use a proper JWT library
-	if tokenString == "valid_token_example" {
-		return "user123", nil
-	}
-	return "", http.ErrAbortHandler
+func GetUserID(ctx context.Context) (string, bool) {
+	userID, ok := ctx.Value(userIDKey).(string)
+	return userID, ok
 }
 
-func GetUserID(ctx context.Context) string {
-	if userID, ok := ctx.Value(userIDKey).(string); ok {
-		return userID
+func validateToken(token string) (string, error) {
+	// Simplified token validation - in production use proper JWT library
+	if token == "" || len(token) < 10 {
+		return "", http.ErrAbortHandler
 	}
-	return ""
+	// Mock validation returning user ID
+	return "user_" + token[:8], nil
 }

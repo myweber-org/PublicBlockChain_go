@@ -154,3 +154,137 @@ func main() {
 	fmt.Printf("\nProcessing completed in %v\n", elapsed)
 	fmt.Printf("Total files processed: %d\n", len(stats))
 }
+package main
+
+import (
+	"bufio"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+)
+
+type FileProcessor struct {
+	workers    int
+	batchSize  int
+	resultChan chan string
+	errorChan  chan error
+	wg         sync.WaitGroup
+}
+
+func NewFileProcessor(workers, batchSize int) *FileProcessor {
+	return &FileProcessor{
+		workers:    workers,
+		batchSize:  batchSize,
+		resultChan: make(chan string, 100),
+		errorChan:  make(chan error, 100),
+	}
+}
+
+func (fp *FileProcessor) ProcessDirectory(dirPath string) ([]string, []error) {
+	var results []string
+	var errs []error
+
+	files, err := os.ReadDir(dirPath)
+	if err != nil {
+		return nil, []error{err}
+	}
+
+	fp.wg.Add(fp.workers)
+	for i := 0; i < fp.workers; i++ {
+		go fp.worker(files, dirPath)
+	}
+
+	go func() {
+		fp.wg.Wait()
+		close(fp.resultChan)
+		close(fp.errorChan)
+	}()
+
+	for result := range fp.resultChan {
+		results = append(results, result)
+	}
+
+	for err := range fp.errorChan {
+		errs = append(errs, err)
+	}
+
+	return results, errs
+}
+
+func (fp *FileProcessor) worker(files []os.DirEntry, dirPath string) {
+	defer fp.wg.Done()
+
+	for i := 0; i < len(files); i += fp.batchSize {
+		end := i + fp.batchSize
+		if end > len(files) {
+			end = len(files)
+		}
+
+		batch := files[i:end]
+		for _, file := range batch {
+			if file.IsDir() {
+				continue
+			}
+
+			fullPath := filepath.Join(dirPath, file.Name())
+			result, err := fp.processFile(fullPath)
+			if err != nil {
+				fp.errorChan <- fmt.Errorf("failed to process %s: %w", fullPath, err)
+				continue
+			}
+
+			fp.resultChan <- result
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func (fp *FileProcessor) processFile(filePath string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	lineCount := 0
+	for scanner.Scan() {
+		lineCount++
+	}
+
+	if err := scanner.Err(); err != nil {
+		return "", err
+	}
+
+	if lineCount == 0 {
+		return "", errors.New("empty file")
+	}
+
+	return fmt.Sprintf("Processed %s: %d lines", filepath.Base(filePath), lineCount), nil
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: file_processor <directory>")
+		os.Exit(1)
+	}
+
+	processor := NewFileProcessor(4, 10)
+	results, errs := processor.ProcessDirectory(os.Args[1])
+
+	fmt.Println("Processing results:")
+	for _, result := range results {
+		fmt.Println(result)
+	}
+
+	if len(errs) > 0 {
+		fmt.Println("\nErrors encountered:")
+		for _, err := range errs {
+			fmt.Println(err)
+		}
+	}
+}

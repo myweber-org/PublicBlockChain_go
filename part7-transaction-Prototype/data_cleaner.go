@@ -88,3 +88,134 @@ func main() {
     fmt.Printf("Original: %v\n", data)
     fmt.Printf("Cleaned: %v\n", cleaned)
 }
+package main
+
+import (
+	"encoding/csv"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+)
+
+type DataRecord struct {
+	ID      string
+	Name    string
+	Email   string
+	Valid   bool
+	Dupe    bool
+}
+
+func readCSV(filename string) ([]DataRecord, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	records := []DataRecord{}
+	header := true
+
+	for {
+		row, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if header {
+			header = false
+			continue
+		}
+
+		record := DataRecord{
+			ID:    strings.TrimSpace(row[0]),
+			Name:  strings.TrimSpace(row[1]),
+			Email: strings.TrimSpace(row[2]),
+		}
+		records = append(records, record)
+	}
+	return records, nil
+}
+
+func validateRecords(records []DataRecord) []DataRecord {
+	for i := range records {
+		records[i].Valid = len(records[i].Email) > 0 && strings.Contains(records[i].Email, "@")
+	}
+	return records
+}
+
+func deduplicateRecords(records []DataRecord) []DataRecord {
+	seen := make(map[string]bool)
+	for i := range records {
+		key := records[i].Email
+		if seen[key] {
+			records[i].Dupe = true
+		} else {
+			seen[key] = true
+			records[i].Dupe = false
+		}
+	}
+	return records
+}
+
+func writeCleanCSV(filename string, records []DataRecord) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	header := []string{"ID", "Name", "Email", "Valid", "Duplicate"}
+	if err := writer.Write(header); err != nil {
+		return err
+	}
+
+	for _, record := range records {
+		if record.Valid && !record.Dupe {
+			row := []string{
+				record.ID,
+				record.Name,
+				record.Email,
+				fmt.Sprintf("%t", record.Valid),
+				fmt.Sprintf("%t", record.Dupe),
+			}
+			if err := writer.Write(row); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func main() {
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: go run data_cleaner.go <input.csv> <output.csv>")
+		os.Exit(1)
+	}
+
+	inputFile := os.Args[1]
+	outputFile := os.Args[2]
+
+	records, err := readCSV(inputFile)
+	if err != nil {
+		fmt.Printf("Error reading CSV: %v\n", err)
+		os.Exit(1)
+	}
+
+	records = validateRecords(records)
+	records = deduplicateRecords(records)
+
+	err = writeCleanCSV(outputFile, records)
+	if err != nil {
+		fmt.Printf("Error writing CSV: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Cleaned data written to %s\n", outputFile)
+}

@@ -126,3 +126,27 @@ func ValidateAndTransform(data UserData) (UserData, error) {
 
 	return transformed, nil
 }
+package main
+
+import (
+	"regexp"
+	"strings"
+)
+
+func CleanInput(input string) string {
+	processed := strings.TrimSpace(input)
+	processed = strings.ToLower(processed)
+	re := regexp.MustCompile(`\s+`)
+	processed = re.ReplaceAllString(processed, " ")
+	return processed
+}
+
+func NormalizeWhitespace(text string) string {
+	re := regexp.MustCompile(`\s+`)
+	return re.ReplaceAllString(strings.TrimSpace(text), " ")
+}
+
+func RemoveSpecialChars(input string) string {
+	re := regexp.MustCompile(`[^a-zA-Z0-9\s]`)
+	return re.ReplaceAllString(input, "")
+}

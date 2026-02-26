@@ -233,4 +233,108 @@ func WriteJSONFile(filename string, v interface{}) error {
 func FileExists(filename string) bool {
 	_, err := os.Stat(filename)
 	return !os.IsNotExist(err)
+}package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+)
+
+type FileStats struct {
+	Path     string
+	Size     int64
+	Lines    int
+	Modified time.Time
+}
+
+func processFile(path string, results chan<- FileStats, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	file, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	stat, err := file.Stat()
+	if err != nil {
+		return
+	}
+
+	scanner := bufio.NewScanner(file)
+	lineCount := 0
+	for scanner.Scan() {
+		lineCount++
+	}
+
+	results <- FileStats{
+		Path:     path,
+		Size:     stat.Size(),
+		Lines:    lineCount,
+		Modified: stat.ModTime(),
+	}
+}
+
+func collectFiles(dir string, patterns []string) ([]string, error) {
+	var files []string
+	for _, pattern := range patterns {
+		matches, err := filepath.Glob(filepath.Join(dir, pattern))
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, matches...)
+	}
+	return files, nil
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: file_processor <directory>")
+		return
+	}
+
+	dir := os.Args[1]
+	patterns := []string{"*.txt", "*.go", "*.md"}
+
+	files, err := collectFiles(dir, patterns)
+	if err != nil {
+		fmt.Printf("Error collecting files: %v\n", err)
+		return
+	}
+
+	results := make(chan FileStats, len(files))
+	var wg sync.WaitGroup
+
+	for _, file := range files {
+		wg.Add(1)
+		go processFile(file, results, &wg)
+	}
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	totalSize := int64(0)
+	totalLines := 0
+	fileCount := 0
+
+	for stats := range results {
+		fmt.Printf("File: %s\n", stats.Path)
+		fmt.Printf("  Size: %d bytes\n", stats.Size)
+		fmt.Printf("  Lines: %d\n", stats.Lines)
+		fmt.Printf("  Modified: %s\n\n", stats.Modified.Format(time.RFC3339))
+
+		totalSize += stats.Size
+		totalLines += stats.Lines
+		fileCount++
+	}
+
+	fmt.Printf("Processed %d files\n", fileCount)
+	fmt.Printf("Total size: %d bytes\n", totalSize)
+	fmt.Printf("Total lines: %d\n", totalLines)
 }

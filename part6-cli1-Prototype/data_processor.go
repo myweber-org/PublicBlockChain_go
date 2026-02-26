@@ -1,130 +1,46 @@
-
-package main
-
-import (
-	"encoding/csv"
-	"fmt"
-	"io"
-	"os"
-	"strings"
-)
-
-type DataRecord struct {
-	ID      string
-	Name    string
-	Email   string
-	Active  string
-}
-
-func ProcessCSVFile(filename string) ([]DataRecord, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open file: %w", err)
-	}
-	defer file.Close()
-
-	reader := csv.NewReader(file)
-	reader.TrimLeadingSpace = true
-
-	var records []DataRecord
-	headerSkipped := false
-
-	for {
-		row, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("csv read error: %w", err)
-		}
-
-		if !headerSkipped {
-			headerSkipped = true
-			continue
-		}
-
-		if len(row) < 4 {
-			continue
-		}
-
-		record := DataRecord{
-			ID:     strings.TrimSpace(row[0]),
-			Name:   strings.TrimSpace(row[1]),
-			Email:  strings.TrimSpace(row[2]),
-			Active: strings.TrimSpace(row[3]),
-		}
-
-		if isValidRecord(record) {
-			records = append(records, record)
-		}
-	}
-
-	return records, nil
-}
-
-func isValidRecord(record DataRecord) bool {
-	if record.ID == "" || record.Name == "" {
-		return false
-	}
-	if !strings.Contains(record.Email, "@") {
-		return false
-	}
-	return record.Active == "true" || record.Active == "false"
-}
-
-func FilterActiveRecords(records []DataRecord) []DataRecord {
-	var active []DataRecord
-	for _, record := range records {
-		if record.Active == "true" {
-			active = append(active, record)
-		}
-	}
-	return active
-}
-
-func GenerateReport(records []DataRecord) {
-	fmt.Printf("Total records processed: %d\n", len(records))
-	active := FilterActiveRecords(records)
-	fmt.Printf("Active records: %d\n", len(active))
-	fmt.Printf("Inactive records: %d\n", len(records)-len(active))
-}
 package main
 
 import (
 	"errors"
+	"regexp"
 	"strings"
-	"unicode"
 )
 
-func ValidateUsername(username string) error {
-	if len(username) < 3 || len(username) > 20 {
-		return errors.New("username must be between 3 and 20 characters")
-	}
+type UserData struct {
+	Email    string
+	Username string
+	Age      int
+}
 
-	for _, r := range username {
-		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' && r != '-' {
-			return errors.New("username can only contain letters, digits, underscores, and hyphens")
-		}
+var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+
+func ValidateUserData(data UserData) error {
+	if strings.TrimSpace(data.Email) == "" {
+		return errors.New("email cannot be empty")
+	}
+	if !emailRegex.MatchString(data.Email) {
+		return errors.New("invalid email format")
+	}
+	if len(strings.TrimSpace(data.Username)) < 3 {
+		return errors.New("username must be at least 3 characters")
+	}
+	if data.Age < 0 || data.Age > 150 {
+		return errors.New("age must be between 0 and 150")
 	}
 	return nil
 }
 
-func NormalizeEmail(email string) string {
-	parts := strings.Split(email, "@")
-	if len(parts) != 2 {
-		return email
-	}
-	localPart := strings.ToLower(strings.TrimSpace(parts[0]))
-	domain := strings.ToLower(strings.TrimSpace(parts[1]))
-	return localPart + "@" + domain
+func TransformUsername(username string) string {
+	return strings.ToLower(strings.TrimSpace(username))
 }
 
-func SanitizeInput(input string) string {
-	replacer := strings.NewReplacer(
-		"<", "&lt;",
-		">", "&gt;",
-		"\"", "&quot;",
-		"'", "&#39;",
-	)
-	return replacer.Replace(input)
+func ProcessUserInput(email, username string, age int) (UserData, error) {
+	transformedUsername := TransformUsername(username)
+	userData := UserData{
+		Email:    strings.TrimSpace(email),
+		Username: transformedUsername,
+		Age:      age,
+	}
+	err := ValidateUserData(userData)
+	return userData, err
 }

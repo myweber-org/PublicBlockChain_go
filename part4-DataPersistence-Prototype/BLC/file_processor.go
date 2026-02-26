@@ -240,4 +240,83 @@ func main() {
 	}
 	
 	fmt.Printf("File content:\n%s", content)
+}package main
+
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
+type FileProcessor struct {
+	mu       sync.Mutex
+	queue    []string
+	workers  int
+	done     chan bool
+	wg       sync.WaitGroup
+}
+
+func NewFileProcessor(workers int) *FileProcessor {
+	return &FileProcessor{
+		queue:   make([]string, 0),
+		workers: workers,
+		done:    make(chan bool),
+	}
+}
+
+func (fp *FileProcessor) AddFile(filePath string) {
+	fp.mu.Lock()
+	defer fp.mu.Unlock()
+	fp.queue = append(fp.queue, filePath)
+}
+
+func (fp *FileProcessor) processFile(filePath string) {
+	defer fp.wg.Done()
+	time.Sleep(100 * time.Millisecond)
+	fmt.Printf("Processed: %s\n", filePath)
+}
+
+func (fp *FileProcessor) worker(id int) {
+	for {
+		select {
+		case <-fp.done:
+			return
+		default:
+			fp.mu.Lock()
+			if len(fp.queue) > 0 {
+				file := fp.queue[0]
+				fp.queue = fp.queue[1:]
+				fp.mu.Unlock()
+				fp.wg.Add(1)
+				go fp.processFile(file)
+			} else {
+				fp.mu.Unlock()
+				time.Sleep(50 * time.Millisecond)
+			}
+		}
+	}
+}
+
+func (fp *FileProcessor) Start() {
+	for i := 0; i < fp.workers; i++ {
+		go fp.worker(i)
+	}
+}
+
+func (fp *FileProcessor) Stop() {
+	close(fp.done)
+	fp.wg.Wait()
+}
+
+func main() {
+	processor := NewFileProcessor(3)
+	processor.Start()
+
+	for i := 1; i <= 10; i++ {
+		processor.AddFile(fmt.Sprintf("file%d.txt", i))
+	}
+
+	time.Sleep(2 * time.Second)
+	processor.Stop()
+	fmt.Println("All files processed")
 }

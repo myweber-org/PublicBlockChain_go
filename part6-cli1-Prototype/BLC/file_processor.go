@@ -206,3 +206,31 @@ func main() {
 	log.Println("Processing completed")
 	fmt.Printf("Results: %v\n", processor.results)
 }
+package main
+
+import (
+	"encoding/json"
+	"io/ioutil"
+	"os"
+)
+
+func ReadJSONFile(filename string, v interface{}) error {
+	data, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, v)
+}
+
+func WriteJSONFile(filename string, v interface{}) error {
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(filename, data, 0644)
+}
+
+func FileExists(filename string) bool {
+	_, err := os.Stat(filename)
+	return !os.IsNotExist(err)
+}

@@ -740,4 +740,216 @@ func main() {
         }
         time.Sleep(10 * time.Millisecond)
     }
+}package main
+
+import (
+    "compress/gzip"
+    "fmt"
+    "io"
+    "os"
+    "path/filepath"
+    "strconv"
+    "strings"
+    "sync"
+    "time"
+)
+
+type RotatingLogger struct {
+    mu           sync.Mutex
+    basePath     string
+    maxSize      int64
+    currentFile  *os.File
+    currentSize  int64
+    maxBackups   int
+    compressOld  bool
+}
+
+func NewRotatingLogger(basePath string, maxSizeMB int, maxBackups int, compress bool) (*RotatingLogger, error) {
+    maxSize := int64(maxSizeMB) * 1024 * 1024
+    logger := &RotatingLogger{
+        basePath:    basePath,
+        maxSize:     maxSize,
+        maxBackups:  maxBackups,
+        compressOld: compress,
+    }
+
+    err := logger.openCurrentFile()
+    if err != nil {
+        return nil, err
+    }
+
+    return logger, nil
+}
+
+func (l *RotatingLogger) openCurrentFile() error {
+    file, err := os.OpenFile(l.basePath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+    if err != nil {
+        return err
+    }
+
+    info, err := file.Stat()
+    if err != nil {
+        file.Close()
+        return err
+    }
+
+    l.currentFile = file
+    l.currentSize = info.Size()
+    return nil
+}
+
+func (l *RotatingLogger) Write(p []byte) (n int, err error) {
+    l.mu.Lock()
+    defer l.mu.Unlock()
+
+    if l.currentSize+int64(len(p)) > l.maxSize {
+        err := l.rotate()
+        if err != nil {
+            return 0, err
+        }
+    }
+
+    n, err = l.currentFile.Write(p)
+    if err == nil {
+        l.currentSize += int64(n)
+    }
+    return n, err
+}
+
+func (l *RotatingLogger) rotate() error {
+    if l.currentFile != nil {
+        l.currentFile.Close()
+    }
+
+    timestamp := time.Now().Format("20060102150405")
+    backupPath := l.basePath + "." + timestamp
+
+    err := os.Rename(l.basePath, backupPath)
+    if err != nil {
+        return err
+    }
+
+    err = l.openCurrentFile()
+    if err != nil {
+        return err
+    }
+
+    go l.manageBackups(backupPath)
+
+    return nil
+}
+
+func (l *RotatingLogger) manageBackups(backupPath string) {
+    if l.compressOld {
+        compressedPath := backupPath + ".gz"
+        err := compressFile(backupPath, compressedPath)
+        if err == nil {
+            os.Remove(backupPath)
+            backupPath = compressedPath
+        }
+    }
+
+    backups, err := l.listBackups()
+    if err != nil {
+        return
+    }
+
+    if len(backups) > l.maxBackups {
+        backupsToDelete := backups[:len(backups)-l.maxBackups]
+        for _, backup := range backupsToDelete {
+            os.Remove(backup)
+        }
+    }
+}
+
+func compressFile(src, dst string) error {
+    srcFile, err := os.Open(src)
+    if err != nil {
+        return err
+    }
+    defer srcFile.Close()
+
+    dstFile, err := os.Create(dst)
+    if err != nil {
+        return err
+    }
+    defer dstFile.Close()
+
+    gzWriter := gzip.NewWriter(dstFile)
+    defer gzWriter.Close()
+
+    _, err = io.Copy(gzWriter, srcFile)
+    return err
+}
+
+func (l *RotatingLogger) listBackups() ([]string, error) {
+    pattern := l.basePath + ".*"
+    matches, err := filepath.Glob(pattern)
+    if err != nil {
+        return nil, err
+    }
+
+    var backups []string
+    for _, match := range matches {
+        if strings.HasSuffix(match, ".gz") || isTimestampBackup(match, l.basePath) {
+            backups = append(backups, match)
+        }
+    }
+
+    sortBackupsByTimestamp(backups, l.basePath)
+    return backups, nil
+}
+
+func isTimestampBackup(path, basePath string) bool {
+    suffix := strings.TrimPrefix(path, basePath+".")
+    if len(suffix) != 14 {
+        return false
+    }
+    _, err := strconv.ParseInt(suffix, 10, 64)
+    return err == nil
+}
+
+func sortBackupsByTimestamp(backups []string, basePath string) {
+    for i := 0; i < len(backups); i++ {
+        for j := i + 1; j < len(backups); j++ {
+            timeI := extractTimestamp(backups[i], basePath)
+            timeJ := extractTimestamp(backups[j], basePath)
+            if timeI < timeJ {
+                backups[i], backups[j] = backups[j], backups[i]
+            }
+        }
+    }
+}
+
+func extractTimestamp(path, basePath string) int64 {
+    suffix := strings.TrimSuffix(strings.TrimPrefix(path, basePath+"."), ".gz")
+    timestamp, _ := strconv.ParseInt(suffix, 10, 64)
+    return timestamp
+}
+
+func (l *RotatingLogger) Close() error {
+    l.mu.Lock()
+    defer l.mu.Unlock()
+
+    if l.currentFile != nil {
+        return l.currentFile.Close()
+    }
+    return nil
+}
+
+func main() {
+    logger, err := NewRotatingLogger("app.log", 10, 5, true)
+    if err != nil {
+        fmt.Printf("Failed to create logger: %v\n", err)
+        return
+    }
+    defer logger.Close()
+
+    for i := 0; i < 1000; i++ {
+        message := fmt.Sprintf("Log entry %d at %s\n", i, time.Now().Format(time.RFC3339))
+        logger.Write([]byte(message))
+        time.Sleep(10 * time.Millisecond)
+    }
+
+    fmt.Println("Log rotation test completed")
 }

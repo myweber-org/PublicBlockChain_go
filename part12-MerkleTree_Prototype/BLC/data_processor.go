@@ -258,4 +258,40 @@ func CalculateStatistics(records []DataRecord) (float64, float64, float64) {
 
 	average := sum / float64(len(records))
 	return average, min, max
+}package data
+
+import (
+	"regexp"
+	"strings"
+	"unicode"
+)
+
+type Processor struct {
+	stripPattern *regexp.Regexp
+}
+
+func NewProcessor() *Processor {
+	return &Processor{
+		stripPattern: regexp.MustCompile(`[^\w\s-]`),
+	}
+}
+
+func (p *Processor) CleanInput(input string) string {
+	cleaned := p.stripPattern.ReplaceAllString(input, "")
+	cleaned = strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return ' '
+		}
+		return r
+	}, cleaned)
+	return strings.ToLower(strings.TrimSpace(cleaned))
+}
+
+func (p *Processor) NormalizeWhitespace(input string) string {
+	re := regexp.MustCompile(`\s+`)
+	return re.ReplaceAllString(strings.TrimSpace(input), " ")
+}
+
+func (p *Processor) ValidateLength(input string, maxLen int) bool {
+	return len(input) <= maxLen && len(strings.TrimSpace(input)) > 0
 }

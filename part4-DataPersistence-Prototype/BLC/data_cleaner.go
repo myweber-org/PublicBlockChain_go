@@ -1,224 +1,63 @@
+
 package main
 
 import (
-	"encoding/csv"
-	"fmt"
-	"io"
-	"os"
-	"strings"
-)
-
-func cleanCSV(inputPath, outputPath string) error {
-	inFile, err := os.Open(inputPath)
-	if err != nil {
-		return fmt.Errorf("failed to open input file: %w", err)
-	}
-	defer inFile.Close()
-
-	outFile, err := os.Create(outputPath)
-	if err != nil {
-		return fmt.Errorf("failed to create output file: %w", err)
-	}
-	defer outFile.Close()
-
-	reader := csv.NewReader(inFile)
-	writer := csv.NewWriter(outFile)
-	defer writer.Flush()
-
-	headers, err := reader.Read()
-	if err != nil {
-		return fmt.Errorf("failed to read headers: %w", err)
-	}
-
-	trimmedHeaders := make([]string, len(headers))
-	for i, h := range headers {
-		trimmedHeaders[i] = strings.TrimSpace(h)
-	}
-	if err := writer.Write(trimmedHeaders); err != nil {
-		return fmt.Errorf("failed to write headers: %w", err)
-	}
-
-	for {
-		record, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("failed to read record: %w", err)
-		}
-
-		cleanedRecord := make([]string, len(record))
-		for i, field := range record {
-			cleanedField := strings.TrimSpace(field)
-			cleanedField = strings.ToLower(cleanedField)
-			cleanedRecord[i] = cleanedField
-		}
-
-		if err := writer.Write(cleanedRecord); err != nil {
-			return fmt.Errorf("failed to write record: %w", err)
-		}
-	}
-
-	return nil
-}
-
-func main() {
-	if len(os.Args) != 3 {
-		fmt.Println("Usage: data_cleaner <input.csv> <output.csv>")
-		os.Exit(1)
-	}
-
-	inputFile := os.Args[1]
-	outputFile := os.Args[2]
-
-	if err := cleanCSV(inputFile, outputFile); err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Successfully cleaned data. Output saved to %s\n", outputFile)
-}package main
-
-import (
-	"fmt"
-	"strings"
-)
-
-func RemoveDuplicates(slice []string) []string {
-	seen := make(map[string]bool)
-	result := []string{}
-	for _, item := range slice {
-		if !seen[item] {
-			seen[item] = true
-			result = append(result, item)
-		}
-	}
-	return result
-}
-
-func NormalizeString(s string) string {
-	return strings.ToLower(strings.TrimSpace(s))
-}
-
-func CleanData(data []string) []string {
-	normalized := make([]string, len(data))
-	for i, item := range data {
-		normalized[i] = NormalizeString(item)
-	}
-	return RemoveDuplicates(normalized)
-}
-
-func main() {
-	rawData := []string{"  Apple", "banana", "Apple", "  BANANA  ", "Cherry"}
-	cleaned := CleanData(rawData)
-	fmt.Println("Cleaned Data:", cleaned)
-}package datautil
-
-func RemoveDuplicates[T comparable](slice []T) []T {
-    seen := make(map[T]bool)
-    result := []T{}
-    
-    for _, item := range slice {
-        if !seen[item] {
-            seen[item] = true
-            result = append(result, item)
-        }
-    }
-    
-    return result
-}
-package main
-
-import (
-	"fmt"
-	"strings"
+    "fmt"
+    "strings"
 )
 
 type DataCleaner struct {
-	seen map[string]bool
+    seen map[string]bool
 }
 
 func NewDataCleaner() *DataCleaner {
-	return &DataCleaner{
-		seen: make(map[string]bool),
-	}
+    return &DataCleaner{
+        seen: make(map[string]bool),
+    }
 }
 
-func (dc *DataCleaner) RemoveDuplicates(items []string) []string {
-	var unique []string
-	for _, item := range items {
-		normalized := strings.ToLower(strings.TrimSpace(item))
-		if !dc.seen[normalized] && dc.isValid(item) {
-			dc.seen[normalized] = true
-			unique = append(unique, item)
-		}
-	}
-	return unique
+func (dc *DataCleaner) CleanString(input string) string {
+    trimmed := strings.TrimSpace(input)
+    normalized := strings.ToLower(trimmed)
+    return normalized
 }
 
-func (dc *DataCleaner) isValid(item string) bool {
-	return len(item) > 0 && !strings.ContainsAny(item, "!@#$%")
+func (dc *DataCleaner) IsDuplicate(value string) bool {
+    cleaned := dc.CleanString(value)
+    if dc.seen[cleaned] {
+        return true
+    }
+    dc.seen[cleaned] = true
+    return false
 }
 
-func (dc *DataCleaner) Reset() {
-	dc.seen = make(map[string]bool)
-}
-
-func main() {
-	cleaner := NewDataCleaner()
-	data := []string{"apple", "Apple", "banana", "", "cherry!", "banana", "date "}
-	
-	cleaned := cleaner.RemoveDuplicates(data)
-	fmt.Printf("Original: %v\n", data)
-	fmt.Printf("Cleaned: %v\n", cleaned)
-	
-	cleaner.Reset()
-	testData := []string{"test", "TEST", "test"}
-	fmt.Printf("Reset test: %v\n", cleaner.RemoveDuplicates(testData))
-}
-package main
-
-import "fmt"
-
-func RemoveDuplicates(input []int) []int {
-	seen := make(map[int]bool)
-	result := []int{}
-
-	for _, value := range input {
-		if !seen[value] {
-			seen[value] = true
-			result = append(result, value)
-		}
-	}
-	return result
+func (dc *DataCleaner) ProcessList(items []string) []string {
+    var result []string
+    for _, item := range items {
+        if !dc.IsDuplicate(item) {
+            cleaned := dc.CleanString(item)
+            result = append(result, cleaned)
+        }
+    }
+    return result
 }
 
 func main() {
-	numbers := []int{1, 2, 2, 3, 4, 4, 5, 1, 6}
-	uniqueNumbers := RemoveDuplicates(numbers)
-	fmt.Printf("Original: %v\n", numbers)
-	fmt.Printf("Cleaned: %v\n", uniqueNumbers)
-}
-package main
-
-import "fmt"
-
-func RemoveDuplicates(input []int) []int {
-	seen := make(map[int]bool)
-	result := []int{}
-
-	for _, value := range input {
-		if !seen[value] {
-			seen[value] = true
-			result = append(result, value)
-		}
-	}
-	return result
-}
-
-func main() {
-	data := []int{1, 2, 2, 3, 4, 4, 5, 1, 6}
-	cleaned := RemoveDuplicates(data)
-	fmt.Printf("Original: %v\n", data)
-	fmt.Printf("Cleaned: %v\n", cleaned)
+    cleaner := NewDataCleaner()
+    
+    sampleData := []string{
+        "  Apple  ",
+        "apple",
+        "BANANA",
+        "  banana  ",
+        "Orange",
+        "ORANGE",
+        "Grape",
+    }
+    
+    cleaned := cleaner.ProcessList(sampleData)
+    
+    fmt.Println("Original count:", len(sampleData))
+    fmt.Println("Cleaned count:", len(cleaned))
+    fmt.Println("Unique items:", cleaned)
 }

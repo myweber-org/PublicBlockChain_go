@@ -192,4 +192,95 @@ func main() {
             fmt.Printf("Logged: %s - %s\n", activity.userID, activity.action)
         }
     }
+}package middleware
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/go-redis/redis/v8"
+	"golang.org/x/time/rate"
+)
+
+type ActivityLogger struct {
+	redisClient *redis.Client
+	limiter     *rate.Limiter
+	keyPrefix   string
+}
+
+func NewActivityLogger(redisAddr string, prefix string) (*ActivityLogger, error) {
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     redisAddr,
+		Password: "",
+		DB:       0,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		return nil, fmt.Errorf("redis connection failed: %w", err)
+	}
+
+	return &ActivityLogger{
+		redisClient: rdb,
+		limiter:     rate.NewLimiter(rate.Every(time.Minute), 100),
+		keyPrefix:   prefix,
+	}, nil
+}
+
+func (al *ActivityLogger) LogActivity(userID string, action string, metadata map[string]interface{}) error {
+	if !al.limiter.Allow() {
+		return fmt.Errorf("rate limit exceeded for user %s", userID)
+	}
+
+	ctx := context.Background()
+	key := fmt.Sprintf("%s:activity:%s:%d", al.keyPrefix, userID, time.Now().UnixNano())
+
+	data := map[string]interface{}{
+		"user_id":  userID,
+		"action":   action,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"metadata": metadata,
+	}
+
+	if err := al.redisClient.HSet(ctx, key, data).Err(); err != nil {
+		return fmt.Errorf("failed to log activity: %w", err)
+	}
+
+	expireKey := fmt.Sprintf("%s:activity:expiry:%s", al.keyPrefix, userID)
+	al.redisClient.SAdd(ctx, expireKey, key)
+	al.redisClient.Expire(ctx, expireKey, 30*24*time.Hour)
+
+	return nil
+}
+
+func (al *ActivityLogger) GetRecentActivities(userID string, limit int64) ([]map[string]string, error) {
+	ctx := context.Background()
+	pattern := fmt.Sprintf("%s:activity:%s:*", al.keyPrefix, userID)
+
+	keys, err := al.redisClient.Keys(ctx, pattern).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch activity keys: %w", err)
+	}
+
+	if int64(len(keys)) > limit {
+		keys = keys[:limit]
+	}
+
+	var activities []map[string]string
+	for _, key := range keys {
+		result, err := al.redisClient.HGetAll(ctx, key).Result()
+		if err != nil {
+			continue
+		}
+		activities = append(activities, result)
+	}
+
+	return activities, nil
+}
+
+func (al *ActivityLogger) Close() error {
+	return al.redisClient.Close()
 }

@@ -136,4 +136,114 @@ func main() {
         }
         time.Sleep(10 * time.Millisecond)
     }
+}package main
+
+import (
+    "fmt"
+    "io"
+    "log"
+    "os"
+    "path/filepath"
+    "time"
+)
+
+const (
+    maxFileSize  = 1024 * 1024 // 1MB
+    maxBackups   = 5
+    logDirectory = "./logs"
+)
+
+type RotatingLogger struct {
+    currentFile *os.File
+    fileSize    int64
+    baseName    string
+    sequence    int
+}
+
+func NewRotatingLogger(baseName string) (*RotatingLogger, error) {
+    if err := os.MkdirAll(logDirectory, 0755); err != nil {
+        return nil, err
+    }
+
+    rl := &RotatingLogger{
+        baseName: baseName,
+        sequence: 0,
+    }
+
+    if err := rl.openNextFile(); err != nil {
+        return nil, err
+    }
+
+    return rl, nil
+}
+
+func (rl *RotatingLogger) openNextFile() error {
+    if rl.currentFile != nil {
+        rl.currentFile.Close()
+    }
+
+    rl.sequence++
+    if rl.sequence > maxBackups {
+        rl.sequence = 1
+    }
+
+    filename := filepath.Join(logDirectory, fmt.Sprintf("%s.%d.log", rl.baseName, rl.sequence))
+    file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+    if err != nil {
+        return err
+    }
+
+    rl.currentFile = file
+    rl.fileSize = 0
+
+    rl.cleanOldFiles()
+    return nil
+}
+
+func (rl *RotatingLogger) cleanOldFiles() {
+    files, err := filepath.Glob(filepath.Join(logDirectory, rl.baseName+".*.log"))
+    if err != nil {
+        return
+    }
+
+    if len(files) > maxBackups {
+        for _, file := range files[:len(files)-maxBackups] {
+            os.Remove(file)
+        }
+    }
+}
+
+func (rl *RotatingLogger) Write(p []byte) (n int, err error) {
+    if rl.fileSize+int64(len(p)) > maxFileSize {
+        if err := rl.openNextFile(); err != nil {
+            return 0, err
+        }
+    }
+
+    n, err = rl.currentFile.Write(p)
+    rl.fileSize += int64(n)
+    return n, err
+}
+
+func (rl *RotatingLogger) Close() error {
+    if rl.currentFile != nil {
+        return rl.currentFile.Close()
+    }
+    return nil
+}
+
+func main() {
+    logger, err := NewRotatingLogger("app")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer logger.Close()
+
+    multiWriter := io.MultiWriter(os.Stdout, logger)
+    log.SetOutput(multiWriter)
+
+    for i := 0; i < 1000; i++ {
+        log.Printf("Log entry %d at %s", i, time.Now().Format(time.RFC3339))
+        time.Sleep(10 * time.Millisecond)
+    }
 }

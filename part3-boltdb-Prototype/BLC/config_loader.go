@@ -173,4 +173,85 @@ func (c *Config) Validate() error {
 		return errors.New("database driver is required")
 	}
 	return nil
+}package config
+
+import (
+	"os"
+	"path/filepath"
+
+	"gopkg.in/yaml.v3"
+)
+
+type Config struct {
+	Server struct {
+		Host string `yaml:"host" env:"SERVER_HOST"`
+		Port int    `yaml:"port" env:"SERVER_PORT"`
+	} `yaml:"server"`
+	Database struct {
+		Host     string `yaml:"host" env:"DB_HOST"`
+		Port     int    `yaml:"port" env:"DB_PORT"`
+		Name     string `yaml:"name" env:"DB_NAME"`
+		User     string `yaml:"user" env:"DB_USER"`
+		Password string `yaml:"password" env:"DB_PASSWORD"`
+		SSLMode  string `yaml:"ssl_mode" env:"DB_SSL_MODE"`
+	} `yaml:"database"`
+	Logging struct {
+		Level  string `yaml:"level" env:"LOG_LEVEL"`
+		Format string `yaml:"format" env:"LOG_FORMAT"`
+	} `yaml:"logging"`
+}
+
+func LoadConfig(configPath string) (*Config, error) {
+	absPath, err := filepath.Abs(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	file, err := os.Open(absPath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var config Config
+	decoder := yaml.NewDecoder(file)
+	if err := decoder.Decode(&config); err != nil {
+		return nil, err
+	}
+
+	overrideFromEnv(&config)
+
+	return &config, nil
+}
+
+func overrideFromEnv(config *Config) {
+	config.Server.Host = getEnvOrDefault("SERVER_HOST", config.Server.Host)
+	config.Server.Port = getEnvIntOrDefault("SERVER_PORT", config.Server.Port)
+
+	config.Database.Host = getEnvOrDefault("DB_HOST", config.Database.Host)
+	config.Database.Port = getEnvIntOrDefault("DB_PORT", config.Database.Port)
+	config.Database.Name = getEnvOrDefault("DB_NAME", config.Database.Name)
+	config.Database.User = getEnvOrDefault("DB_USER", config.Database.User)
+	config.Database.Password = getEnvOrDefault("DB_PASSWORD", config.Database.Password)
+	config.Database.SSLMode = getEnvOrDefault("DB_SSL_MODE", config.Database.SSLMode)
+
+	config.Logging.Level = getEnvOrDefault("LOG_LEVEL", config.Logging.Level)
+	config.Logging.Format = getEnvOrDefault("LOG_FORMAT", config.Logging.Format)
+}
+
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+func getEnvIntOrDefault(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		var result int
+		if _, err := fmt.Sscanf(value, "%d", &result); err == nil {
+			return result
+		}
+	}
+	return defaultValue
 }

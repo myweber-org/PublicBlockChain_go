@@ -1,33 +1,39 @@
 package main
 
 import (
-    "context"
-    "log"
-    "time"
+	"context"
+	"log"
+	"time"
 
-    "github.com/redis/go-redis/v9"
+	"yourproject/internal/db"
 )
 
+const cleanupInterval = 24 * time.Hour
+
 func main() {
-    ctx := context.Background()
-    rdb := redis.NewClient(&redis.Options{
-        Addr: "localhost:6379",
-    })
+	ticker := time.NewTicker(cleanupInterval)
+	defer ticker.Stop()
 
-    for {
-        now := time.Now().Unix()
-        maxScore := float64(now - 86400) // 24 hours ago
+	for range ticker.C {
+		if err := cleanupExpiredSessions(); err != nil {
+			log.Printf("Session cleanup failed: %v", err)
+		} else {
+			log.Println("Session cleanup completed successfully")
+		}
+	}
+}
 
-        // Remove expired sessions from sorted set
-        removed, err := rdb.ZRemRangeByScore(ctx, "user_sessions", "0", 
-            string(maxScore)).Result()
-        if err != nil {
-            log.Printf("Error cleaning sessions: %v", err)
-        } else if removed > 0 {
-            log.Printf("Cleaned %d expired sessions", removed)
-        }
+func cleanupExpiredSessions() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
 
-        // Wait 24 hours before next cleanup
-        time.Sleep(24 * time.Hour)
-    }
+	query := `DELETE FROM user_sessions WHERE expires_at < NOW()`
+	result, err := db.Conn.ExecContext(ctx, query)
+	if err != nil {
+		return err
+	}
+
+	rows, _ := result.RowsAffected()
+	log.Printf("Cleaned up %d expired sessions", rows)
+	return nil
 }

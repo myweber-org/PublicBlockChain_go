@@ -345,4 +345,34 @@ func (dp *DataProcessor) ProcessData(input string) (string, error) {
 	return processed, nil
 }
 
-var ErrInvalidInput = errors.New("input contains invalid characters")
+var ErrInvalidInput = errors.New("input contains invalid characters")package data_processor
+
+import (
+	"regexp"
+	"strings"
+)
+
+type Processor struct {
+	whitespaceRegex *regexp.Regexp
+}
+
+func NewProcessor() *Processor {
+	return &Processor{
+		whitespaceRegex: regexp.MustCompile(`\s+`),
+	}
+}
+
+func (p *Processor) CleanInput(input string) string {
+	trimmed := strings.TrimSpace(input)
+	normalized := p.whitespaceRegex.ReplaceAllString(trimmed, " ")
+	return normalized
+}
+
+func (p *Processor) NormalizeCase(input string) string {
+	return strings.ToLower(input)
+}
+
+func (p *Processor) Process(input string) string {
+	cleaned := p.CleanInput(input)
+	return p.NormalizeCase(cleaned)
+}

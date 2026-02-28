@@ -434,4 +434,95 @@ func main() {
 	}
 
 	fmt.Println("CSV processing completed successfully")
+}package main
+
+import (
+	"encoding/csv"
+	"errors"
+	"io"
+	"os"
+	"strconv"
+)
+
+type DataRecord struct {
+	ID    int
+	Name  string
+	Value float64
+	Valid bool
+}
+
+func ProcessCSVFile(filePath string) ([]DataRecord, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	records := []DataRecord{}
+	lineNumber := 0
+
+	for {
+		lineNumber++
+		row, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		if len(row) < 4 {
+			return nil, errors.New("invalid csv format at line " + strconv.Itoa(lineNumber))
+		}
+
+		id, err := strconv.Atoi(row[0])
+		if err != nil {
+			return nil, errors.New("invalid id at line " + strconv.Itoa(lineNumber))
+		}
+
+		name := row[1]
+		if name == "" {
+			return nil, errors.New("empty name at line " + strconv.Itoa(lineNumber))
+		}
+
+		value, err := strconv.ParseFloat(row[2], 64)
+		if err != nil {
+			return nil, errors.New("invalid value at line " + strconv.Itoa(lineNumber))
+		}
+
+		valid, err := strconv.ParseBool(row[3])
+		if err != nil {
+			return nil, errors.New("invalid boolean at line " + strconv.Itoa(lineNumber))
+		}
+
+		record := DataRecord{
+			ID:    id,
+			Name:  name,
+			Value: value,
+			Valid: valid,
+		}
+
+		records = append(records, record)
+	}
+
+	return records, nil
+}
+
+func ValidateRecords(records []DataRecord) []DataRecord {
+	validRecords := []DataRecord{}
+	for _, record := range records {
+		if record.Valid && record.Value > 0 {
+			validRecords = append(validRecords, record)
+		}
+	}
+	return validRecords
+}
+
+func CalculateTotalValue(records []DataRecord) float64 {
+	total := 0.0
+	for _, record := range records {
+		total += record.Value
+	}
+	return total
 }

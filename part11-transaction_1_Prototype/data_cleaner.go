@@ -1,154 +1,29 @@
 
 package main
 
-import (
-	"encoding/csv"
-	"fmt"
-	"os"
-)
-
-func removeDuplicates(inputFile, outputFile string) error {
-	inFile, err := os.Open(inputFile)
-	if err != nil {
-		return fmt.Errorf("failed to open input file: %w", err)
-	}
-	defer inFile.Close()
-
-	reader := csv.NewReader(inFile)
-	records, err := reader.ReadAll()
-	if err != nil {
-		return fmt.Errorf("failed to read CSV: %w", err)
-	}
-
-	seen := make(map[string]bool)
-	var uniqueRecords [][]string
-
-	for _, record := range records {
-		if len(record) == 0 {
-			continue
-		}
-		key := record[0]
-		if !seen[key] {
-			seen[key] = true
-			uniqueRecords = append(uniqueRecords, record)
-		}
-	}
-
-	outFile, err := os.Create(outputFile)
-	if err != nil {
-		return fmt.Errorf("failed to create output file: %w", err)
-	}
-	defer outFile.Close()
-
-	writer := csv.NewWriter(outFile)
-	err = writer.WriteAll(uniqueRecords)
-	if err != nil {
-		return fmt.Errorf("failed to write CSV: %w", err)
-	}
-	writer.Flush()
-
-	return nil
-}
-
-func main() {
-	err := removeDuplicates("input.csv", "output.csv")
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Println("Duplicate removal completed successfully")
-}
-package main
-
 import "fmt"
 
-func removeDuplicates(input []int) []int {
-	seen := make(map[int]bool)
-	result := []int{}
+func RemoveDuplicates[T comparable](slice []T) []T {
+	seen := make(map[T]bool)
+	result := []T{}
 
-	for _, value := range input {
-		if !seen[value] {
-			seen[value] = true
-			result = append(result, value)
+	for _, item := range slice {
+		if !seen[item] {
+			seen[item] = true
+			result = append(result, item)
 		}
 	}
 	return result
 }
 
 func main() {
-	data := []int{4, 2, 8, 2, 4, 9, 8, 1}
-	cleaned := removeDuplicates(data)
-	fmt.Printf("Original: %v\n", data)
-	fmt.Printf("Cleaned: %v\n", cleaned)
-}
-package main
+	numbers := []int{1, 2, 2, 3, 4, 4, 5}
+	uniqueNumbers := RemoveDuplicates(numbers)
+	fmt.Println("Original:", numbers)
+	fmt.Println("Unique:", uniqueNumbers)
 
-import (
-	"fmt"
-	"strings"
-)
-
-type DataRecord struct {
-	ID    int
-	Email string
-	Valid bool
-}
-
-func deduplicateRecords(records []DataRecord) []DataRecord {
-	seen := make(map[string]bool)
-	var unique []DataRecord
-
-	for _, record := range records {
-		email := strings.ToLower(strings.TrimSpace(record.Email))
-		if !seen[email] {
-			seen[email] = true
-			record.Email = email
-			unique = append(unique, record)
-		}
-	}
-	return unique
-}
-
-func validateEmails(records []DataRecord) []DataRecord {
-	for i := range records {
-		records[i].Valid = strings.Contains(records[i].Email, "@") &&
-			len(records[i].Email) > 3
-	}
-	return records
-}
-
-func processData(records []DataRecord) []DataRecord {
-	records = deduplicateRecords(records)
-	records = validateEmails(records)
-	return records
-}
-
-func main() {
-	sampleData := []DataRecord{
-		{1, "user@example.com", false},
-		{2, "USER@example.com", false},
-		{3, "invalid-email", false},
-		{4, "test@domain.org", false},
-	}
-
-	processed := processData(sampleData)
-
-	for _, record := range processed {
-		fmt.Printf("ID: %d, Email: %s, Valid: %t\n",
-			record.ID, record.Email, record.Valid)
-	}
-}package datautils
-
-func RemoveDuplicates(input []int) []int {
-	seen := make(map[int]bool)
-	result := []int{}
-
-	for _, value := range input {
-		if !seen[value] {
-			seen[value] = true
-			result = append(result, value)
-		}
-	}
-
-	return result
+	strings := []string{"apple", "banana", "apple", "orange"}
+	uniqueStrings := RemoveDuplicates(strings)
+	fmt.Println("Original:", strings)
+	fmt.Println("Unique:", uniqueStrings)
 }

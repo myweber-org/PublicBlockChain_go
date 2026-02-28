@@ -204,4 +204,145 @@ func validateConfig(config *ServerConfig) error {
     }
 
     return nil
+}package config
+
+import (
+    "encoding/json"
+    "fmt"
+    "os"
+    "path/filepath"
+    "strings"
+)
+
+type DatabaseConfig struct {
+    Host     string `json:"host" env:"DB_HOST"`
+    Port     int    `json:"port" env:"DB_PORT"`
+    Username string `json:"username" env:"DB_USER"`
+    Password string `json:"password" env:"DB_PASS"`
+    Name     string `json:"name" env:"DB_NAME"`
+}
+
+type ServerConfig struct {
+    Port         int    `json:"port" env:"SERVER_PORT"`
+    ReadTimeout  int    `json:"read_timeout" env:"READ_TIMEOUT"`
+    WriteTimeout int    `json:"write_timeout" env:"WRITE_TIMEOUT"`
+    DebugMode    bool   `json:"debug_mode" env:"DEBUG_MODE"`
+}
+
+type AppConfig struct {
+    Database DatabaseConfig `json:"database"`
+    Server   ServerConfig   `json:"server"`
+    LogLevel string         `json:"log_level" env:"LOG_LEVEL"`
+}
+
+func LoadConfig(configPath string) (*AppConfig, error) {
+    var config AppConfig
+    
+    if configPath == "" {
+        configPath = "config.json"
+    }
+
+    absPath, err := filepath.Abs(configPath)
+    if err != nil {
+        return nil, fmt.Errorf("invalid config path: %w", err)
+    }
+
+    fileData, err := os.ReadFile(absPath)
+    if err != nil {
+        return nil, fmt.Errorf("failed to read config file: %w", err)
+    }
+
+    if err := json.Unmarshal(fileData, &config); err != nil {
+        return nil, fmt.Errorf("failed to parse config JSON: %w", err)
+    }
+
+    if err := overrideFromEnv(&config); err != nil {
+        return nil, fmt.Errorf("failed to process environment variables: %w", err)
+    }
+
+    if err := validateConfig(&config); err != nil {
+        return nil, fmt.Errorf("config validation failed: %w", err)
+    }
+
+    return &config, nil
+}
+
+func overrideFromEnv(config *AppConfig) error {
+    overrideStringField(&config.LogLevel, "LOG_LEVEL")
+    overrideStringField(&config.Database.Host, "DB_HOST")
+    overrideStringField(&config.Database.Username, "DB_USER")
+    overrideStringField(&config.Database.Password, "DB_PASS")
+    overrideStringField(&config.Database.Name, "DB_NAME")
+    
+    if portStr := os.Getenv("DB_PORT"); portStr != "" {
+        if port, err := parseInt(portStr); err == nil {
+            config.Database.Port = port
+        }
+    }
+    
+    if portStr := os.Getenv("SERVER_PORT"); portStr != "" {
+        if port, err := parseInt(portStr); err == nil {
+            config.Server.Port = port
+        }
+    }
+    
+    if timeoutStr := os.Getenv("READ_TIMEOUT"); timeoutStr != "" {
+        if timeout, err := parseInt(timeoutStr); err == nil {
+            config.Server.ReadTimeout = timeout
+        }
+    }
+    
+    if timeoutStr := os.Getenv("WRITE_TIMEOUT"); timeoutStr != "" {
+        if timeout, err := parseInt(timeoutStr); err == nil {
+            config.Server.WriteTimeout = timeout
+        }
+    }
+    
+    if debugStr := os.Getenv("DEBUG_MODE"); debugStr != "" {
+        config.Server.DebugMode = strings.ToLower(debugStr) == "true"
+    }
+    
+    return nil
+}
+
+func overrideStringField(field *string, envVar string) {
+    if val := os.Getenv(envVar); val != "" {
+        *field = val
+    }
+}
+
+func parseInt(s string) (int, error) {
+    var val int
+    _, err := fmt.Sscanf(s, "%d", &val)
+    return val, err
+}
+
+func validateConfig(config *AppConfig) error {
+    if config.Database.Host == "" {
+        return fmt.Errorf("database host is required")
+    }
+    if config.Database.Port <= 0 || config.Database.Port > 65535 {
+        return fmt.Errorf("invalid database port: %d", config.Database.Port)
+    }
+    if config.Database.Name == "" {
+        return fmt.Errorf("database name is required")
+    }
+    if config.Server.Port <= 0 || config.Server.Port > 65535 {
+        return fmt.Errorf("invalid server port: %d", config.Server.Port)
+    }
+    if config.Server.ReadTimeout < 0 {
+        return fmt.Errorf("read timeout cannot be negative")
+    }
+    if config.Server.WriteTimeout < 0 {
+        return fmt.Errorf("write timeout cannot be negative")
+    }
+    
+    validLogLevels := map[string]bool{
+        "debug": true, "info": true, "warn": true, "error": true,
+    }
+    if !validLogLevels[strings.ToLower(config.LogLevel)] {
+        return fmt.Errorf("invalid log level: %s", config.LogLevel)
+    }
+    
+    return nil
 }

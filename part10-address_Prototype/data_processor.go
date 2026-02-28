@@ -139,3 +139,46 @@ func main() {
 
     fmt.Printf("Successfully processed %s to %s\n", inputFile, outputFile)
 }
+package main
+
+import (
+	"errors"
+	"regexp"
+	"strings"
+)
+
+type UserProfile struct {
+	Username string
+	Email    string
+	Age      int
+}
+
+var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+
+func ValidateProfile(profile UserProfile) error {
+	if strings.TrimSpace(profile.Username) == "" {
+		return errors.New("username cannot be empty")
+	}
+	if len(profile.Username) < 3 || len(profile.Username) > 20 {
+		return errors.New("username must be between 3 and 20 characters")
+	}
+	if !emailRegex.MatchString(profile.Email) {
+		return errors.New("invalid email format")
+	}
+	if profile.Age < 0 || profile.Age > 120 {
+		return errors.New("age must be between 0 and 120")
+	}
+	return nil
+}
+
+func TransformUsername(profile *UserProfile) {
+	profile.Username = strings.ToLower(strings.TrimSpace(profile.Username))
+}
+
+func ProcessUserData(profile UserProfile) (UserProfile, error) {
+	TransformUsername(&profile)
+	if err := ValidateProfile(profile); err != nil {
+		return UserProfile{}, err
+	}
+	return profile, nil
+}

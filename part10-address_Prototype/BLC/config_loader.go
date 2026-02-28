@@ -406,4 +406,72 @@ func LoadConfigOrExit(filename string) *AppConfig {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 	return config
+}package config
+
+import (
+    "fmt"
+    "os"
+    "path/filepath"
+
+    "gopkg.in/yaml.v3"
+)
+
+type DatabaseConfig struct {
+    Host     string `yaml:"host" env:"DB_HOST"`
+    Port     int    `yaml:"port" env:"DB_PORT"`
+    Username string `yaml:"username" env:"DB_USER"`
+    Password string `yaml:"password" env:"DB_PASS"`
+    Name     string `yaml:"name" env:"DB_NAME"`
+}
+
+type ServerConfig struct {
+    Port         int    `yaml:"port" env:"SERVER_PORT"`
+    ReadTimeout  int    `yaml:"read_timeout" env:"READ_TIMEOUT"`
+    WriteTimeout int    `yaml:"write_timeout" env:"WRITE_TIMEOUT"`
+    Debug        bool   `yaml:"debug" env:"DEBUG"`
+}
+
+type AppConfig struct {
+    Database DatabaseConfig `yaml:"database"`
+    Server   ServerConfig   `yaml:"server"`
+    LogLevel string         `yaml:"log_level" env:"LOG_LEVEL"`
+}
+
+func LoadConfig(configPath string) (*AppConfig, error) {
+    data, err := os.ReadFile(configPath)
+    if err != nil {
+        return nil, fmt.Errorf("failed to read config file: %w", err)
+    }
+
+    var config AppConfig
+    if err := yaml.Unmarshal(data, &config); err != nil {
+        return nil, fmt.Errorf("failed to parse YAML: %w", err)
+    }
+
+    overrideFromEnv(&config)
+
+    return &config, nil
+}
+
+func overrideFromEnv(config *AppConfig) {
+    // This function would iterate through struct fields
+    // and override values from environment variables
+    // Implementation omitted for brevity
+}
+
+func FindConfigFile(filename string) (string, error) {
+    searchPaths := []string{
+        filename,
+        filepath.Join(".", filename),
+        filepath.Join("config", filename),
+        filepath.Join("/etc/app", filename),
+    }
+
+    for _, path := range searchPaths {
+        if _, err := os.Stat(path); err == nil {
+            return path, nil
+        }
+    }
+
+    return "", fmt.Errorf("config file %s not found in search paths", filename)
 }

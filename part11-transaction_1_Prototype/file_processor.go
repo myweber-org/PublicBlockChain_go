@@ -228,3 +228,119 @@ func main() {
 
 	fmt.Println("Data saved to processed_data.json")
 }
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"sync"
+	"time"
+)
+
+type DataRecord struct {
+	ID        string    `json:"id"`
+	Timestamp time.Time `json:"timestamp"`
+	Value     float64   `json:"value"`
+	Valid     bool      `json:"valid"`
+}
+
+type Processor struct {
+	records []DataRecord
+	mu      sync.RWMutex
+}
+
+func NewProcessor() *Processor {
+	return &Processor{
+		records: make([]DataRecord, 0),
+	}
+}
+
+func (p *Processor) AddRecord(id string, value float64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	record := DataRecord{
+		ID:        id,
+		Timestamp: time.Now().UTC(),
+		Value:     value,
+		Valid:     value >= 0 && value <= 100,
+	}
+
+	p.records = append(p.records, record)
+}
+
+func (p *Processor) ValidateRecords() {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	var wg sync.WaitGroup
+	results := make(chan string, len(p.records))
+
+	for _, record := range p.records {
+		wg.Add(1)
+		go func(r DataRecord) {
+			defer wg.Done()
+			time.Sleep(10 * time.Millisecond)
+			if r.Valid {
+				results <- fmt.Sprintf("Record %s: PASS", r.ID)
+			} else {
+				results <- fmt.Sprintf("Record %s: FAIL", r.ID)
+			}
+		}(record)
+	}
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	for result := range results {
+		fmt.Println(result)
+	}
+}
+
+func (p *Processor) GenerateReport() ([]byte, error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	summary := struct {
+		Total     int `json:"total_records"`
+		Valid     int `json:"valid_records"`
+		Invalid   int `json:"invalid_records"`
+		Timestamp string `json:"generated_at"`
+	}{
+		Total:     len(p.records),
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+
+	for _, record := range p.records {
+		if record.Valid {
+			summary.Valid++
+		} else {
+			summary.Invalid++
+		}
+	}
+
+	return json.MarshalIndent(summary, "", "  ")
+}
+
+func main() {
+	processor := NewProcessor()
+
+	processor.AddRecord("A001", 45.7)
+	processor.AddRecord("A002", 102.3)
+	processor.AddRecord("A003", 78.9)
+	processor.AddRecord("A004", -5.2)
+
+	fmt.Println("Validating records...")
+	processor.ValidateRecords()
+
+	report, err := processor.GenerateReport()
+	if err != nil {
+		fmt.Printf("Error generating report: %v\n", err)
+		return
+	}
+
+	fmt.Println("\nProcessing Report:")
+	fmt.Println(string(report))
+}

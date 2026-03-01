@@ -181,4 +181,113 @@ func ProcessUserData(profile UserProfile) (UserProfile, error) {
 		return UserProfile{}, err
 	}
 	return profile, nil
+}package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"regexp"
+	"strings"
+)
+
+type UserProfile struct {
+	ID        int    `json:"id"`
+	Username  string `json:"username"`
+	Email     string `json:"email"`
+	Age       int    `json:"age"`
+	Active    bool   `json:"active"`
+	Tags      []string `json:"tags"`
+}
+
+func ValidateEmail(email string) bool {
+	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	return emailRegex.MatchString(email)
+}
+
+func NormalizeUsername(username string) string {
+	return strings.ToLower(strings.TrimSpace(username))
+}
+
+func FilterInactiveUsers(users []UserProfile) []UserProfile {
+	var activeUsers []UserProfile
+	for _, user := range users {
+		if user.Active {
+			activeUsers = append(activeUsers, user)
+		}
+	}
+	return activeUsers
+}
+
+func TransformUserData(users []UserProfile) ([]map[string]interface{}, error) {
+	var transformed []map[string]interface{}
+	
+	for _, user := range users {
+		if !ValidateEmail(user.Email) {
+			return nil, fmt.Errorf("invalid email for user %d", user.ID)
+		}
+		
+		data := map[string]interface{}{
+			"user_id":   user.ID,
+			"username":  NormalizeUsername(user.Username),
+			"email":     user.Email,
+			"age_group": categorizeAge(user.Age),
+			"tag_count": len(user.Tags),
+			"metadata": map[string]interface{}{
+				"active": user.Active,
+				"tags":   user.Tags,
+			},
+		}
+		transformed = append(transformed, data)
+	}
+	
+	return transformed, nil
+}
+
+func categorizeAge(age int) string {
+	switch {
+	case age < 18:
+		return "minor"
+	case age >= 18 && age < 65:
+		return "adult"
+	default:
+		return "senior"
+	}
+}
+
+func ProcessUserJSON(jsonData []byte) (string, error) {
+	var users []UserProfile
+	err := json.Unmarshal(jsonData, &users)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse JSON: %v", err)
+	}
+	
+	activeUsers := FilterInactiveUsers(users)
+	transformed, err := TransformUserData(activeUsers)
+	if err != nil {
+		return "", fmt.Errorf("transformation failed: %v", err)
+	}
+	
+	result, err := json.MarshalIndent(transformed, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal result: %v", err)
+	}
+	
+	return string(result), nil
+}
+
+func main() {
+	sampleJSON := `[
+		{"id":1,"username":"JohnDoe","email":"john@example.com","age":25,"active":true,"tags":["golang","backend"]},
+		{"id":2,"username":"JaneSmith","email":"jane@example.org","age":17,"active":false,"tags":["frontend"]},
+		{"id":3,"username":"BobWilson","email":"bob@test.com","age":70,"active":true,"tags":["devops","cloud"]}
+	]`
+	
+	result, err := ProcessUserJSON([]byte(sampleJSON))
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	
+	fmt.Println("Processed user data:")
+	fmt.Println(result)
 }

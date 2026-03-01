@@ -39,3 +39,23 @@ func ProcessUserProfile(p UserProfile) (UserProfile, error) {
 	TransformUsername(&p)
 	return p, nil
 }
+package main
+
+import "fmt"
+
+func FilterAndDouble(nums []int, threshold int) []int {
+    var result []int
+    for _, num := range nums {
+        if num > threshold {
+            result = append(result, num*2)
+        }
+    }
+    return result
+}
+
+func main() {
+    input := []int{1, 5, 10, 15, 20}
+    filtered := FilterAndDouble(input, 8)
+    fmt.Println("Original:", input)
+    fmt.Println("Filtered and doubled:", filtered)
+}

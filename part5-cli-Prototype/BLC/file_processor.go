@@ -236,4 +236,160 @@ func main() {
 	processor.ValidateRecords()
 	validCount := processor.GetValidCount()
 	fmt.Printf("Valid records: %d out of %d\n", validCount, len(records))
+}package main
+
+import (
+	"bufio"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+)
+
+type FileProcessor struct {
+	workers   int
+	batchSize int
+	mu        sync.Mutex
+	stats     map[string]int
+}
+
+func NewFileProcessor(workers, batchSize int) *FileProcessor {
+	return &FileProcessor{
+		workers:   workers,
+		batchSize: batchSize,
+		stats:     make(map[string]int),
+	}
+}
+
+func (fp *FileProcessor) ProcessDirectory(dirPath string) error {
+	files, err := os.ReadDir(dirPath)
+	if err != nil {
+		return fmt.Errorf("failed to read directory: %w", err)
+	}
+
+	var wg sync.WaitGroup
+	fileChan := make(chan string, fp.batchSize)
+
+	for i := 0; i < fp.workers; i++ {
+		wg.Add(1)
+		go fp.worker(&wg, fileChan)
+	}
+
+	for _, file := range files {
+		if !file.IsDir() {
+			fullPath := filepath.Join(dirPath, file.Name())
+			fileChan <- fullPath
+		}
+	}
+
+	close(fileChan)
+	wg.Wait()
+
+	return fp.printStats()
+}
+
+func (fp *FileProcessor) worker(wg *sync.WaitGroup, fileChan <-chan string) {
+	defer wg.Done()
+
+	for filePath := range fileChan {
+		if err := fp.processFile(filePath); err != nil {
+			fmt.Printf("Error processing %s: %v\n", filePath, err)
+		}
+	}
+}
+
+func (fp *FileProcessor) processFile(filePath string) error {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	lineCount := 0
+	wordCount := 0
+
+	for scanner.Scan() {
+		lineCount++
+		words := splitWords(scanner.Text())
+		wordCount += len(words)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("scanner error: %w", err)
+	}
+
+	fp.mu.Lock()
+	fp.stats["files"]++
+	fp.stats["lines"] += lineCount
+	fp.stats["words"] += wordCount
+	fp.mu.Unlock()
+
+	fmt.Printf("Processed: %s (lines: %d, words: %d)\n", filepath.Base(filePath), lineCount, wordCount)
+	return nil
+}
+
+func splitWords(text string) []string {
+	var words []string
+	wordStart := -1
+
+	for i, r := range text {
+		if isWordRune(r) {
+			if wordStart == -1 {
+				wordStart = i
+			}
+		} else {
+			if wordStart != -1 {
+				words = append(words, text[wordStart:i])
+				wordStart = -1
+			}
+		}
+	}
+
+	if wordStart != -1 {
+		words = append(words, text[wordStart:])
+	}
+
+	return words
+}
+
+func isWordRune(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
+}
+
+func (fp *FileProcessor) printStats() error {
+	fp.mu.Lock()
+	defer fp.mu.Unlock()
+
+	if len(fp.stats) == 0 {
+		return errors.New("no files processed")
+	}
+
+	fmt.Println("\nProcessing Summary:")
+	fmt.Printf("Total files: %d\n", fp.stats["files"])
+	fmt.Printf("Total lines: %d\n", fp.stats["lines"])
+	fmt.Printf("Total words: %d\n", fp.stats["words"])
+	return nil
+}
+
+func main() {
+	if len(os.Args) != 2 {
+		fmt.Println("Usage: file_processor <directory>")
+		os.Exit(1)
+	}
+
+	dirPath := os.Args[1]
+	processor := NewFileProcessor(4, 10)
+
+	startTime := time.Now()
+	if err := processor.ProcessDirectory(dirPath); err != nil {
+		fmt.Printf("Processing failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	duration := time.Since(startTime)
+	fmt.Printf("\nProcessing completed in %v\n", duration)
 }

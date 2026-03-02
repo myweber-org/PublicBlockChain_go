@@ -875,4 +875,48 @@ func main() {
 	for _, rec := range processed {
 		fmt.Printf("Record %s: Value=%.2f, Tags=%v\n", rec.ID, rec.Value, rec.Tags)
 	}
+}package main
+
+import (
+	"errors"
+	"regexp"
+	"strings"
+)
+
+// ValidateEmail checks if the provided string is a valid email address
+func ValidateEmail(email string) bool {
+	pattern := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
+	re := regexp.MustCompile(pattern)
+	return re.MatchString(email)
+}
+
+// NormalizePhone removes all non-digit characters from a phone number string
+func NormalizePhone(phone string) (string, error) {
+	re := regexp.MustCompile(`\D`)
+	normalized := re.ReplaceAllString(phone, "")
+
+	if len(normalized) < 10 {
+		return "", errors.New("phone number too short")
+	}
+
+	return normalized, nil
+}
+
+// CapitalizeWords capitalizes the first letter of each word in a string
+func CapitalizeWords(input string) string {
+	words := strings.Fields(input)
+	for i, word := range words {
+		if len(word) > 0 {
+			words[i] = strings.ToUpper(word[:1]) + strings.ToLower(word[1:])
+		}
+	}
+	return strings.Join(words, " ")
+}
+
+// GenerateSlug creates a URL-friendly slug from a title string
+func GenerateSlug(title string) string {
+	slug := strings.ToLower(title)
+	slug = regexp.MustCompile(`[^a-z0-9]+`).ReplaceAllString(slug, "-")
+	slug = strings.Trim(slug, "-")
+	return slug
 }

@@ -80,4 +80,77 @@ func (dp *DataProcessor) ProcessUserData(name, email string) (string, bool) {
 	}
 
 	return sanitizedName + " <" + sanitizedEmail + ">", true
+}package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"regexp"
+	"strings"
+)
+
+type UserProfile struct {
+	ID        int    `json:"id"`
+	Username  string `json:"username"`
+	Email     string `json:"email"`
+	Age       int    `json:"age"`
+	Active    bool   `json:"active"`
+	Tags      []string `json:"tags"`
+}
+
+func ValidateEmail(email string) bool {
+	pattern := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
+	matched, _ := regexp.MatchString(pattern, email)
+	return matched
+}
+
+func NormalizeUsername(username string) string {
+	return strings.ToLower(strings.TrimSpace(username))
+}
+
+func FilterInactiveUsers(users []UserProfile) []UserProfile {
+	var activeUsers []UserProfile
+	for _, user := range users {
+		if user.Active && user.Age >= 18 {
+			activeUsers = append(activeUsers, user)
+		}
+	}
+	return activeUsers
+}
+
+func ProcessUserData(inputJSON string) ([]UserProfile, error) {
+	var users []UserProfile
+	err := json.Unmarshal([]byte(inputJSON), &users)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse JSON: %v", err)
+	}
+
+	for i := range users {
+		users[i].Username = NormalizeUsername(users[i].Username)
+		
+		if !ValidateEmail(users[i].Email) {
+			return nil, fmt.Errorf("invalid email for user %d", users[i].ID)
+		}
+	}
+
+	return FilterInactiveUsers(users), nil
+}
+
+func main() {
+	jsonData := `[
+		{"id":1,"username":" JohnDoe ","email":"john@example.com","age":25,"active":true,"tags":["golang","backend"]},
+		{"id":2,"username":"jane_smith","email":"invalid-email","age":30,"active":true,"tags":["frontend"]},
+		{"id":3,"username":"inactive_user","email":"test@domain.com","age":16,"active":false,"tags":[]}
+	]`
+
+	processedUsers, err := ProcessUserData(jsonData)
+	if err != nil {
+		fmt.Printf("Error processing data: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Valid active users: %d\n", len(processedUsers))
+	for _, user := range processedUsers {
+		fmt.Printf("ID: %d, Username: %s, Email: %s\n", user.ID, user.Username, user.Email)
+	}
 }

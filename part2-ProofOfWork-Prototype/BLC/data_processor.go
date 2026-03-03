@@ -59,3 +59,29 @@ func main() {
     fmt.Println("Original:", input)
     fmt.Println("Filtered and doubled:", filtered)
 }
+package main
+
+import (
+	"regexp"
+	"strings"
+)
+
+func SanitizeInput(input string) (string, error) {
+	if input == "" {
+		return "", nil
+	}
+
+	trimmed := strings.TrimSpace(input)
+
+	pattern := `^[a-zA-Z0-9\s\-_\.@]+$`
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return "", err
+	}
+
+	if !re.MatchString(trimmed) {
+		return "", nil
+	}
+
+	return trimmed, nil
+}

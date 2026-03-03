@@ -1,209 +1,57 @@
-package middleware
+package main
 
 import (
-    "log"
-    "net/http"
-    "time"
-)
-
-type responseWriter struct {
-    http.ResponseWriter
-    statusCode int
-}
-
-func (rw *responseWriter) WriteHeader(code int) {
-    rw.statusCode = code
-    rw.ResponseWriter.WriteHeader(code)
-}
-
-func ActivityLogger(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        start := time.Now()
-        rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
-
-        next.ServeHTTP(rw, r)
-
-        duration := time.Since(start)
-        log.Printf(
-            "%s %s %d %s %s",
-            r.Method,
-            r.URL.Path,
-            rw.statusCode,
-            duration,
-            r.RemoteAddr,
-        )
-    })
-}package middleware
-
-import (
+	"encoding/json"
+	"fmt"
 	"log"
-	"net/http"
+	"os"
 	"time"
 )
 
-type ActivityLogger struct {
-	handler http.Handler
+type ActivityLog struct {
+	Timestamp time.Time `json:"timestamp"`
+	UserID    string    `json:"user_id"`
+	Action    string    `json:"action"`
+	Resource  string    `json:"resource"`
+	Details   string    `json:"details"`
 }
 
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	recorder := &responseRecorder{
-		ResponseWriter: w,
-		statusCode:     http.StatusOK,
-	}
-
-	al.handler.ServeHTTP(recorder, r)
-
-	duration := time.Since(start)
-	log.Printf(
-		"%s %s %d %s %s",
-		r.Method,
-		r.URL.Path,
-		recorder.statusCode,
-		duration,
-		r.RemoteAddr,
-	)
-}
-
-type responseRecorder struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (rr *responseRecorder) WriteHeader(code int) {
-	rr.statusCode = code
-	rr.ResponseWriter.WriteHeader(code)
-}
-package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLogger struct {
-	rateLimiter *RateLimiter
-}
-
-type RateLimiter struct {
-	requests map[string][]time.Time
-	limit    int
-	window   time.Duration
-}
-
-func NewActivityLogger(limit int, window time.Duration) *ActivityLogger {
-	return &ActivityLogger{
-		rateLimiter: &RateLimiter{
-			requests: make(map[string][]time.Time),
-			limit:    limit,
-			window:   window,
-		},
+func NewActivityLog(userID, action, resource, details string) *ActivityLog {
+	return &ActivityLog{
+		Timestamp: time.Now().UTC(),
+		UserID:    userID,
+		Action:    action,
+		Resource:  resource,
+		Details:   details,
 	}
 }
 
-func (al *ActivityLogger) LogActivity(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		clientIP := r.RemoteAddr
-		
-		if !al.rateLimiter.Allow(clientIP) {
-			http.Error(w, "Too many requests", http.StatusTooManyRequests)
-			return
-		}
-		
-		start := time.Now()
-		
-		defer func() {
-			duration := time.Since(start)
-			log.Printf("Activity: %s %s from %s took %v", r.Method, r.URL.Path, clientIP, duration)
-		}()
-		
-		next.ServeHTTP(w, r)
-	})
+func (al *ActivityLog) ToJSON() ([]byte, error) {
+	return json.MarshalIndent(al, "", "  ")
 }
 
-func (rl *RateLimiter) Allow(clientIP string) bool {
-	now := time.Now()
-	windowStart := now.Add(-rl.window)
-	
-	requests, exists := rl.requests[clientIP]
-	if !exists {
-		rl.requests[clientIP] = []time.Time{now}
-		return true
+func LogActivity(logger *log.Logger, userID, action, resource, details string) {
+	activity := NewActivityLog(userID, action, resource, details)
+	jsonData, err := activity.ToJSON()
+	if err != nil {
+		logger.Printf("Failed to marshal activity log: %v", err)
+		return
 	}
-	
-	var validRequests []time.Time
-	for _, reqTime := range requests {
-		if reqTime.After(windowStart) {
-			validRequests = append(validRequests, reqTime)
-		}
+	logger.Println(string(jsonData))
+}
+
+func main() {
+	logFile, err := os.OpenFile("activity.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatal(err)
 	}
-	
-	if len(validRequests) >= rl.limit {
-		return false
-	}
-	
-	validRequests = append(validRequests, now)
-	rl.requests[clientIP] = validRequests
-	
-	return true
-}
+	defer logFile.Close()
 
-func (rl *RateLimiter) Cleanup() {
-	ticker := time.NewTicker(rl.window * 2)
-	go func() {
-		for range ticker.C {
-			rl.cleanupOldRequests()
-		}
-	}()
-}
+	activityLogger := log.New(logFile, "", 0)
 
-func (rl *RateLimiter) cleanupOldRequests() {
-	windowStart := time.Now().Add(-rl.window)
-	for clientIP, requests := range rl.requests {
-		var validRequests []time.Time
-		for _, reqTime := range requests {
-			if reqTime.After(windowStart) {
-				validRequests = append(validRequests, reqTime)
-			}
-		}
-		
-		if len(validRequests) == 0 {
-			delete(rl.requests, clientIP)
-		} else {
-			rl.requests[clientIP] = validRequests
-		}
-	}
-}package middleware
+	LogActivity(activityLogger, "user123", "LOGIN", "auth", "User logged in from IP 192.168.1.100")
+	LogActivity(activityLogger, "user456", "CREATE", "document", "Created new document 'Project Plan'")
+	LogActivity(activityLogger, "user123", "UPDATE", "profile", "Changed email address")
 
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLogger struct {
-	handler http.Handler
-}
-
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	al.handler.ServeHTTP(w, r)
-	duration := time.Since(start)
-
-	log.Printf(
-		"Activity: %s %s from %s completed in %v",
-		r.Method,
-		r.URL.Path,
-		r.RemoteAddr,
-		duration,
-	)
+	fmt.Println("Activity logging completed. Check activity.log file.")
 }

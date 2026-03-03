@@ -177,4 +177,59 @@ func main() {
 	for _, result := range processor.GetResults() {
 		fmt.Println(result)
 	}
+}package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "os"
+)
+
+type Data struct {
+    Name  string `json:"name"`
+    Value int    `json:"value"`
+}
+
+func readJSON(filename string) (*Data, error) {
+    file, err := os.Open(filename)
+    if err != nil {
+        return nil, err
+    }
+    defer file.Close()
+
+    var data Data
+    decoder := json.NewDecoder(file)
+    err = decoder.Decode(&data)
+    if err != nil {
+        return nil, err
+    }
+    return &data, nil
+}
+
+func writeJSON(filename string, data *Data) error {
+    file, err := os.Create(filename)
+    if err != nil {
+        return err
+    }
+    defer file.Close()
+
+    encoder := json.NewEncoder(file)
+    encoder.SetIndent("", "  ")
+    return encoder.Encode(data)
+}
+
+func main() {
+    data := &Data{Name: "test", Value: 42}
+    err := writeJSON("output.json", data)
+    if err != nil {
+        fmt.Println("Error writing file:", err)
+        return
+    }
+
+    readData, err := readJSON("output.json")
+    if err != nil {
+        fmt.Println("Error reading file:", err)
+        return
+    }
+    fmt.Printf("Read data: %+v\n", readData)
 }

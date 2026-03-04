@@ -371,4 +371,99 @@ func main() {
 		return
 	}
 	fmt.Printf("Processed Data: %+v\n", processedData)
+}package main
+
+import (
+    "encoding/csv"
+    "errors"
+    "io"
+    "os"
+    "strconv"
+    "strings"
+)
+
+type DataRecord struct {
+    ID    int
+    Name  string
+    Value float64
+    Valid bool
+}
+
+func ProcessCSVFile(filename string) ([]DataRecord, error) {
+    file, err := os.Open(filename)
+    if err != nil {
+        return nil, err
+    }
+    defer file.Close()
+
+    reader := csv.NewReader(file)
+    records := make([]DataRecord, 0)
+
+    for {
+        row, err := reader.Read()
+        if err == io.EOF {
+            break
+        }
+        if err != nil {
+            return nil, err
+        }
+
+        if len(row) < 4 {
+            continue
+        }
+
+        record, parseErr := parseRow(row)
+        if parseErr == nil {
+            records = append(records, record)
+        }
+    }
+
+    return records, nil
+}
+
+func parseRow(row []string) (DataRecord, error) {
+    var record DataRecord
+    var err error
+
+    record.ID, err = strconv.Atoi(strings.TrimSpace(row[0]))
+    if err != nil {
+        return record, errors.New("invalid ID format")
+    }
+
+    record.Name = strings.TrimSpace(row[1])
+    if record.Name == "" {
+        return record, errors.New("name cannot be empty")
+    }
+
+    record.Value, err = strconv.ParseFloat(strings.TrimSpace(row[2]), 64)
+    if err != nil {
+        return record, errors.New("invalid value format")
+    }
+
+    validStr := strings.ToLower(strings.TrimSpace(row[3]))
+    record.Valid = validStr == "true" || validStr == "1"
+
+    return record, nil
+}
+
+func FilterValidRecords(records []DataRecord) []DataRecord {
+    filtered := make([]DataRecord, 0)
+    for _, record := range records {
+        if record.Valid {
+            filtered = append(filtered, record)
+        }
+    }
+    return filtered
+}
+
+func CalculateAverage(records []DataRecord) float64 {
+    if len(records) == 0 {
+        return 0
+    }
+
+    total := 0.0
+    for _, record := range records {
+        total += record.Value
+    }
+    return total / float64(len(records))
 }

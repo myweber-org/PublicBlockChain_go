@@ -141,4 +141,99 @@ func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.RemoteAddr,
 		duration,
 	)
+}package middleware
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"time"
+)
+
+type ActivityLog struct {
+	Timestamp time.Time   `json:"timestamp"`
+	Method    string      `json:"method"`
+	Path      string      `json:"path"`
+	Status    int         `json:"status"`
+	Duration  float64     `json:"duration_ms"`
+	ClientIP  string      `json:"client_ip"`
+	UserAgent string      `json:"user_agent"`
+	Extra     interface{} `json:"extra,omitempty"`
+}
+
+type LoggerConfig struct {
+	OutputFormat string
+	IncludeExtra bool
+	LogLevel     string
+}
+
+func ActivityLogger(config LoggerConfig) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			
+			recorder := &responseRecorder{
+				ResponseWriter: w,
+				statusCode:     http.StatusOK,
+			}
+			
+			next.ServeHTTP(recorder, r)
+			
+			duration := time.Since(start).Seconds() * 1000
+			
+			clientIP := r.RemoteAddr
+			if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+				clientIP = forwarded
+			}
+			
+			logEntry := ActivityLog{
+				Timestamp: time.Now().UTC(),
+				Method:    r.Method,
+				Path:      r.URL.Path,
+				Status:    recorder.statusCode,
+				Duration:  duration,
+				ClientIP:  clientIP,
+				UserAgent: r.UserAgent(),
+			}
+			
+			if config.IncludeExtra {
+				logEntry.Extra = map[string]interface{}{
+					"protocol": r.Proto,
+					"host":     r.Host,
+					"referer":  r.Referer(),
+				}
+			}
+			
+			switch config.OutputFormat {
+			case "json":
+				data, err := json.Marshal(logEntry)
+				if err != nil {
+					log.Printf("Failed to marshal log entry: %v", err)
+				} else {
+					log.Println(string(data))
+				}
+			case "text":
+				log.Printf("%s %s %d %.2fms %s %s",
+					logEntry.Method,
+					logEntry.Path,
+					logEntry.Status,
+					logEntry.Duration,
+					logEntry.ClientIP,
+					logEntry.UserAgent)
+			default:
+				log.Printf("Unsupported output format: %s", config.OutputFormat)
+			}
+		})
+	}
+}
+
+type responseRecorder struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (r *responseRecorder) WriteHeader(statusCode int) {
+	r.statusCode = statusCode
+	r.ResponseWriter.WriteHeader(statusCode)
 }

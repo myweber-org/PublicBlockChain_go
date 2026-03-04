@@ -1,93 +1,63 @@
+
 package main
 
 import (
     "context"
-    "database/sql"
     "log"
     "time"
+
+    "github.com/go-redis/redis/v8"
 )
 
-const cleanupInterval = 1 * time.Hour
-const sessionTTL = 24 * time.Hour
+var ctx = context.Background()
+var rdb *redis.Client
 
-func cleanupExpiredSessions(db *sql.DB) {
-    ctx := context.Background()
-    query := `DELETE FROM user_sessions WHERE last_activity < $1`
-    cutoff := time.Now().Add(-sessionTTL)
+func initRedis() {
+    rdb = redis.NewClient(&redis.Options{
+        Addr:     "localhost:6379",
+        Password: "",
+        DB:       0,
+    })
+}
 
-    result, err := db.ExecContext(ctx, query, cutoff)
+func cleanupExpiredSessions() {
+    now := time.Now().Unix()
+    maxScore := float64(now - 86400)
+
+    keys, err := rdb.ZRangeByScore(ctx, "user_sessions", &redis.ZRangeBy{
+        Min: "-inf",
+        Max: string(maxScore),
+    }).Result()
     if err != nil {
-        log.Printf("Failed to clean up sessions: %v", err)
+        log.Printf("Failed to get expired sessions: %v", err)
         return
     }
 
-    rowsAffected, _ := result.RowsAffected()
-    log.Printf("Cleaned up %d expired sessions", rowsAffected)
-}
-
-func startSessionCleanupJob(db *sql.DB) {
-    ticker := time.NewTicker(cleanupInterval)
-    defer ticker.Stop()
-
-    for {
-        select {
-        case <-ticker.C:
-            cleanupExpiredSessions(db)
+    if len(keys) > 0 {
+        pipe := rdb.Pipeline()
+        for _, key := range keys {
+            pipe.Del(ctx, "session:"+key)
+        }
+        pipe.ZRemRangeByScore(ctx, "user_sessions", "-inf", string(maxScore))
+        _, err := pipe.Exec(ctx)
+        if err != nil {
+            log.Printf("Failed to delete expired sessions: %v", err)
+        } else {
+            log.Printf("Cleaned up %d expired sessions", len(keys))
         }
     }
 }
 
 func main() {
-    db, err := sql.Open("postgres", "postgresql://localhost/sessions")
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer db.Close()
+    initRedis()
 
-    startSessionCleanupJob(db)
-}package main
-
-import (
-    "log"
-    "time"
-    "database/sql"
-    _ "github.com/lib/pq"
-)
-
-func cleanupExpiredSessions(db *sql.DB) error {
-    query := `DELETE FROM user_sessions WHERE expires_at < $1`
-    result, err := db.Exec(query, time.Now())
-    if err != nil {
-        return err
-    }
-    
-    rowsAffected, _ := result.RowsAffected()
-    log.Printf("Cleaned up %d expired sessions", rowsAffected)
-    return nil
-}
-
-func scheduleCleanup(db *sql.DB) {
     ticker := time.NewTicker(24 * time.Hour)
     defer ticker.Stop()
-    
+
     for {
         select {
         case <-ticker.C:
-            if err := cleanupExpiredSessions(db); err != nil {
-                log.Printf("Session cleanup failed: %v", err)
-            }
+            cleanupExpiredSessions()
         }
     }
-}
-
-func main() {
-    db, err := sql.Open("postgres", "host=localhost user=app dbname=appdb sslmode=disable")
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer db.Close()
-    
-    go scheduleCleanup(db)
-    
-    select {}
 }

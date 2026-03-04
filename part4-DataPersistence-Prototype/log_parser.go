@@ -1,3 +1,4 @@
+
 package main
 
 import (
@@ -14,29 +15,27 @@ type LogEntry struct {
 	Message   string
 }
 
-func parseLogLine(line string) (LogEntry, error) {
-	pattern := regexp.MustCompile(`^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (.+)$`)
-	matches := pattern.FindStringSubmatch(line)
-
+func parseLogLine(line string) (LogEntry, bool) {
+	re := regexp.MustCompile(`^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (.+)$`)
+	matches := re.FindStringSubmatch(line)
 	if matches == nil {
-		return LogEntry{}, fmt.Errorf("invalid log format")
+		return LogEntry{}, false
 	}
-
 	return LogEntry{
 		Timestamp: matches[1],
-		Level:     matches[2],
+		Level:     strings.ToUpper(matches[2]),
 		Message:   matches[3],
-	}, nil
+	}, true
 }
 
 func filterErrors(entries []LogEntry) []LogEntry {
-	var errors []LogEntry
+	var errorEntries []LogEntry
 	for _, entry := range entries {
-		if strings.ToUpper(entry.Level) == "ERROR" {
-			errors = append(errors, entry)
+		if entry.Level == "ERROR" || entry.Level == "FATAL" {
+			errorEntries = append(errorEntries, entry)
 		}
 	}
-	return errors
+	return errorEntries
 }
 
 func readLogFile(filename string) ([]LogEntry, error) {
@@ -48,19 +47,12 @@ func readLogFile(filename string) ([]LogEntry, error) {
 
 	var entries []LogEntry
 	scanner := bufio.NewScanner(file)
-
 	for scanner.Scan() {
-		entry, err := parseLogLine(scanner.Text())
-		if err == nil {
+		if entry, ok := parseLogLine(scanner.Text()); ok {
 			entries = append(entries, entry)
 		}
 	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-
-	return entries, nil
+	return entries, scanner.Err()
 }
 
 func main() {
@@ -76,11 +68,8 @@ func main() {
 	}
 
 	errorEntries := filterErrors(entries)
-
-	fmt.Printf("Total log entries: %d\n", len(entries))
-	fmt.Printf("Error entries: %d\n\n", len(errorEntries))
-
+	fmt.Printf("Found %d error entries:\n", len(errorEntries))
 	for _, entry := range errorEntries {
-		fmt.Printf("[%s] %s: %s\n", entry.Timestamp, entry.Level, entry.Message)
+		fmt.Printf("[%s] %s\n", entry.Timestamp, entry.Message)
 	}
 }

@@ -149,4 +149,41 @@ func CalculateTotalValue(records []DataRecord) float64 {
 		total += record.Value
 	}
 	return total
+}package main
+
+import (
+	"regexp"
+	"strings"
+)
+
+type DataProcessor struct {
+	allowedPattern *regexp.Regexp
+}
+
+func NewDataProcessor() *DataProcessor {
+	pattern := regexp.MustCompile(`^[a-zA-Z0-9\s\-_@.]+$`)
+	return &DataProcessor{allowedPattern: pattern}
+}
+
+func (dp *DataProcessor) SanitizeInput(input string) (string, bool) {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		return "", false
+	}
+
+	if !dp.allowedPattern.MatchString(trimmed) {
+		return "", false
+	}
+
+	return trimmed, true
+}
+
+func (dp *DataProcessor) ProcessUserData(rawData []string) []string {
+	var cleanData []string
+	for _, item := range rawData {
+		if sanitized, ok := dp.SanitizeInput(item); ok {
+			cleanData = append(cleanData, sanitized)
+		}
+	}
+	return cleanData
 }

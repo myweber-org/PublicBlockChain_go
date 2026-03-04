@@ -1,42 +1,47 @@
+
 package main
 
 import (
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
 )
 
-const retentionDays = 7
+const (
+	tempDir      = "/tmp/app_temp"
+	retentionDays = 7
+)
 
 func main() {
-	tempDir := os.TempDir()
+	if err := cleanOldFiles(); err != nil {
+		fmt.Printf("Error cleaning files: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Cleanup completed successfully")
+}
+
+func cleanOldFiles() error {
 	cutoffTime := time.Now().AddDate(0, 0, -retentionDays)
 
-	err := filepath.WalkDir(tempDir, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.Walk(tempDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
+			return err
+		}
+		if info.IsDir() {
 			return nil
 		}
-
-		if d.IsDir() {
-			return nil
-		}
-
-		info, err := d.Info()
-		if err != nil {
-			return nil
-		}
-
 		if info.ModTime().Before(cutoffTime) {
-			fmt.Printf("Removing old file: %s\n", path)
-			os.Remove(path)
+			if err := os.Remove(path); err != nil {
+				return fmt.Errorf("failed to remove %s: %w", path, err)
+			}
+			fmt.Printf("Removed: %s\n", path)
 		}
-
 		return nil
 	})
 
-	if err != nil {
-		fmt.Printf("Error cleaning temp directory: %v\n", err)
+	if os.IsNotExist(err) {
+		return nil
 	}
+	return err
 }

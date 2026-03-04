@@ -583,4 +583,62 @@ func main() {
         os.Exit(1)
     }
     fmt.Println("CSV cleaning completed successfully")
+}package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+type DataCleaner struct {
+	seen map[string]bool
+}
+
+func NewDataCleaner() *DataCleaner {
+	return &DataCleaner{
+		seen: make(map[string]bool),
+	}
+}
+
+func (dc *DataCleaner) RemoveDuplicates(items []string) []string {
+	unique := []string{}
+	for _, item := range items {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
+			continue
+		}
+		if !dc.seen[trimmed] {
+			dc.seen[trimmed] = true
+			unique = append(unique, trimmed)
+		}
+	}
+	return unique
+}
+
+func (dc *DataCleaner) ValidateEmail(email string) bool {
+	if !strings.Contains(email, "@") {
+		return false
+	}
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return false
+	}
+	return len(parts[0]) > 0 && len(parts[1]) > 0
+}
+
+func main() {
+	cleaner := NewDataCleaner()
+	
+	data := []string{"  user@example.com  ", "test@domain.com", "user@example.com", "invalid-email", ""}
+	
+	uniqueEmails := cleaner.RemoveDuplicates(data)
+	fmt.Println("Unique items:", uniqueEmails)
+	
+	for _, email := range uniqueEmails {
+		if cleaner.ValidateEmail(email) {
+			fmt.Printf("%s is valid\n", email)
+		} else {
+			fmt.Printf("%s is invalid\n", email)
+		}
+	}
 }

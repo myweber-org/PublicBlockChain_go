@@ -115,4 +115,57 @@ func main() {
 	cleaned := RemoveDuplicates(data)
 	fmt.Println("Original:", data)
 	fmt.Println("Cleaned:", cleaned)
+}package main
+
+import (
+    "fmt"
+    "strings"
+)
+
+type DataCleaner struct {
+    duplicatesRemoved int
+}
+
+func NewDataCleaner() *DataCleaner {
+    return &DataCleaner{duplicatesRemoved: 0}
+}
+
+func (dc *DataCleaner) RemoveDuplicates(items []string) []string {
+    seen := make(map[string]bool)
+    unique := []string{}
+    
+    for _, item := range items {
+        if !seen[item] {
+            seen[item] = true
+            unique = append(unique, item)
+        } else {
+            dc.duplicatesRemoved++
+        }
+    }
+    return unique
+}
+
+func (dc *DataCleaner) NormalizeText(items []string) []string {
+    normalized := make([]string, len(items))
+    for i, item := range items {
+        normalized[i] = strings.ToLower(strings.TrimSpace(item))
+    }
+    return normalized
+}
+
+func (dc *DataCleaner) GetStats() string {
+    return fmt.Sprintf("Duplicates removed: %d", dc.duplicatesRemoved)
+}
+
+func main() {
+    cleaner := NewDataCleaner()
+    
+    data := []string{"Apple", "apple", "Banana", "  Banana  ", "Apple", "Cherry"}
+    
+    normalized := cleaner.NormalizeText(data)
+    unique := cleaner.RemoveDuplicates(normalized)
+    
+    fmt.Println("Original data:", data)
+    fmt.Println("Cleaned data:", unique)
+    fmt.Println(cleaner.GetStats())
 }

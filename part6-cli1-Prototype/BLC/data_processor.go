@@ -245,3 +245,49 @@ func FindMaxValue(records []DataRecord) (DataRecord, error) {
 
 	return maxRecord, nil
 }
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "strings"
+)
+
+// ValidateJSONString checks if a string is valid JSON.
+func ValidateJSONString(input string) (bool, error) {
+    var js interface{}
+    decoder := json.NewDecoder(strings.NewReader(input))
+    decoder.UseNumber()
+    err := decoder.Decode(&js)
+    if err != nil {
+        return false, err
+    }
+    return true, nil
+}
+
+// ParseUserData attempts to parse a JSON string into a map.
+func ParseUserData(jsonStr string) (map[string]interface{}, error) {
+    var data map[string]interface{}
+    err := json.Unmarshal([]byte(jsonStr), &data)
+    if err != nil {
+        return nil, err
+    }
+    return data, nil
+}
+
+func main() {
+    testJSON := `{"name": "Alice", "age": 30, "active": true}`
+    
+    valid, err := ValidateJSONString(testJSON)
+    if valid {
+        fmt.Println("JSON is valid")
+        userData, parseErr := ParseUserData(testJSON)
+        if parseErr != nil {
+            fmt.Printf("Parse error: %v\n", parseErr)
+        } else {
+            fmt.Printf("Parsed data: %v\n", userData)
+        }
+    } else {
+        fmt.Printf("Validation error: %v\n", err)
+    }
+}

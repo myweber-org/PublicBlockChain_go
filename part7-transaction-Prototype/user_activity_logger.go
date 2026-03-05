@@ -361,4 +361,68 @@ func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.RemoteAddr,
 		duration,
 	)
+}package main
+
+import (
+    "encoding/json"
+    "log"
+    "os"
+    "time"
+)
+
+type ActivityEvent struct {
+    UserID    string    `json:"user_id"`
+    EventType string    `json:"event_type"`
+    Timestamp time.Time `json:"timestamp"`
+    Details   string    `json:"details,omitempty"`
+}
+
+type ActivityLogger struct {
+    logFile *os.File
+    encoder *json.Encoder
+}
+
+func NewActivityLogger(filename string) (*ActivityLogger, error) {
+    file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        return nil, err
+    }
+    return &ActivityLogger{
+        logFile: file,
+        encoder: json.NewEncoder(file),
+    }, nil
+}
+
+func (l *ActivityLogger) LogActivity(userID, eventType, details string) error {
+    event := ActivityEvent{
+        UserID:    userID,
+        EventType: eventType,
+        Timestamp: time.Now().UTC(),
+        Details:   details,
+    }
+    return l.encoder.Encode(event)
+}
+
+func (l *ActivityLogger) Close() error {
+    return l.logFile.Close()
+}
+
+func main() {
+    logger, err := NewActivityLogger("activity.log")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer logger.Close()
+
+    err = logger.LogActivity("user123", "login", "Successful authentication")
+    if err != nil {
+        log.Printf("Failed to log activity: %v", err)
+    }
+
+    err = logger.LogActivity("user123", "purchase", "Order ID: ORD-78910")
+    if err != nil {
+        log.Printf("Failed to log activity: %v", err)
+    }
+
+    log.Println("Activity logging completed")
 }

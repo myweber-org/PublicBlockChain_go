@@ -299,4 +299,134 @@ func main() {
 	}
 
 	fmt.Printf("Total files processed: %d\n", len(processedFiles))
+}package main
+
+import (
+	"bufio"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+)
+
+type FileProcessor struct {
+	BatchSize   int
+	WorkerCount int
+	mu          sync.Mutex
+	processed   int
+}
+
+func NewFileProcessor(batchSize, workerCount int) *FileProcessor {
+	if batchSize <= 0 {
+		batchSize = 10
+	}
+	if workerCount <= 0 {
+		workerCount = 3
+	}
+	return &FileProcessor{
+		BatchSize:   batchSize,
+		WorkerCount: workerCount,
+	}
+}
+
+func (fp *FileProcessor) ProcessFiles(paths []string, action func(string) error) error {
+	if len(paths) == 0 {
+		return errors.New("no files to process")
+	}
+
+	var wg sync.WaitGroup
+	fileChan := make(chan string, fp.BatchSize)
+	errChan := make(chan error, fp.WorkerCount)
+	done := make(chan bool)
+
+	for i := 0; i < fp.WorkerCount; i++ {
+		wg.Add(1)
+		go fp.worker(&wg, fileChan, errChan, action)
+	}
+
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	for _, path := range paths {
+		select {
+		case fileChan <- path:
+		case err := <-errChan:
+			close(fileChan)
+			return err
+		}
+	}
+	close(fileChan)
+
+	select {
+	case <-done:
+		return nil
+	case err := <-errChan:
+		return err
+	}
+}
+
+func (fp *FileProcessor) worker(wg *sync.WaitGroup, files <-chan string, errChan chan<- error, action func(string) error) {
+	defer wg.Done()
+	for file := range files {
+		if err := action(file); err != nil {
+			errChan <- fmt.Errorf("failed to process %s: %w", file, err)
+			return
+		}
+		fp.mu.Lock()
+		fp.processed++
+		fp.mu.Unlock()
+	}
+}
+
+func (fp *FileProcessor) GetProcessedCount() int {
+	fp.mu.Lock()
+	defer fp.mu.Unlock()
+	return fp.processed
+}
+
+func countLines(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	lineCount := 0
+	for scanner.Scan() {
+		lineCount++
+	}
+
+	if err := scanner.Err(); err != nil && err != io.EOF {
+		return err
+	}
+
+	fmt.Printf("File %s has %d lines\n", filepath.Base(path), lineCount)
+	return nil
+}
+
+func main() {
+	processor := NewFileProcessor(5, 4)
+
+	files := []string{
+		"/tmp/test1.txt",
+		"/tmp/test2.txt",
+		"/tmp/test3.txt",
+		"/tmp/test4.txt",
+		"/tmp/test5.txt",
+	}
+
+	start := time.Now()
+	if err := processor.ProcessFiles(files, countLines); err != nil {
+		fmt.Printf("Processing error: %v\n", err)
+		os.Exit(1)
+	}
+
+	duration := time.Since(start)
+	fmt.Printf("Processed %d files in %v\n", processor.GetProcessedCount(), duration)
 }

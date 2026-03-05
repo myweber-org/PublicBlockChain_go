@@ -249,3 +249,58 @@ func main() {
 	cleaner.RemoveRecord("002")
 	fmt.Printf("Records after removal: %d\n", cleaner.CountRecords())
 }
+package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+type DataRecord struct {
+	ID    int
+	Email string
+	Valid bool
+}
+
+func deduplicateRecords(records []DataRecord) []DataRecord {
+	seen := make(map[string]bool)
+	var unique []DataRecord
+
+	for _, record := range records {
+		email := strings.ToLower(strings.TrimSpace(record.Email))
+		if !seen[email] {
+			seen[email] = true
+			unique = append(unique, record)
+		}
+	}
+	return unique
+}
+
+func validateEmails(records []DataRecord) []DataRecord {
+	for i := range records {
+		email := records[i].Email
+		records[i].Valid = strings.Contains(email, "@") && strings.Contains(email, ".")
+	}
+	return records
+}
+
+func processData(records []DataRecord) []DataRecord {
+	records = deduplicateRecords(records)
+	records = validateEmails(records)
+	return records
+}
+
+func main() {
+	sampleData := []DataRecord{
+		{1, "user@example.com", false},
+		{2, "user@example.com", false},
+		{3, "invalid-email", false},
+		{4, "test@domain.org", false},
+	}
+
+	processed := processData(sampleData)
+
+	for _, record := range processed {
+		fmt.Printf("ID: %d, Email: %s, Valid: %t\n", record.ID, record.Email, record.Valid)
+	}
+}

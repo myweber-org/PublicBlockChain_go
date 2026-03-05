@@ -230,3 +230,111 @@ func (a *Aggregator) GetWindowAggregation(windowName, metricName, operation stri
 	
 	return window.Aggregate(metricName, operation)
 }
+package main
+
+import (
+	"fmt"
+	"sort"
+	"time"
+)
+
+type Metric struct {
+	Timestamp time.Time
+	Value     float64
+}
+
+type SlidingWindowAggregator struct {
+	windowSize  time.Duration
+	metrics     []Metric
+	percentiles []float64
+}
+
+func NewSlidingWindowAggregator(windowSize time.Duration, percentiles []float64) *SlidingWindowAggregator {
+	return &SlidingWindowAggregator{
+		windowSize:  windowSize,
+		percentiles: percentiles,
+		metrics:     make([]Metric, 0),
+	}
+}
+
+func (swa *SlidingWindowAggregator) AddMetric(value float64) {
+	now := time.Now()
+	swa.metrics = append(swa.metrics, Metric{Timestamp: now, Value: value})
+	swa.cleanupOldMetrics()
+}
+
+func (swa *SlidingWindowAggregator) cleanupOldMetrics() {
+	cutoff := time.Now().Add(-swa.windowSize)
+	i := 0
+	for i < len(swa.metrics) && swa.metrics[i].Timestamp.Before(cutoff) {
+		i++
+	}
+	if i > 0 {
+		swa.metrics = swa.metrics[i:]
+	}
+}
+
+func (swa *SlidingWindowAggregator) CalculatePercentiles() map[float64]float64 {
+	if len(swa.metrics) == 0 {
+		return make(map[float64]float64)
+	}
+
+	values := make([]float64, len(swa.metrics))
+	for i, m := range swa.metrics {
+		values[i] = m.Value
+	}
+	sort.Float64s(values)
+
+	result := make(map[float64]float64)
+	for _, p := range swa.percentiles {
+		if p < 0 || p > 100 {
+			continue
+		}
+		idx := int(float64(len(values)-1) * p / 100.0)
+		result[p] = values[idx]
+	}
+	return result
+}
+
+func (swa *SlidingWindowAggregator) GetStats() (float64, float64, int) {
+	if len(swa.metrics) == 0 {
+		return 0, 0, 0
+	}
+
+	var sum float64
+	var min, max float64
+	min = swa.metrics[0].Value
+	max = swa.metrics[0].Value
+
+	for _, m := range swa.metrics {
+		sum += m.Value
+		if m.Value < min {
+			min = m.Value
+		}
+		if m.Value > max {
+			max = m.Value
+		}
+	}
+
+	avg := sum / float64(len(swa.metrics))
+	return avg, max - min, len(swa.metrics)
+}
+
+func main() {
+	aggregator := NewSlidingWindowAggregator(5*time.Minute, []float64{50, 90, 95, 99})
+
+	for i := 0; i < 100; i++ {
+		aggregator.AddMetric(float64(i) * 1.5)
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	avg, rangeVal, count := aggregator.GetStats()
+	percentiles := aggregator.CalculatePercentiles()
+
+	fmt.Printf("Metrics collected: %d\n", count)
+	fmt.Printf("Average: %.2f, Range: %.2f\n", avg, rangeVal)
+	fmt.Println("Percentiles:")
+	for p, v := range percentiles {
+		fmt.Printf("  P%.0f: %.2f\n", p, v)
+	}
+}

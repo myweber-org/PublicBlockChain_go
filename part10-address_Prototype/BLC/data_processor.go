@@ -337,4 +337,142 @@ func main() {
 
     fmt.Printf("Data: %v\n", sampleData)
     fmt.Printf("Moving average (window=%d): %v\n", window, averages)
+}package main
+
+import (
+	"encoding/csv"
+	"errors"
+	"io"
+	"os"
+	"strconv"
+	"strings"
+)
+
+type DataRecord struct {
+	ID    int
+	Name  string
+	Value float64
+	Valid bool
+}
+
+func ParseCSVFile(filename string) ([]DataRecord, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+
+	var result []DataRecord
+	for i, row := range records {
+		if len(row) < 4 {
+			continue
+		}
+
+		id, err := strconv.Atoi(strings.TrimSpace(row[0]))
+		if err != nil {
+			continue
+		}
+
+		name := strings.TrimSpace(row[1])
+		if name == "" {
+			continue
+		}
+
+		value, err := strconv.ParseFloat(strings.TrimSpace(row[2]), 64)
+		if err != nil {
+			continue
+		}
+
+		valid := strings.ToLower(strings.TrimSpace(row[3])) == "true"
+
+		record := DataRecord{
+			ID:    id,
+			Name:  name,
+			Value: value,
+			Valid: valid,
+		}
+		result = append(result, record)
+	}
+
+	if len(result) == 0 {
+		return nil, errors.New("no valid records found")
+	}
+
+	return result, nil
+}
+
+func ValidateRecords(records []DataRecord) []DataRecord {
+	var validRecords []DataRecord
+	for _, record := range records {
+		if record.Valid && record.Value >= 0 && record.ID > 0 {
+			validRecords = append(validRecords, record)
+		}
+	}
+	return validRecords
+}
+
+func CalculateAverage(records []DataRecord) float64 {
+	if len(records) == 0 {
+		return 0
+	}
+
+	var sum float64
+	for _, record := range records {
+		sum += record.Value
+	}
+	return sum / float64(len(records))
+}
+
+func WriteProcessedData(filename string, records []DataRecord) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	header := []string{"ID", "Name", "Value", "Valid"}
+	if err := writer.Write(header); err != nil {
+		return err
+	}
+
+	for _, record := range records {
+		row := []string{
+			strconv.Itoa(record.ID),
+			record.Name,
+			strconv.FormatFloat(record.Value, 'f', 2, 64),
+			strconv.FormatBool(record.Valid),
+		}
+		if err := writer.Write(row); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func ProcessDataFile(inputFile, outputFile string) error {
+	records, err := ParseCSVFile(inputFile)
+	if err != nil {
+		return err
+	}
+
+	validRecords := ValidateRecords(records)
+	if len(validRecords) == 0 {
+		return errors.New("no valid records after validation")
+	}
+
+	average := CalculateAverage(validRecords)
+	println("Processed", len(validRecords), "records")
+	println("Average value:", average)
+
+	return WriteProcessedData(outputFile, validRecords)
 }

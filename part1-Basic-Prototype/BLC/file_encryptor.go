@@ -337,4 +337,113 @@ func main() {
 	}
 
 	fmt.Printf("Operation completed successfully: %s -> %s\n", inputPath, outputPath)
+}package main
+
+import (
+    "crypto/aes"
+    "crypto/cipher"
+    "crypto/rand"
+    "errors"
+    "io"
+    "os"
+)
+
+type Encryptor struct {
+    key []byte
+}
+
+func NewEncryptor(key string) *Encryptor {
+    hash := sha256.Sum256([]byte(key))
+    return &Encryptor{key: hash[:]}
+}
+
+func (e *Encryptor) EncryptFile(inputPath, outputPath string) error {
+    plaintext, err := os.ReadFile(inputPath)
+    if err != nil {
+        return err
+    }
+
+    block, err := aes.NewCipher(e.key)
+    if err != nil {
+        return err
+    }
+
+    gcm, err := cipher.NewGCM(block)
+    if err != nil {
+        return err
+    }
+
+    nonce := make([]byte, gcm.NonceSize())
+    if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+        return err
+    }
+
+    ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
+    return os.WriteFile(outputPath, ciphertext, 0644)
+}
+
+func (e *Encryptor) DecryptFile(inputPath, outputPath string) error {
+    ciphertext, err := os.ReadFile(inputPath)
+    if err != nil {
+        return err
+    }
+
+    block, err := aes.NewCipher(e.key)
+    if err != nil {
+        return err
+    }
+
+    gcm, err := cipher.NewGCM(block)
+    if err != nil {
+        return err
+    }
+
+    nonceSize := gcm.NonceSize()
+    if len(ciphertext) < nonceSize {
+        return errors.New("ciphertext too short")
+    }
+
+    nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+    plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+    if err != nil {
+        return err
+    }
+
+    return os.WriteFile(outputPath, plaintext, 0644)
+}
+
+func main() {
+    if len(os.Args) < 4 {
+        println("Usage: encryptor <encrypt|decrypt> <input> <output>")
+        os.Exit(1)
+    }
+
+    key := os.Getenv("ENCRYPTION_KEY")
+    if key == "" {
+        println("ENCRYPTION_KEY environment variable required")
+        os.Exit(1)
+    }
+
+    encryptor := NewEncryptor(key)
+    operation := os.Args[1]
+    inputPath := os.Args[2]
+    outputPath := os.Args[3]
+
+    var err error
+    switch operation {
+    case "encrypt":
+        err = encryptor.EncryptFile(inputPath, outputPath)
+    case "decrypt":
+        err = encryptor.DecryptFile(inputPath, outputPath)
+    default:
+        println("Invalid operation. Use 'encrypt' or 'decrypt'")
+        os.Exit(1)
+    }
+
+    if err != nil {
+        println("Error:", err.Error())
+        os.Exit(1)
+    }
+
+    println("Operation completed successfully")
 }

@@ -72,4 +72,78 @@ func getEnvIntOrDefault(key string, defaultValue int) int {
 		}
 	}
 	return defaultValue
+}package config
+
+import (
+	"errors"
+	"io/ioutil"
+	"os"
+
+	"gopkg.in/yaml.v2"
+)
+
+type DatabaseConfig struct {
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+	Database string `yaml:"database"`
+}
+
+type ServerConfig struct {
+	Port         int    `yaml:"port"`
+	ReadTimeout  int    `yaml:"read_timeout"`
+	WriteTimeout int    `yaml:"write_timeout"`
+	Environment  string `yaml:"environment"`
+}
+
+type AppConfig struct {
+	Database DatabaseConfig `yaml:"database"`
+	Server   ServerConfig   `yaml:"server"`
+	Features []string       `yaml:"features"`
+}
+
+func LoadConfig(filePath string) (*AppConfig, error) {
+	if filePath == "" {
+		return nil, errors.New("config file path cannot be empty")
+	}
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	content, err := ioutil.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+
+	var config AppConfig
+	err = yaml.Unmarshal(content, &config)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := validateConfig(&config); err != nil {
+		return nil, err
+	}
+
+	return &config, nil
+}
+
+func validateConfig(config *AppConfig) error {
+	if config.Database.Host == "" {
+		return errors.New("database host is required")
+	}
+	if config.Database.Port <= 0 {
+		return errors.New("database port must be positive")
+	}
+	if config.Server.Port <= 0 {
+		return errors.New("server port must be positive")
+	}
+	if config.Server.Environment == "" {
+		config.Server.Environment = "development"
+	}
+	return nil
 }

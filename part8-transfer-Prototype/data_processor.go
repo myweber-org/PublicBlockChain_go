@@ -835,3 +835,118 @@ func main() {
 
 	fmt.Printf("Successfully processed %s -> %s\n", inputFile, outputFile)
 }
+package main
+
+import (
+	"encoding/csv"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+	"strings"
+)
+
+type Record struct {
+	ID    int
+	Name  string
+	Value float64
+	Valid bool
+}
+
+func processCSVFile(filename string) ([]Record, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	reader.TrimLeadingSpace = true
+
+	var records []Record
+	lineNumber := 0
+
+	for {
+		lineNumber++
+		row, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("csv read error at line %d: %w", lineNumber, err)
+		}
+
+		if len(row) < 4 {
+			continue
+		}
+
+		record := Record{}
+		record.ID, err = strconv.Atoi(strings.TrimSpace(row[0]))
+		if err != nil {
+			continue
+		}
+
+		record.Name = strings.TrimSpace(row[1])
+		if record.Name == "" {
+			continue
+		}
+
+		record.Value, err = strconv.ParseFloat(strings.TrimSpace(row[2]), 64)
+		if err != nil {
+			continue
+		}
+
+		validStr := strings.ToLower(strings.TrimSpace(row[3]))
+		record.Valid = validStr == "true" || validStr == "yes" || validStr == "1"
+
+		records = append(records, record)
+	}
+
+	return records, nil
+}
+
+func calculateStats(records []Record) (float64, float64, int) {
+	if len(records) == 0 {
+		return 0, 0, 0
+	}
+
+	var sum float64
+	var validCount int
+	var maxValue float64
+
+	for _, record := range records {
+		if record.Valid {
+			sum += record.Value
+			validCount++
+			if record.Value > maxValue {
+				maxValue = record.Value
+			}
+		}
+	}
+
+	average := 0.0
+	if validCount > 0 {
+		average = sum / float64(validCount)
+	}
+
+	return average, maxValue, validCount
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: data_processor <csv_file>")
+		return
+	}
+
+	records, err := processCSVFile(os.Args[1])
+	if err != nil {
+		fmt.Printf("Error processing file: %v\n", err)
+		return
+	}
+
+	avg, max, validCount := calculateStats(records)
+	fmt.Printf("Processed %d total records\n", len(records))
+	fmt.Printf("Valid records: %d\n", validCount)
+	fmt.Printf("Average value: %.2f\n", avg)
+	fmt.Printf("Maximum value: %.2f\n", max)
+}

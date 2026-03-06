@@ -241,4 +241,64 @@ func main() {
     }
 
     fmt.Println("Activity logging completed")
+}package main
+
+import (
+	"fmt"
+	"log"
+	"os"
+	"time"
+)
+
+type ActivityType string
+
+const (
+	Login    ActivityType = "LOGIN"
+	Logout   ActivityType = "LOGOUT"
+	Purchase ActivityType = "PURCHASE"
+	View     ActivityType = "VIEW"
+)
+
+type UserActivity struct {
+	UserID    string
+	Action    ActivityType
+	Timestamp time.Time
+	Details   string
+}
+
+func logActivity(activity UserActivity) error {
+	file, err := os.OpenFile("activity.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	logEntry := fmt.Sprintf("[%s] User: %s | Action: %s | Details: %s\n",
+		activity.Timestamp.Format(time.RFC3339),
+		activity.UserID,
+		activity.Action,
+		activity.Details)
+
+	if _, err := file.WriteString(logEntry); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func main() {
+	activities := []UserActivity{
+		{"user123", Login, time.Now(), "Successful authentication"},
+		{"user123", View, time.Now(), "Viewed product catalog"},
+		{"user456", Purchase, time.Now(), "Purchased item: SKU-789"},
+		{"user123", Logout, time.Now(), "Session terminated"},
+	}
+
+	for _, activity := range activities {
+		if err := logActivity(activity); err != nil {
+			log.Printf("Failed to log activity: %v", err)
+		}
+	}
+
+	fmt.Println("Activity logging completed")
 }

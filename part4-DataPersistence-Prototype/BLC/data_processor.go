@@ -500,3 +500,28 @@ func (dp *DataProcessor) NormalizeEmail(email string) (string, bool) {
 	lowerEmail := strings.ToLower(cleaned)
 	return lowerEmail, dp.ValidateEmail(lowerEmail)
 }
+package data_processor
+
+import (
+	"regexp"
+	"strings"
+)
+
+// CleanInput removes extra whitespace and trims the given string
+func CleanInput(input string) string {
+	// Replace multiple spaces with a single space
+	re := regexp.MustCompile(`\s+`)
+	cleaned := re.ReplaceAllString(input, " ")
+	return strings.TrimSpace(cleaned)
+}
+
+// NormalizeEmail converts email to lowercase and trims spaces
+func NormalizeEmail(email string) string {
+	return strings.ToLower(CleanInput(email))
+}
+
+// ValidateUsername checks if username contains only allowed characters
+func ValidateUsername(username string) bool {
+	matched, _ := regexp.MatchString(`^[a-zA-Z0-9_]{3,20}$`, username)
+	return matched
+}

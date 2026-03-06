@@ -620,4 +620,55 @@ func validateToken(token string) (string, error) {
 		return strings.TrimPrefix(token, "user_"), nil
 	}
 	return "", http.ErrAbortHandler
+}package middleware
+
+import (
+	"net/http"
+	"strings"
+)
+
+type User struct {
+	ID       int
+	Username string
+	Role     string
+}
+
+func Authenticate(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			http.Error(w, "Missing authorization header", http.StatusUnauthorized)
+			return
+		}
+
+		tokenParts := strings.Split(authHeader, " ")
+		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
+			http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
+			return
+		}
+
+		token := tokenParts[1]
+		user, err := validateToken(token)
+		if err != nil {
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			return
+		}
+
+		ctx := r.Context()
+		ctx = context.WithValue(ctx, "user", user)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func validateToken(token string) (*User, error) {
+	// Token validation logic would go here
+	// This is a simplified example
+	if token == "valid-jwt-token-example" {
+		return &User{
+			ID:       1,
+			Username: "john_doe",
+			Role:     "admin",
+		}, nil
+	}
+	return nil, fmt.Errorf("invalid token")
 }

@@ -857,4 +857,49 @@ func ValidateConfig(config *AppConfig) error {
         return fmt.Errorf("server port must be between 1 and 65535")
     }
     return nil
+}package config
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+)
+
+type AppConfig struct {
+	ServerPort string `json:"server_port"`
+	DBHost     string `json:"db_host"`
+	DBPort     int    `json:"db_port"`
+	DebugMode  bool   `json:"debug_mode"`
+	LogLevel   string `json:"log_level"`
+}
+
+func LoadConfig(configPath string) (*AppConfig, error) {
+	absPath, err := filepath.Abs(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	file, err := os.Open(absPath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var config AppConfig
+	decoder := json.NewDecoder(file)
+	if err := decoder.Decode(&config); err != nil {
+		return nil, err
+	}
+
+	if port := os.Getenv("APP_PORT"); port != "" {
+		config.ServerPort = port
+	}
+	if host := os.Getenv("DB_HOST"); host != "" {
+		config.DBHost = host
+	}
+	if logLevel := os.Getenv("LOG_LEVEL"); logLevel != "" {
+		config.LogLevel = logLevel
+	}
+
+	return &config, nil
 }

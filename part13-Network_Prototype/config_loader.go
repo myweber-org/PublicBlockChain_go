@@ -457,3 +457,66 @@ func getEnv(key, defaultValue string) string {
     }
     return value
 }
+package config
+
+import (
+	"errors"
+	"os"
+	"strconv"
+	"strings"
+)
+
+type AppConfig struct {
+	ServerPort   int
+	DatabaseURL  string
+	DebugMode    bool
+	AllowedHosts []string
+}
+
+func LoadConfig() (*AppConfig, error) {
+	portStr := os.Getenv("SERVER_PORT")
+	if portStr == "" {
+		portStr = "8080"
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return nil, errors.New("invalid SERVER_PORT value")
+	}
+
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		return nil, errors.New("DATABASE_URL is required")
+	}
+
+	debugMode := false
+	debugStr := os.Getenv("DEBUG_MODE")
+	if strings.ToLower(debugStr) == "true" {
+		debugMode = true
+	}
+
+	hostsStr := os.Getenv("ALLOWED_HOSTS")
+	var allowedHosts []string
+	if hostsStr != "" {
+		allowedHosts = strings.Split(hostsStr, ",")
+		for i, host := range allowedHosts {
+			allowedHosts[i] = strings.TrimSpace(host)
+		}
+	}
+
+	return &AppConfig{
+		ServerPort:   port,
+		DatabaseURL:  dbURL,
+		DebugMode:    debugMode,
+		AllowedHosts: allowedHosts,
+	}, nil
+}
+
+func (c *AppConfig) Validate() error {
+	if c.ServerPort < 1 || c.ServerPort > 65535 {
+		return errors.New("server port must be between 1 and 65535")
+	}
+	if !strings.HasPrefix(c.DatabaseURL, "postgres://") {
+		return errors.New("database URL must start with postgres://")
+	}
+	return nil
+}

@@ -642,3 +642,68 @@ func main() {
 		}
 	}
 }
+package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+type DataCleaner struct {
+	normalizeCase bool
+	trimSpaces    bool
+}
+
+func NewDataCleaner() *DataCleaner {
+	return &DataCleaner{
+		normalizeCase: true,
+		trimSpaces:    true,
+	}
+}
+
+func (dc *DataCleaner) NormalizeString(input string) string {
+	result := input
+
+	if dc.trimSpaces {
+		result = strings.TrimSpace(result)
+	}
+
+	if dc.normalizeCase {
+		result = strings.ToLower(result)
+	}
+
+	return result
+}
+
+func (dc *DataCleaner) DeduplicateStrings(items []string) []string {
+	seen := make(map[string]struct{})
+	var unique []string
+
+	for _, item := range items {
+		normalized := dc.NormalizeString(item)
+		if _, exists := seen[normalized]; !exists {
+			seen[normalized] = struct{}{}
+			unique = append(unique, normalized)
+		}
+	}
+
+	return unique
+}
+
+func main() {
+	cleaner := NewDataCleaner()
+
+	data := []string{
+		"  Apple  ",
+		"apple",
+		" BANANA ",
+		"banana",
+		"Cherry",
+		"cherry ",
+	}
+
+	cleaned := cleaner.DeduplicateStrings(data)
+
+	fmt.Println("Original data:", data)
+	fmt.Println("Cleaned data:", cleaned)
+}

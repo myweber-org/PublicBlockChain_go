@@ -64,7 +64,7 @@ func decryptFile(inputPath, outputPath string, key []byte) error {
 	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
-		return fmt.Errorf("decrypt: %w", err)
+		return fmt.Errorf("decrypt data: %w", err)
 	}
 
 	if err := os.WriteFile(outputPath, plaintext, 0644); err != nil {
@@ -75,23 +75,36 @@ func decryptFile(inputPath, outputPath string, key []byte) error {
 }
 
 func main() {
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		fmt.Printf("Generate key error: %v\n", err)
-		return
+	if len(os.Args) < 5 {
+		fmt.Println("Usage: go run file_encryptor.go <encrypt|decrypt> <input> <output> <key>")
+		os.Exit(1)
 	}
 
-	fmt.Printf("Generated key: %x\n", key)
+	action := os.Args[1]
+	inputPath := os.Args[2]
+	outputPath := os.Args[3]
+	key := []byte(os.Args[4])
 
-	if err := encryptFile("test.txt", "test.enc", key); err != nil {
-		fmt.Printf("Encryption error: %v\n", err)
-		return
+	if len(key) != 32 {
+		fmt.Println("Key must be 32 bytes for AES-256")
+		os.Exit(1)
 	}
-	fmt.Println("File encrypted successfully")
 
-	if err := decryptFile("test.enc", "test_decrypted.txt", key); err != nil {
-		fmt.Printf("Decryption error: %v\n", err)
-		return
+	var err error
+	switch action {
+	case "encrypt":
+		err = encryptFile(inputPath, outputPath, key)
+	case "decrypt":
+		err = decryptFile(inputPath, outputPath, key)
+	default:
+		fmt.Println("Action must be 'encrypt' or 'decrypt'")
+		os.Exit(1)
 	}
-	fmt.Println("File decrypted successfully")
+
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Operation completed successfully: %s -> %s\n", inputPath, outputPath)
 }

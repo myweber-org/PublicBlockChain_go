@@ -1,10 +1,10 @@
 package config
 
 import (
-	"io/ioutil"
 	"os"
+	"path/filepath"
 
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
@@ -15,110 +15,66 @@ type Config struct {
 	Database struct {
 		Host     string `yaml:"host" env:"DB_HOST"`
 		Port     int    `yaml:"port" env:"DB_PORT"`
-		Username string `yaml:"username" env:"DB_USER"`
-		Password string `yaml:"password" env:"DB_PASS"`
 		Name     string `yaml:"name" env:"DB_NAME"`
+		User     string `yaml:"user" env:"DB_USER"`
+		Password string `yaml:"password" env:"DB_PASSWORD"`
+		SSLMode  string `yaml:"ssl_mode" env:"DB_SSL_MODE"`
 	} `yaml:"database"`
-	LogLevel string `yaml:"log_level" env:"LOG_LEVEL"`
+	Logging struct {
+		Level  string `yaml:"level" env:"LOG_LEVEL"`
+		Format string `yaml:"format" env:"LOG_FORMAT"`
+	} `yaml:"logging"`
 }
 
-func LoadConfig(path string) (*Config, error) {
-	config := &Config{}
-	
-	data, err := ioutil.ReadFile(path)
+func LoadConfig(configPath string) (*Config, error) {
+	absPath, err := filepath.Abs(configPath)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := yaml.Unmarshal(data, config); err != nil {
+	data, err := os.ReadFile(absPath)
+	if err != nil {
 		return nil, err
 	}
 
-	overrideFromEnv(config)
-	return config, nil
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+
+	overrideFromEnv(&cfg)
+
+	return &cfg, nil
 }
 
-func overrideFromEnv(c *Config) {
-	if val := os.Getenv("SERVER_HOST"); val != "" {
-		c.Server.Host = val
-	}
-	if val := os.Getenv("SERVER_PORT"); val != "" {
-		// Parse port from string to int (implementation omitted for brevity)
-	}
-	if val := os.Getenv("DB_HOST"); val != "" {
-		c.Database.Host = val
-	}
-	if val := os.Getenv("DB_PORT"); val != "" {
-		// Parse port from string to int
-	}
-	if val := os.Getenv("DB_USER"); val != "" {
-		c.Database.Username = val
-	}
-	if val := os.Getenv("DB_PASS"); val != "" {
-		c.Database.Password = val
-	}
-	if val := os.Getenv("DB_NAME"); val != "" {
-		c.Database.Name = val
-	}
-	if val := os.Getenv("LOG_LEVEL"); val != "" {
-		c.LogLevel = val
-	}
-}package config
+func overrideFromEnv(cfg *Config) {
+	cfg.Server.Host = getEnvOrDefault("SERVER_HOST", cfg.Server.Host)
+	cfg.Server.Port = getEnvIntOrDefault("SERVER_PORT", cfg.Server.Port)
 
-import (
-    "os"
-    "strconv"
-    "strings"
-)
+	cfg.Database.Host = getEnvOrDefault("DB_HOST", cfg.Database.Host)
+	cfg.Database.Port = getEnvIntOrDefault("DB_PORT", cfg.Database.Port)
+	cfg.Database.Name = getEnvOrDefault("DB_NAME", cfg.Database.Name)
+	cfg.Database.User = getEnvOrDefault("DB_USER", cfg.Database.User)
+	cfg.Database.Password = getEnvOrDefault("DB_PASSWORD", cfg.Database.Password)
+	cfg.Database.SSLMode = getEnvOrDefault("DB_SSL_MODE", cfg.Database.SSLMode)
 
-type Config struct {
-    ServerPort int
-    DatabaseURL string
-    EnableDebug bool
-    AllowedOrigins []string
+	cfg.Logging.Level = getEnvOrDefault("LOG_LEVEL", cfg.Logging.Level)
+	cfg.Logging.Format = getEnvOrDefault("LOG_FORMAT", cfg.Logging.Format)
 }
 
-func Load() (*Config, error) {
-    cfg := &Config{}
-    
-    portStr := getEnv("SERVER_PORT", "8080")
-    port, err := strconv.Atoi(portStr)
-    if err != nil {
-        return nil, err
-    }
-    cfg.ServerPort = port
-    
-    cfg.DatabaseURL = getEnv("DATABASE_URL", "postgres://localhost:5432/app")
-    
-    debugStr := getEnv("ENABLE_DEBUG", "false")
-    cfg.EnableDebug = strings.ToLower(debugStr) == "true"
-    
-    originsStr := getEnv("ALLOWED_ORIGINS", "http://localhost:3000")
-    cfg.AllowedOrigins = strings.Split(originsStr, ",")
-    
-    if err := validateConfig(cfg); err != nil {
-        return nil, err
-    }
-    
-    return cfg, nil
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }
 
-func getEnv(key, defaultValue string) string {
-    value := os.Getenv(key)
-    if value == "" {
-        return defaultValue
-    }
-    return value
-}
-
-func validateConfig(cfg *Config) error {
-    if cfg.ServerPort < 1 || cfg.ServerPort > 65535 {
-        return strconv.ErrRange
-    }
-    
-    if cfg.DatabaseURL == "" {
-        return strconv.ErrSyntax
-    }
-    
-    return nil
+func getEnvIntOrDefault(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		var result int
+		if _, err := fmt.Sscanf(value, "%d", &result); err == nil {
+			return result
+		}
+	}
+	return defaultValue
 }

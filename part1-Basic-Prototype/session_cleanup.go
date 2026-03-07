@@ -91,4 +91,69 @@ func main() {
     
     log.Println("Session cleanup service would start here")
     select {} // Block forever in this example
+}package main
+
+import (
+    "context"
+    "log"
+    "time"
+)
+
+type SessionStore interface {
+    DeleteExpiredSessions(ctx context.Context) error
+}
+
+type SessionCleaner struct {
+    store SessionStore
+}
+
+func NewSessionCleaner(store SessionStore) *SessionCleaner {
+    return &SessionCleaner{store: store}
+}
+
+func (sc *SessionCleaner) RunCleanupJob(ctx context.Context) {
+    ticker := time.NewTicker(24 * time.Hour)
+    defer ticker.Stop()
+
+    for {
+        select {
+        case <-ctx.Done():
+            log.Println("Session cleanup job stopped")
+            return
+        case <-ticker.C:
+            sc.cleanupExpiredSessions(ctx)
+        }
+    }
+}
+
+func (sc *SessionCleaner) cleanupExpiredSessions(ctx context.Context) {
+    startTime := time.Now()
+    log.Printf("Starting session cleanup at %s", startTime.Format(time.RFC3339))
+
+    err := sc.store.DeleteExpiredSessions(ctx)
+    if err != nil {
+        log.Printf("Failed to delete expired sessions: %v", err)
+        return
+    }
+
+    duration := time.Since(startTime)
+    log.Printf("Session cleanup completed in %v", duration)
+}
+
+func main() {
+    // This would be initialized with actual session store implementation
+    var store SessionStore
+    cleaner := NewSessionCleaner(store)
+
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
+    // Run initial cleanup on startup
+    cleaner.cleanupExpiredSessions(ctx)
+
+    // Start periodic cleanup job
+    go cleaner.RunCleanupJob(ctx)
+
+    // Keep main running
+    select {}
 }

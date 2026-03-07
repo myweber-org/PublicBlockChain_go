@@ -22,43 +22,42 @@ func NewFileProcessor() *FileProcessor {
 func (fp *FileProcessor) ProcessFile(filename string) error {
 	file, err := os.Open(filename)
 	if err != nil {
-		return fmt.Errorf("failed to open file: %v", err)
+		return fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
-	lineNum := 1
+	lineNumber := 1
 
 	for scanner.Scan() {
+		line := scanner.Text()
 		fp.wg.Add(1)
-		go func(line string, num int) {
+		go func(ln int, text string) {
 			defer fp.wg.Done()
-			processed := fp.processLine(line, num)
-			
+			processed := fp.processLine(ln, text)
 			fp.mu.Lock()
 			fp.results = append(fp.results, processed)
 			fp.mu.Unlock()
-		}(scanner.Text(), lineNum)
-		lineNum++
+		}(lineNumber, line)
+		lineNumber++
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("error reading file: %w", err)
 	}
 
 	fp.wg.Wait()
-	
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("error reading file: %v", err)
-	}
-	
 	return nil
 }
 
-func (fp *FileProcessor) processLine(line string, lineNum int) string {
-	return fmt.Sprintf("Line %d: %d characters processed", lineNum, len(line))
+func (fp *FileProcessor) processLine(number int, text string) string {
+	return fmt.Sprintf("Line %d: %d characters", number, len(text))
 }
 
 func (fp *FileProcessor) GetResults() []string {
 	fp.mu.Lock()
 	defer fp.mu.Unlock()
-	return fp.results
+	return append([]string(nil), fp.results...)
 }
 
 func main() {
@@ -68,7 +67,6 @@ func main() {
 	}
 
 	processor := NewFileProcessor()
-	
 	err := processor.ProcessFile(os.Args[1])
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
@@ -78,328 +76,5 @@ func main() {
 	results := processor.GetResults()
 	for _, result := range results {
 		fmt.Println(result)
-	}
-}
-package main
-
-import (
-	"bufio"
-	"fmt"
-	"os"
-	"path/filepath"
-	"sync"
-)
-
-type FileProcessor struct {
-	mu          sync.Mutex
-	processed   int
-	errors      []string
-}
-
-func (fp *FileProcessor) ProcessFile(path string, wg *sync.WaitGroup) {
-	defer wg.Done()
-
-	file, err := os.Open(path)
-	if err != nil {
-		fp.mu.Lock()
-		fp.errors = append(fp.errors, fmt.Sprintf("Failed to open %s: %v", path, err))
-		fp.mu.Unlock()
-		return
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	lineCount := 0
-	for scanner.Scan() {
-		lineCount++
-	}
-
-	if err := scanner.Err(); err != nil {
-		fp.mu.Lock()
-		fp.errors = append(fp.errors, fmt.Sprintf("Error scanning %s: %v", path, err))
-		fp.mu.Unlock()
-		return
-	}
-
-	fp.mu.Lock()
-	fp.processed++
-	fmt.Printf("Processed %s: %d lines\n", filepath.Base(path), lineCount)
-	fp.mu.Unlock()
-}
-
-func NewFileProcessor() *FileProcessor {
-	return &FileProcessor{
-		errors: make([]string, 0),
-	}
-}
-
-func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: file_processor <file1> <file2> ...")
-		return
-	}
-
-	processor := NewFileProcessor()
-	var wg sync.WaitGroup
-
-	for _, filePath := range os.Args[1:] {
-		wg.Add(1)
-		go processor.ProcessFile(filePath, &wg)
-	}
-
-	wg.Wait()
-
-	fmt.Printf("\nProcessing complete:\n")
-	fmt.Printf("Files processed: %d\n", processor.processed)
-	if len(processor.errors) > 0 {
-		fmt.Printf("Errors encountered: %d\n", len(processor.errors))
-		for _, err := range processor.errors {
-			fmt.Printf("  - %s\n", err)
-		}
-	}
-}package main
-
-import (
-	"bufio"
-	"errors"
-	"fmt"
-	"os"
-	"sync"
-	"time"
-)
-
-type DataRecord struct {
-	ID        int
-	Content   string
-	Timestamp time.Time
-}
-
-type FileProcessor struct {
-	records []DataRecord
-	mu      sync.RWMutex
-}
-
-func NewFileProcessor() *FileProcessor {
-	return &FileProcessor{
-		records: make([]DataRecord, 0),
-	}
-}
-
-func (fp *FileProcessor) AddRecord(content string) {
-	fp.mu.Lock()
-	defer fp.mu.Unlock()
-
-	record := DataRecord{
-		ID:        len(fp.records) + 1,
-		Content:   content,
-		Timestamp: time.Now(),
-	}
-	fp.records = append(fp.records, record)
-}
-
-func (fp *FileProcessor) ProcessRecords() error {
-	if len(fp.records) == 0 {
-		return errors.New("no records to process")
-	}
-
-	var wg sync.WaitGroup
-	results := make(chan string, len(fp.records))
-
-	for _, record := range fp.records {
-		wg.Add(1)
-		go func(r DataRecord) {
-			defer wg.Done()
-			processed := fmt.Sprintf("Processed ID %d: %s at %v", r.ID, r.Content, r.Timestamp.Format(time.RFC3339))
-			results <- processed
-		}(record)
-	}
-
-	wg.Wait()
-	close(results)
-
-	fp.mu.RLock()
-	fmt.Printf("Total records processed: %d\n", len(fp.records))
-	fp.mu.RUnlock()
-
-	for result := range results {
-		fmt.Println(result)
-	}
-
-	return nil
-}
-
-func (fp *FileProcessor) SaveToFile(filename string) error {
-	file, err := os.Create(filename)
-	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
-	}
-	defer file.Close()
-
-	writer := bufio.NewWriter(file)
-	fp.mu.RLock()
-	for _, record := range fp.records {
-		line := fmt.Sprintf("%d|%s|%s\n", record.ID, record.Content, record.Timestamp.Format(time.RFC3339))
-		_, err := writer.WriteString(line)
-		if err != nil {
-			fp.mu.RUnlock()
-			return fmt.Errorf("failed to write record: %w", err)
-		}
-	}
-	fp.mu.RUnlock()
-
-	err = writer.Flush()
-	if err != nil {
-		return fmt.Errorf("failed to flush writer: %w", err)
-	}
-
-	return nil
-}
-
-func main() {
-	processor := NewFileProcessor()
-
-	processor.AddRecord("First data entry")
-	processor.AddRecord("Second data entry")
-	processor.AddRecord("Third data entry")
-
-	err := processor.ProcessRecords()
-	if err != nil {
-		fmt.Printf("Processing error: %v\n", err)
-	}
-
-	err = processor.SaveToFile("output.txt")
-	if err != nil {
-		fmt.Printf("Save error: %v\n", err)
-	} else {
-		fmt.Println("Data successfully saved to output.txt")
-	}
-}package main
-
-import (
-	"bufio"
-	"errors"
-	"fmt"
-	"os"
-	"path/filepath"
-	"sync"
-)
-
-type FileProcessor struct {
-	mu          sync.RWMutex
-	processed   map[string]bool
-	maxWorkers  int
-	results     chan string
-	errors      chan error
-}
-
-func NewFileProcessor(workers int) *FileProcessor {
-	return &FileProcessor{
-		processed:  make(map[string]bool),
-		maxWorkers: workers,
-		results:    make(chan string, 100),
-		errors:     make(chan error, 100),
-	}
-}
-
-func (fp *FileProcessor) ProcessFile(path string) error {
-	fp.mu.Lock()
-	if fp.processed[path] {
-		fp.mu.Unlock()
-		return errors.New("file already processed")
-	}
-	fp.processed[path] = true
-	fp.mu.Unlock()
-
-	file, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("failed to open file: %w", err)
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	lineCount := 0
-	for scanner.Scan() {
-		lineCount++
-		line := scanner.Text()
-		if len(line) > 0 {
-			fp.results <- fmt.Sprintf("%s:%d:%s", filepath.Base(path), lineCount, line[:min(50, len(line))])
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("scanner error: %w", err)
-	}
-
-	return nil
-}
-
-func (fp *FileProcessor) Worker(fileQueue <-chan string, wg *sync.WaitGroup) {
-	defer wg.Done()
-	for path := range fileQueue {
-		if err := fp.ProcessFile(path); err != nil {
-			fp.errors <- err
-		}
-	}
-}
-
-func (fp *FileProcessor) Run(files []string) {
-	fileQueue := make(chan string, len(files))
-	var wg sync.WaitGroup
-
-	for i := 0; i < fp.maxWorkers; i++ {
-		wg.Add(1)
-		go fp.Worker(fileQueue, &wg)
-	}
-
-	for _, file := range files {
-		fileQueue <- file
-	}
-	close(fileQueue)
-
-	wg.Wait()
-	close(fp.results)
-	close(fp.errors)
-}
-
-func (fp *FileProcessor) GetResults() []string {
-	var output []string
-	for result := range fp.results {
-		output = append(output, result)
-	}
-	return output
-}
-
-func (fp *FileProcessor) GetErrors() []error {
-	var errs []error
-	for err := range fp.errors {
-		errs = append(errs, err)
-	}
-	return errs
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func main() {
-	processor := NewFileProcessor(4)
-	files := []string{"data1.txt", "data2.txt", "data3.txt"}
-
-	go func() {
-		processor.Run(files)
-	}()
-
-	results := processor.GetResults()
-	errors := processor.GetErrors()
-
-	fmt.Println("Processing completed")
-	fmt.Printf("Results: %d\n", len(results))
-	fmt.Printf("Errors: %d\n", len(errors))
-
-	for _, err := range errors {
-		fmt.Printf("Error: %v\n", err)
 	}
 }

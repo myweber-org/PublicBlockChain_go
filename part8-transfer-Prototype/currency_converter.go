@@ -189,3 +189,91 @@ func main() {
 
 	fmt.Printf("%.2f %s = %.2f %s (as of %s)\n", amount, fromCurrency, result, toCurrency, rates.Date)
 }
+package main
+
+import (
+	"fmt"
+	"math"
+)
+
+type Currency string
+
+const (
+	USD Currency = "USD"
+	EUR Currency = "EUR"
+	GBP Currency = "GBP"
+	JPY Currency = "JPY"
+)
+
+type ExchangeRates struct {
+	rates map[Currency]map[Currency]float64
+}
+
+func NewExchangeRates() *ExchangeRates {
+	er := &ExchangeRates{
+		rates: make(map[Currency]map[Currency]float64),
+	}
+
+	baseRates := map[Currency]float64{
+		USD: 1.0,
+		EUR: 0.85,
+		GBP: 0.73,
+		JPY: 110.0,
+	}
+
+	for from, fromRate := range baseRates {
+		er.rates[from] = make(map[Currency]float64)
+		for to, toRate := range baseRates {
+			er.rates[from][to] = toRate / fromRate
+		}
+	}
+
+	return er
+}
+
+func (er *ExchangeRates) Convert(amount float64, from, to Currency) (float64, error) {
+	if from == to {
+		return amount, nil
+	}
+
+	rate, exists := er.rates[from][to]
+	if !exists {
+		return 0, fmt.Errorf("conversion rate not available from %s to %s", from, to)
+	}
+
+	converted := amount * rate
+	return math.Round(converted*100) / 100, nil
+}
+
+func (er *ExchangeRates) UpdateRate(from, to Currency, rate float64) {
+	if _, exists := er.rates[from]; !exists {
+		er.rates[from] = make(map[Currency]float64)
+	}
+	er.rates[from][to] = rate
+
+	reciprocalRate := 1.0 / rate
+	if _, exists := er.rates[to]; !exists {
+		er.rates[to] = make(map[Currency]float64)
+	}
+	er.rates[to][from] = reciprocalRate
+}
+
+func main() {
+	rates := NewExchangeRates()
+
+	amount := 100.0
+	converted, err := rates.Convert(amount, USD, EUR)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	fmt.Printf("%.2f %s = %.2f %s\n", amount, USD, converted, EUR)
+
+	rates.UpdateRate(USD, CAD, 1.25)
+	converted, err = rates.Convert(amount, USD, CAD)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	fmt.Printf("%.2f %s = %.2f %s\n", amount, USD, converted, CAD)
+}

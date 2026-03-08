@@ -812,4 +812,109 @@ func CalculateStatistics(records []DataRecord) (float64, float64, int) {
 
     average := sum / float64(count)
     return average, max, count
+}package main
+
+import (
+	"encoding/csv"
+	"errors"
+	"io"
+	"os"
+	"strconv"
+)
+
+type DataRecord struct {
+	ID    int
+	Name  string
+	Value float64
+}
+
+func ProcessCSVFile(filePath string) ([]DataRecord, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+
+	var result []DataRecord
+	for i, row := range records {
+		if len(row) != 3 {
+			return nil, errors.New("invalid column count at line " + strconv.Itoa(i+1))
+		}
+
+		id, err := strconv.Atoi(row[0])
+		if err != nil {
+			return nil, errors.New("invalid ID format at line " + strconv.Itoa(i+1))
+		}
+
+		name := row[1]
+		if name == "" {
+			return nil, errors.New("empty name at line " + strconv.Itoa(i+1))
+		}
+
+		value, err := strconv.ParseFloat(row[2], 64)
+		if err != nil {
+			return nil, errors.New("invalid value format at line " + strconv.Itoa(i+1))
+		}
+
+		result = append(result, DataRecord{
+			ID:    id,
+			Name:  name,
+			Value: value,
+		})
+	}
+
+	return result, nil
+}
+
+func ValidateRecords(records []DataRecord) error {
+	seenIDs := make(map[int]bool)
+	for _, record := range records {
+		if record.ID <= 0 {
+			return errors.New("invalid ID: " + strconv.Itoa(record.ID))
+		}
+		if seenIDs[record.ID] {
+			return errors.New("duplicate ID: " + strconv.Itoa(record.ID))
+		}
+		seenIDs[record.ID] = true
+
+		if record.Value < 0 {
+			return errors.New("negative value for ID: " + strconv.Itoa(record.ID))
+		}
+	}
+	return nil
+}
+
+func WriteProcessedData(records []DataRecord, outputPath string) error {
+	file, err := os.Create(outputPath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	header := []string{"ID", "Name", "Value"}
+	if err := writer.Write(header); err != nil {
+		return err
+	}
+
+	for _, record := range records {
+		row := []string{
+			strconv.Itoa(record.ID),
+			record.Name,
+			strconv.FormatFloat(record.Value, 'f', 2, 64),
+		}
+		if err := writer.Write(row); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

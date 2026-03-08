@@ -208,3 +208,54 @@ func FilterRecords(records []Record, minValue float64) []Record {
     }
     return filtered
 }
+package main
+
+import (
+	"errors"
+	"strings"
+	"unicode"
+)
+
+type UserData struct {
+	Username string
+	Email    string
+	Age      int
+}
+
+func ValidateAndNormalizeUserData(data UserData) (UserData, error) {
+	var normalized UserData
+
+	// Normalize username
+	normalized.Username = strings.TrimSpace(data.Username)
+	if len(normalized.Username) < 3 {
+		return UserData{}, errors.New("username must be at least 3 characters")
+	}
+	for _, r := range normalized.Username {
+		if !unicode.IsLetter(r) && !unicode.IsNumber(r) && r != '_' && r != '-' {
+			return UserData{}, errors.New("username contains invalid characters")
+		}
+	}
+
+	// Normalize email
+	normalized.Email = strings.ToLower(strings.TrimSpace(data.Email))
+	if !strings.Contains(normalized.Email, "@") {
+		return UserData{}, errors.New("invalid email format")
+	}
+
+	// Validate age
+	if data.Age < 0 || data.Age > 150 {
+		return UserData{}, errors.New("age must be between 0 and 150")
+	}
+	normalized.Age = data.Age
+
+	return normalized, nil
+}
+
+func ProcessUserInput(username, email string, age int) (UserData, error) {
+	rawData := UserData{
+		Username: username,
+		Email:    email,
+		Age:      age,
+	}
+	return ValidateAndNormalizeUserData(rawData)
+}

@@ -272,3 +272,35 @@ func (dp *DataProcessor) ProcessUserData(name, email string) (string, bool) {
 
 	return sanitizedName + " <" + sanitizedEmail + ">", true
 }
+package main
+
+import (
+	"regexp"
+	"strings"
+)
+
+type DataProcessor struct {
+	whitespaceRegex *regexp.Regexp
+}
+
+func NewDataProcessor() *DataProcessor {
+	return &DataProcessor{
+		whitespaceRegex: regexp.MustCompile(`\s+`),
+	}
+}
+
+func (dp *DataProcessor) CleanInput(input string) string {
+	trimmed := strings.TrimSpace(input)
+	cleaned := dp.whitespaceRegex.ReplaceAllString(trimmed, " ")
+	return cleaned
+}
+
+func (dp *DataProcessor) NormalizeCase(input string) string {
+	return strings.ToLower(input)
+}
+
+func (dp *DataProcessor) Process(input string) string {
+	cleaned := dp.CleanInput(input)
+	normalized := dp.NormalizeCase(cleaned)
+	return normalized
+}

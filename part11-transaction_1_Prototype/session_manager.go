@@ -1,4 +1,4 @@
-package main
+package session
 
 import (
 	"sync"
@@ -27,12 +27,12 @@ func NewSessionManager(ttl time.Duration) *SessionManager {
 	return sm
 }
 
-func (sm *SessionManager) CreateSession(userID int) *Session {
+func (sm *SessionManager) Create(userID int) *Session {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
 	session := &Session{
-		ID:        generateSessionID(),
+		ID:        generateID(),
 		UserID:    userID,
 		Data:      make(map[string]interface{}),
 		ExpiresAt: time.Now().Add(sm.ttl),
@@ -41,7 +41,7 @@ func (sm *SessionManager) CreateSession(userID int) *Session {
 	return session
 }
 
-func (sm *SessionManager) GetSession(sessionID string) *Session {
+func (sm *SessionManager) Get(sessionID string) *Session {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
 
@@ -50,6 +50,18 @@ func (sm *SessionManager) GetSession(sessionID string) *Session {
 		return nil
 	}
 	return session
+}
+
+func (sm *SessionManager) Refresh(sessionID string) bool {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	session, exists := sm.sessions[sessionID]
+	if !exists {
+		return false
+	}
+	session.ExpiresAt = time.Now().Add(sm.ttl)
+	return true
 }
 
 func (sm *SessionManager) cleanupWorker() {
@@ -68,15 +80,15 @@ func (sm *SessionManager) cleanupWorker() {
 	}
 }
 
-func generateSessionID() string {
-	return "session_" + time.Now().Format("20060102150405") + "_" + randomString(8)
+func generateID() string {
+	return time.Now().Format("20060102150405") + randomString(8)
 }
 
-func randomString(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	b := make([]byte, length)
+func randomString(n int) string {
+	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, n)
 	for i := range b {
-		b[i] = charset[time.Now().UnixNano()%int64(len(charset))]
+		b[i] = letters[time.Now().UnixNano()%int64(len(letters))]
 	}
 	return string(b)
 }

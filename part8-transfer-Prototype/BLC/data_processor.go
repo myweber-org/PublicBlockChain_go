@@ -473,3 +473,64 @@ func main() {
 		fmt.Printf("Processed: %s - %.2f - %v\n", rec.ID, rec.Value, rec.Tags)
 	}
 }
+package main
+
+import (
+    "regexp"
+    "strings"
+)
+
+type DataCleaner struct {
+    spacesRegex *regexp.Regexp
+    emailRegex  *regexp.Regexp
+}
+
+func NewDataCleaner() *DataCleaner {
+    return &DataCleaner{
+        spacesRegex: regexp.MustCompile(`\s+`),
+        emailRegex:  regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`),
+    }
+}
+
+func (dc *DataCleaner) TrimSpaces(input string) string {
+    return strings.TrimSpace(input)
+}
+
+func (dc *DataCleaner) NormalizeSpaces(input string) string {
+    trimmed := dc.TrimSpaces(input)
+    return dc.spacesRegex.ReplaceAllString(trimmed, " ")
+}
+
+func (dc *DataCleaner) ValidateEmail(email string) bool {
+    return dc.emailRegex.MatchString(email)
+}
+
+func (dc *DataCleaner) ProcessUserInput(rawInput string) (string, bool) {
+    normalized := dc.NormalizeSpaces(rawInput)
+    
+    if normalized == "" {
+        return "", false
+    }
+    
+    return normalized, true
+}
+
+func main() {
+    cleaner := NewDataCleaner()
+    
+    testInputs := []string{
+        "  hello   world  ",
+        "user@example.com",
+        "  multiple   spaces   here  ",
+        "",
+    }
+    
+    for _, input := range testInputs {
+        processed, valid := cleaner.ProcessUserInput(input)
+        if valid {
+            println("Processed:", processed)
+        } else {
+            println("Invalid input:", input)
+        }
+    }
+}

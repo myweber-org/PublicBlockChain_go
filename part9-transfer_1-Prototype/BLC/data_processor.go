@@ -303,4 +303,55 @@ func (dp *DataProcessor) Process(input string) string {
 	cleaned := dp.CleanInput(input)
 	normalized := dp.NormalizeCase(cleaned)
 	return normalized
+}package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+type UserData struct {
+	Username string
+	Email    string
+	Age      int
+}
+
+func ValidateUser(data UserData) error {
+	if strings.TrimSpace(data.Username) == "" {
+		return fmt.Errorf("username cannot be empty")
+	}
+	if !strings.Contains(data.Email, "@") {
+		return fmt.Errorf("invalid email format")
+	}
+	if data.Age < 0 || data.Age > 150 {
+		return fmt.Errorf("age must be between 0 and 150")
+	}
+	return nil
+}
+
+func NormalizeUsername(username string) string {
+	return strings.ToLower(strings.TrimSpace(username))
+}
+
+func ProcessUserInput(username, email string, age int) (UserData, error) {
+	normalizedUsername := NormalizeUsername(username)
+	userData := UserData{
+		Username: normalizedUsername,
+		Email:    email,
+		Age:      age,
+	}
+
+	if err := ValidateUser(userData); err != nil {
+		return UserData{}, err
+	}
+	return userData, nil
+}
+
+func main() {
+	user, err := ProcessUserInput("  JohnDoe  ", "john@example.com", 30)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	fmt.Printf("Processed user: %+v\n", user)
 }

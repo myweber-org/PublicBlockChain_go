@@ -475,3 +475,61 @@ func FindConfigFile(filename string) (string, error) {
 
     return "", fmt.Errorf("config file %s not found in search paths", filename)
 }
+package config
+
+import (
+	"errors"
+	"os"
+	"strconv"
+	"strings"
+)
+
+type AppConfig struct {
+	ServerPort int
+	DebugMode  bool
+	DatabaseURL string
+	CacheTTL   int
+}
+
+func LoadConfig() (*AppConfig, error) {
+	config := &AppConfig{}
+	var errs []string
+
+	portStr := os.Getenv("SERVER_PORT")
+	if portStr == "" {
+		config.ServerPort = 8080
+	} else {
+		port, err := strconv.Atoi(portStr)
+		if err != nil || port < 1 || port > 65535 {
+			errs = append(errs, "invalid SERVER_PORT")
+		} else {
+			config.ServerPort = port
+		}
+	}
+
+	debugStr := os.Getenv("DEBUG_MODE")
+	config.DebugMode = strings.ToLower(debugStr) == "true"
+
+	config.DatabaseURL = os.Getenv("DATABASE_URL")
+	if config.DatabaseURL == "" {
+		errs = append(errs, "DATABASE_URL is required")
+	}
+
+	ttlStr := os.Getenv("CACHE_TTL")
+	if ttlStr == "" {
+		config.CacheTTL = 300
+	} else {
+		ttl, err := strconv.Atoi(ttlStr)
+		if err != nil || ttl < 0 {
+			errs = append(errs, "invalid CACHE_TTL")
+		} else {
+			config.CacheTTL = ttl
+		}
+	}
+
+	if len(errs) > 0 {
+		return nil, errors.New(strings.Join(errs, "; "))
+	}
+
+	return config, nil
+}

@@ -138,4 +138,20 @@ func main() {
 	rates.AddRate("CAD", 1.25)
 	cadResult, _ := rates.Convert(50.0, USD, "CAD")
 	fmt.Printf("50.00 %s = %.2f CAD\n", USD, cadResult)
+}package main
+
+import (
+	"fmt"
+)
+
+const usdToEurRate = 0.92
+
+func ConvertUSDToEUR(amount float64) float64 {
+	return amount * usdToEurRate
+}
+
+func main() {
+	usdAmount := 100.0
+	eurAmount := ConvertUSDToEUR(usdAmount)
+	fmt.Printf("%.2f USD = %.2f EUR\n", usdAmount, eurAmount)
 }

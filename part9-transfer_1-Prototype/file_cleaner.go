@@ -84,4 +84,48 @@ func main() {
         }
         return nil
     })
+}package main
+
+import (
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+const retentionDays = 7
+
+func main() {
+	tempDir := os.TempDir()
+	fmt.Printf("Scanning temporary directory: %s\n", tempDir)
+
+	cutoffTime := time.Now().AddDate(0, 0, -retentionDays)
+	var removedCount int
+
+	err := filepath.Walk(tempDir, func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+
+		if info.IsDir() {
+			return nil
+		}
+
+		if info.ModTime().Before(cutoffTime) {
+			if err := os.Remove(path); err != nil {
+				fmt.Printf("Failed to remove %s: %v\n", path, err)
+			} else {
+				fmt.Printf("Removed old file: %s\n", path)
+				removedCount++
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		fmt.Printf("Error walking directory: %v\n", err)
+	}
+
+	fmt.Printf("Cleanup completed. Removed %d files older than %d days.\n", removedCount, retentionDays)
 }

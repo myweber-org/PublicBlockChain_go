@@ -451,4 +451,46 @@ func CalculateTotal(records []Record) float64 {
 		total += rec.Value
 	}
 	return total
+}package main
+
+import (
+	"regexp"
+	"strings"
+)
+
+type UserData struct {
+	Username string
+	Email    string
+	Comments string
 }
+
+func SanitizeUsername(input string) string {
+	re := regexp.MustCompile(`[^a-zA-Z0-9_-]`)
+	sanitized := re.ReplaceAllString(input, "")
+	return strings.TrimSpace(sanitized)
+}
+
+func ValidateEmail(email string) bool {
+	pattern := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
+	matched, _ := regexp.MatchString(pattern, email)
+	return matched
+}
+
+func SanitizeComments(input string) string {
+	re := regexp.MustCompile(`<[^>]*>`)
+	sanitized := re.ReplaceAllString(input, "")
+	return strings.TrimSpace(sanitized)
+}
+
+func ProcessUserData(data UserData) (UserData, error) {
+	data.Username = SanitizeUsername(data.Username)
+	data.Comments = SanitizeComments(data.Comments)
+
+	if !ValidateEmail(data.Email) {
+		return data, ErrInvalidEmail
+	}
+
+	return data, nil
+}
+
+var ErrInvalidEmail = errors.New("invalid email format")

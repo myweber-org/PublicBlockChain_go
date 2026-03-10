@@ -343,4 +343,138 @@ func main() {
 
 	fmt.Println("\nProcessing Report:")
 	fmt.Println(string(report))
+}package main
+
+import (
+	"bufio"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+)
+
+type FileProcessor struct {
+	mu          sync.RWMutex
+	processed   map[string]bool
+	maxWorkers  int
+	fileChannel chan string
+	wg          sync.WaitGroup
+}
+
+func NewFileProcessor(workers int) *FileProcessor {
+	return &FileProcessor{
+		processed:   make(map[string]bool),
+		maxWorkers:  workers,
+		fileChannel: make(chan string, 100),
+	}
+}
+
+func (fp *FileProcessor) ProcessFile(path string) error {
+	if !fp.markProcessing(path) {
+		return errors.New("file already being processed")
+	}
+	defer fp.markComplete(path)
+
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	lineCount := 0
+	wordCount := 0
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		lineCount++
+		wordCount += countWords(line)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("scanner error: %w", err)
+	}
+
+	fp.mu.Lock()
+	fmt.Printf("Processed %s: lines=%d words=%d\n", filepath.Base(path), lineCount, wordCount)
+	fp.mu.Unlock()
+	return nil
+}
+
+func (fp *FileProcessor) markProcessing(path string) bool {
+	fp.mu.Lock()
+	defer fp.mu.Unlock()
+	if fp.processed[path] {
+		return false
+	}
+	fp.processed[path] = true
+	return true
+}
+
+func (fp *FileProcessor) markComplete(path string) {
+	fp.mu.Lock()
+	delete(fp.processed, path)
+	fp.mu.Unlock()
+}
+
+func countWords(line string) int {
+	inWord := false
+	count := 0
+	for _, ch := range line {
+		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') {
+			if !inWord {
+				count++
+				inWord = true
+			}
+		} else {
+			inWord = false
+		}
+	}
+	return count
+}
+
+func (fp *FileProcessor) worker(id int) {
+	defer fp.wg.Done()
+	for path := range fp.fileChannel {
+		start := time.Now()
+		err := fp.ProcessFile(path)
+		duration := time.Since(start)
+		if err != nil {
+			fmt.Printf("Worker %d error processing %s: %v\n", id, path, err)
+		} else {
+			fmt.Printf("Worker %d completed %s in %v\n", id, filepath.Base(path), duration)
+		}
+	}
+}
+
+func (fp *FileProcessor) StartWorkers() {
+	for i := 0; i < fp.maxWorkers; i++ {
+		fp.wg.Add(1)
+		go fp.worker(i + 1)
+	}
+}
+
+func (fp *FileProcessor) AddFile(path string) {
+	fp.fileChannel <- path
+}
+
+func (fp *FileProcessor) WaitAndClose() {
+	close(fp.fileChannel)
+	fp.wg.Wait()
+}
+
+func main() {
+	processor := NewFileProcessor(4)
+	processor.StartWorkers()
+
+	files := []string{"test1.txt", "test2.txt", "test3.txt"}
+	for _, file := range files {
+		processor.AddFile(file)
+	}
+
+	processor.WaitAndClose()
+	fmt.Println("All files processed")
 }

@@ -48,4 +48,53 @@ func validateToken(token string) (string, error) {
 	}
 	// Mock validation returning user ID
 	return "user_" + token[:8], nil
+}package middleware
+
+import (
+	"net/http"
+	"strings"
+)
+
+type Authenticator struct {
+	secretKey string
+}
+
+func NewAuthenticator(secretKey string) *Authenticator {
+	return &Authenticator{secretKey: secretKey}
+}
+
+func (a *Authenticator) ValidateToken(token string) bool {
+	if token == "" {
+		return false
+	}
+	
+	expectedPrefix := "Bearer "
+	if !strings.HasPrefix(token, expectedPrefix) {
+		return false
+	}
+	
+	tokenValue := strings.TrimPrefix(token, expectedPrefix)
+	return a.validateTokenSignature(tokenValue)
+}
+
+func (a *Authenticator) validateTokenSignature(token string) bool {
+	if len(token) < 10 {
+		return false
+	}
+	
+	dummySignature := "sig_" + a.secretKey
+	return strings.Contains(token, dummySignature)
+}
+
+func (a *Authenticator) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		
+		if !a.ValidateToken(authHeader) {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		
+		next.ServeHTTP(w, r)
+	})
 }

@@ -1,122 +1,81 @@
-
 package main
 
 import (
-    "fmt"
-    "strings"
-)
-
-type DataCleaner struct {
-    duplicates map[string]bool
-}
-
-func NewDataCleaner() *DataCleaner {
-    return &DataCleaner{
-        duplicates: make(map[string]bool),
-    }
-}
-
-func (dc *DataCleaner) RemoveDuplicates(items []string) []string {
-    unique := []string{}
-    for _, item := range items {
-        normalized := strings.ToLower(strings.TrimSpace(item))
-        if !dc.duplicates[normalized] {
-            dc.duplicates[normalized] = true
-            unique = append(unique, item)
-        }
-    }
-    return unique
-}
-
-func (dc *DataCleaner) ValidateEmail(email string) bool {
-    if !strings.Contains(email, "@") {
-        return false
-    }
-    parts := strings.Split(email, "@")
-    if len(parts) != 2 {
-        return false
-    }
-    return len(parts[0]) > 0 && len(parts[1]) > 0
-}
-
-func main() {
-    cleaner := NewDataCleaner()
-    
-    data := []string{"apple", "banana", "Apple", "cherry", "banana", "  BANANA  "}
-    unique := cleaner.RemoveDuplicates(data)
-    fmt.Println("Unique items:", unique)
-    
-    emails := []string{"test@example.com", "invalid-email", "user@domain", "@nodomain", "domain@", ""}
-    for _, email := range emails {
-        fmt.Printf("Email '%s' valid: %v\n", email, cleaner.ValidateEmail(email))
-    }
-}
-package main
-
-import (
-	"encoding/json"
+	"encoding/csv"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 )
 
-type Record struct {
-	ID    int    `json:"id"`
-	Name  string `json:"name"`
-	Email string `json:"email"`
+type Cleaner struct {
+	trimSpaces bool
+	lowercase  bool
 }
 
-func deduplicateRecords(records []Record) []Record {
-	seen := make(map[string]bool)
-	var unique []Record
-	for _, r := range records {
-		key := fmt.Sprintf("%d|%s|%s", r.ID, strings.ToLower(r.Name), strings.ToLower(r.Email))
-		if !seen[key] {
-			seen[key] = true
-			unique = append(unique, r)
+func NewCleaner(trimSpaces, lowercase bool) *Cleaner {
+	return &Cleaner{
+		trimSpaces: trimSpaces,
+		lowercase:  lowercase,
+	}
+}
+
+func (c *Cleaner) ProcessString(input string) string {
+	result := input
+	if c.trimSpaces {
+		result = strings.TrimSpace(result)
+	}
+	if c.lowercase {
+		result = strings.ToLower(result)
+	}
+	return result
+}
+
+func CleanCSVFile(inputPath, outputPath string, cleaner *Cleaner) error {
+	inFile, err := os.Open(inputPath)
+	if err != nil {
+		return fmt.Errorf("cannot open input file: %w", err)
+	}
+	defer inFile.Close()
+
+	outFile, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("cannot create output file: %w", err)
+	}
+	defer outFile.Close()
+
+	reader := csv.NewReader(inFile)
+	writer := csv.NewWriter(outFile)
+	defer writer.Flush()
+
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("error reading CSV: %w", err)
+		}
+
+		cleanedRecord := make([]string, len(record))
+		for i, field := range record {
+			cleanedRecord[i] = cleaner.ProcessString(field)
+		}
+
+		if err := writer.Write(cleanedRecord); err != nil {
+			return fmt.Errorf("error writing CSV: %w", err)
 		}
 	}
-	return unique
-}
 
-func validateEmail(email string) bool {
-	return strings.Contains(email, "@") && strings.Contains(email, ".")
-}
-
-func cleanData(inputJSON string) (string, error) {
-	var records []Record
-	err := json.Unmarshal([]byte(inputJSON), &records)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse JSON: %v", err)
-	}
-
-	records = deduplicateRecords(records)
-	var validRecords []Record
-	for _, r := range records {
-		if validateEmail(r.Email) {
-			validRecords = append(validRecords, r)
-		}
-	}
-
-	output, err := json.MarshalIndent(validRecords, "", "  ")
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal JSON: %v", err)
-	}
-	return string(output), nil
+	return nil
 }
 
 func main() {
-	input := `[
-		{"id":1,"name":"John","email":"john@example.com"},
-		{"id":2,"name":"Jane","email":"jane@example.com"},
-		{"id":1,"name":"John","email":"john@example.com"},
-		{"id":3,"name":"Bob","email":"invalid-email"}
-	]`
-
-	result, err := cleanData(input)
+	cleaner := NewCleaner(true, true)
+	err := CleanCSVFile("input.csv", "output.csv", cleaner)
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
+		fmt.Printf("Error cleaning data: %v\n", err)
+		os.Exit(1)
 	}
-	fmt.Println("Cleaned data:")
-	fmt.Println(result)
+	fmt.Println("Data cleaning completed successfully")
 }

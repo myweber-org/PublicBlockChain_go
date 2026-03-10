@@ -74,4 +74,45 @@ func getEnvIntOrDefault(key string, defaultValue int) int {
 		}
 	}
 	return defaultValue
+}package config
+
+import (
+	"os"
+	"strconv"
+)
+
+type Config struct {
+	ServerPort int
+	DebugMode  bool
+	APIKey     string
+}
+
+func LoadConfig() (*Config, error) {
+	cfg := &Config{}
+	
+	portStr := os.Getenv("SERVER_PORT")
+	if portStr != "" {
+		port, err := strconv.Atoi(portStr)
+		if err != nil {
+			return nil, err
+		}
+		cfg.ServerPort = port
+	} else {
+		cfg.ServerPort = 8080
+	}
+	
+	debugStr := os.Getenv("DEBUG_MODE")
+	if debugStr != "" {
+		debug, err := strconv.ParseBool(debugStr)
+		if err != nil {
+			return nil, err
+		}
+		cfg.DebugMode = debug
+	} else {
+		cfg.DebugMode = false
+	}
+	
+	cfg.APIKey = os.Getenv("API_KEY")
+	
+	return cfg, nil
 }

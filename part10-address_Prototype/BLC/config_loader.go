@@ -532,4 +532,96 @@ func LoadConfig() (*AppConfig, error) {
 	}
 
 	return config, nil
+}package config
+
+import (
+	"os"
+	"strings"
+
+	"gopkg.in/yaml.v2"
+)
+
+type Config struct {
+	Server struct {
+		Port    string `yaml:"port" env:"SERVER_PORT"`
+		Timeout int    `yaml:"timeout" env:"SERVER_TIMEOUT"`
+	} `yaml:"server"`
+	Database struct {
+		Host     string `yaml:"host" env:"DB_HOST"`
+		Port     string `yaml:"port" env:"DB_PORT"`
+		Name     string `yaml:"name" env:"DB_NAME"`
+		User     string `yaml:"user" env:"DB_USER"`
+		Password string `yaml:"password" env:"DB_PASSWORD"`
+	} `yaml:"database"`
+	Logging struct {
+		Level  string `yaml:"level" env:"LOG_LEVEL"`
+		Output string `yaml:"output" env:"LOG_OUTPUT"`
+	} `yaml:"logging"`
+}
+
+func LoadConfig(configPath string) (*Config, error) {
+	config := &Config{}
+
+	file, err := os.Open(configPath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	decoder := yaml.NewDecoder(file)
+	if err := decoder.Decode(config); err != nil {
+		return nil, err
+	}
+
+	config.overrideFromEnv()
+
+	return config, nil
+}
+
+func (c *Config) overrideFromEnv() {
+	c.Server.Port = getEnvOrDefault("SERVER_PORT", c.Server.Port)
+	c.Server.Timeout = getEnvIntOrDefault("SERVER_TIMEOUT", c.Server.Timeout)
+	c.Database.Host = getEnvOrDefault("DB_HOST", c.Database.Host)
+	c.Database.Port = getEnvOrDefault("DB_PORT", c.Database.Port)
+	c.Database.Name = getEnvOrDefault("DB_NAME", c.Database.Name)
+	c.Database.User = getEnvOrDefault("DB_USER", c.Database.User)
+	c.Database.Password = getEnvOrDefault("DB_PASSWORD", c.Database.Password)
+	c.Logging.Level = getEnvOrDefault("LOG_LEVEL", c.Logging.Level)
+	c.Logging.Output = getEnvOrDefault("LOG_OUTPUT", c.Logging.Output)
+}
+
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+func getEnvIntOrDefault(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		var result int
+		if _, err := fmt.Sscanf(value, "%d", &result); err == nil {
+			return result
+		}
+	}
+	return defaultValue
+}
+
+func (c *Config) Validate() error {
+	var errors []string
+
+	if c.Server.Port == "" {
+		errors = append(errors, "server port is required")
+	}
+	if c.Database.Host == "" {
+		errors = append(errors, "database host is required")
+	}
+	if c.Database.Name == "" {
+		errors = append(errors, "database name is required")
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("config validation failed: %s", strings.Join(errors, ", "))
+	}
+	return nil
 }

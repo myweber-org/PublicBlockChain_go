@@ -222,4 +222,110 @@ func validateConfig(cfg *Config) error {
 		return errors.New("database name cannot be empty")
 	}
 	return nil
+}package config
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+
+	"gopkg.in/yaml.v3"
+)
+
+type Config struct {
+	Server struct {
+		Host string `yaml:"host" env:"SERVER_HOST"`
+		Port int    `yaml:"port" env:"SERVER_PORT"`
+	} `yaml:"server"`
+	Database struct {
+		Host     string `yaml:"host" env:"DB_HOST"`
+		Port     int    `yaml:"port" env:"DB_PORT"`
+		Name     string `yaml:"name" env:"DB_NAME"`
+		User     string `yaml:"user" env:"DB_USER"`
+		Password string `yaml:"password" env:"DB_PASSWORD"`
+		SSLMode  string `yaml:"ssl_mode" env:"DB_SSL_MODE"`
+	} `yaml:"database"`
+	Logging struct {
+		Level  string `yaml:"level" env:"LOG_LEVEL"`
+		Output string `yaml:"output" env:"LOG_OUTPUT"`
+	} `yaml:"logging"`
+}
+
+func LoadConfig(configPath string) (*Config, error) {
+	cfg := &Config{}
+
+	if configPath == "" {
+		configPath = "config.yaml"
+	}
+
+	absPath, err := filepath.Abs(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return nil, err
+	}
+
+	overrideFromEnv(cfg)
+
+	return cfg, nil
+}
+
+func overrideFromEnv(cfg *Config) {
+	overrideStruct(cfg, "")
+}
+
+func overrideStruct(v interface{}, prefix string) {
+	val := reflect.ValueOf(v).Elem()
+	typ := val.Type()
+
+	for i := 0; i < val.NumField(); i++ {
+		field := val.Field(i)
+		fieldType := typ.Field(i)
+
+		if field.Kind() == reflect.Struct {
+			tag := fieldType.Tag.Get("yaml")
+			newPrefix := prefix
+			if tag != "" {
+				if newPrefix != "" {
+					newPrefix = newPrefix + "_"
+				}
+				newPrefix = newPrefix + strings.ToUpper(tag)
+			}
+			overrideStruct(field.Addr().Interface(), newPrefix)
+			continue
+		}
+
+		envTag := fieldType.Tag.Get("env")
+		if envTag == "" {
+			continue
+		}
+
+		envVar := prefix
+		if envVar != "" {
+			envVar = envVar + "_"
+		}
+		envVar = envVar + envTag
+
+		if envValue := os.Getenv(envVar); envValue != "" {
+			switch field.Kind() {
+			case reflect.String:
+				field.SetString(envValue)
+			case reflect.Int:
+				if intVal, err := strconv.Atoi(envValue); err == nil {
+					field.SetInt(int64(intVal))
+				}
+			case reflect.Bool:
+				if boolVal, err := strconv.ParseBool(envValue); err == nil {
+					field.SetBool(boolVal)
+				}
+			}
+		}
+	}
 }

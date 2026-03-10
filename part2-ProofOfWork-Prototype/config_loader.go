@@ -88,4 +88,88 @@ func overrideBool(field *bool, envVar string) {
     if val := os.Getenv(envVar); val != "" {
         *field = val == "true" || val == "1" || val == "yes"
     }
+}package config
+
+import (
+    "fmt"
+    "os"
+    "strconv"
+    "strings"
+)
+
+type AppConfig struct {
+    ServerPort int
+    DatabaseURL string
+    CacheEnabled bool
+    MaxConnections int
+    LogLevel string
+}
+
+func LoadConfig() (*AppConfig, error) {
+    cfg := &AppConfig{
+        ServerPort:     8080,
+        DatabaseURL:    "localhost:5432",
+        CacheEnabled:   true,
+        MaxConnections: 100,
+        LogLevel:       "info",
+    }
+
+    if portStr := os.Getenv("APP_PORT"); portStr != "" {
+        port, err := strconv.Atoi(portStr)
+        if err != nil {
+            return nil, fmt.Errorf("invalid port value: %v", err)
+        }
+        cfg.ServerPort = port
+    }
+
+    if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
+        cfg.DatabaseURL = dbURL
+    }
+
+    if cacheStr := os.Getenv("CACHE_ENABLED"); cacheStr != "" {
+        cacheEnabled, err := strconv.ParseBool(cacheStr)
+        if err != nil {
+            return nil, fmt.Errorf("invalid cache enabled value: %v", err)
+        }
+        cfg.CacheEnabled = cacheEnabled
+    }
+
+    if maxConnStr := os.Getenv("MAX_CONNECTIONS"); maxConnStr != "" {
+        maxConn, err := strconv.Atoi(maxConnStr)
+        if err != nil {
+            return nil, fmt.Errorf("invalid max connections value: %v", err)
+        }
+        cfg.MaxConnections = maxConn
+    }
+
+    if logLevel := os.Getenv("LOG_LEVEL"); logLevel != "" {
+        validLevels := map[string]bool{
+            "debug": true,
+            "info":  true,
+            "warn":  true,
+            "error": true,
+        }
+        if !validLevels[strings.ToLower(logLevel)] {
+            return nil, fmt.Errorf("invalid log level: %s", logLevel)
+        }
+        cfg.LogLevel = strings.ToLower(logLevel)
+    }
+
+    return cfg, nil
+}
+
+func ValidateConfig(cfg *AppConfig) error {
+    if cfg.ServerPort < 1 || cfg.ServerPort > 65535 {
+        return fmt.Errorf("server port must be between 1 and 65535")
+    }
+
+    if cfg.DatabaseURL == "" {
+        return fmt.Errorf("database URL cannot be empty")
+    }
+
+    if cfg.MaxConnections < 1 {
+        return fmt.Errorf("max connections must be greater than 0")
+    }
+
+    return nil
 }

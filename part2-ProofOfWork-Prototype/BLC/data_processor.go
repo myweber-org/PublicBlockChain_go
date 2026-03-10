@@ -295,4 +295,78 @@ func CalculateStatistics(records []DataRecord) (float64, float64, error) {
 
 	average := sum / float64(len(records))
 	return average, max, nil
+}package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"regexp"
+	"strings"
+)
+
+type UserProfile struct {
+	ID        int    `json:"id"`
+	Username  string `json:"username"`
+	Email     string `json:"email"`
+	Age       int    `json:"age"`
+	Active    bool   `json:"active"`
+	Timestamp string `json:"timestamp"`
+}
+
+func ValidateEmail(email string) bool {
+	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	return emailRegex.MatchString(email)
+}
+
+func TransformUsername(username string) string {
+	return strings.TrimSpace(strings.ToLower(username))
+}
+
+func ProcessUserData(rawData []byte) (*UserProfile, error) {
+	var profile UserProfile
+	err := json.Unmarshal(rawData, &profile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal JSON: %v", err)
+	}
+
+	if profile.ID <= 0 {
+		return nil, fmt.Errorf("invalid user ID: %d", profile.ID)
+	}
+
+	profile.Username = TransformUsername(profile.Username)
+
+	if !ValidateEmail(profile.Email) {
+		return nil, fmt.Errorf("invalid email format: %s", profile.Email)
+	}
+
+	if profile.Age < 0 || profile.Age > 150 {
+		return nil, fmt.Errorf("age out of valid range: %d", profile.Age)
+	}
+
+	return &profile, nil
+}
+
+func main() {
+	jsonData := `{
+		"id": 1001,
+		"username": "  JohnDoe  ",
+		"email": "john@example.com",
+		"age": 30,
+		"active": true,
+		"timestamp": "2024-01-15T10:30:00Z"
+	}`
+
+	profile, err := ProcessUserData([]byte(jsonData))
+	if err != nil {
+		fmt.Printf("Error processing data: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Processed user profile:\n")
+	fmt.Printf("ID: %d\n", profile.ID)
+	fmt.Printf("Username: %s\n", profile.Username)
+	fmt.Printf("Email: %s\n", profile.Email)
+	fmt.Printf("Age: %d\n", profile.Age)
+	fmt.Printf("Active: %v\n", profile.Active)
+	fmt.Printf("Timestamp: %s\n", profile.Timestamp)
 }

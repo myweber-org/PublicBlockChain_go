@@ -424,4 +424,35 @@ func main() {
     fmt.Printf("Processed %d records\n", len(records))
     fmt.Printf("Average value: %.2f\n", avg)
     fmt.Printf("Maximum value: %.2f\n", max)
+}package main
+
+import (
+	"fmt"
+)
+
+func calculateMovingAverage(data []float64, windowSize int) []float64 {
+	if windowSize <= 0 || windowSize > len(data) {
+		return nil
+	}
+
+	result := make([]float64, 0, len(data)-windowSize+1)
+
+	for i := 0; i <= len(data)-windowSize; i++ {
+		sum := 0.0
+		for j := 0; j < windowSize; j++ {
+			sum += data[i+j]
+		}
+		average := sum / float64(windowSize)
+		result = append(result, average)
+	}
+
+	return result
+}
+
+func main() {
+	sampleData := []float64{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0}
+	window := 3
+
+	averages := calculateMovingAverage(sampleData, window)
+	fmt.Printf("Moving averages with window size %d: %v\n", window, averages)
 }

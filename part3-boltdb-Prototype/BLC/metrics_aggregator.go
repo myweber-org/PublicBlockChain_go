@@ -1,27 +1,30 @@
-package aggregator
+
+package metrics
 
 import (
+	"container/list"
+	"sort"
 	"sync"
 	"time"
 )
 
-type Metric struct {
-	Timestamp time.Time
+type MetricPoint struct {
 	Value     float64
+	Timestamp time.Time
 }
 
 type SlidingWindowAggregator struct {
 	windowSize  time.Duration
-	metrics     []Metric
+	maxPoints   int
+	points      *list.List
 	mu          sync.RWMutex
-	subscribers []chan float64
 }
 
-func NewSlidingWindowAggregator(windowSize time.Duration) *SlidingWindowAggregator {
+func NewSlidingWindowAggregator(windowSize time.Duration, maxPoints int) *SlidingWindowAggregator {
 	return &SlidingWindowAggregator{
-		windowSize:  windowSize,
-		metrics:     make([]Metric, 0),
-		subscribers: make([]chan float64, 0),
+		windowSize: windowSize,
+		maxPoints:  maxPoints,
+		points:     list.New(),
 	}
 }
 
@@ -30,63 +33,76 @@ func (swa *SlidingWindowAggregator) AddMetric(value float64) {
 	defer swa.mu.Unlock()
 
 	now := time.Now()
-	swa.metrics = append(swa.metrics, Metric{Timestamp: now, Value: value})
-	swa.cleanupOldMetrics(now)
-	swa.notifySubscribers()
+	swa.points.PushBack(&MetricPoint{
+		Value:     value,
+		Timestamp: now,
+	})
+
+	swa.cleanupOldPoints(now)
+	if swa.points.Len() > swa.maxPoints {
+		swa.points.Remove(swa.points.Front())
+	}
 }
 
-func (swa *SlidingWindowAggregator) cleanupOldMetrics(currentTime time.Time) {
-	cutoff := currentTime.Add(-swa.windowSize)
-	validStart := 0
-	for i, metric := range swa.metrics {
-		if metric.Timestamp.After(cutoff) {
-			validStart = i
+func (swa *SlidingWindowAggregator) cleanupOldPoints(now time.Time) {
+	cutoff := now.Add(-swa.windowSize)
+	for {
+		front := swa.points.Front()
+		if front == nil {
+			break
+		}
+		point := front.Value.(*MetricPoint)
+		if point.Timestamp.Before(cutoff) {
+			swa.points.Remove(front)
+		} else {
 			break
 		}
 	}
-	swa.metrics = swa.metrics[validStart:]
 }
 
-func (swa *SlidingWindowAggregator) GetAverage() float64 {
+func (swa *SlidingWindowAggregator) GetPercentile(p float64) (float64, bool) {
 	swa.mu.RLock()
 	defer swa.mu.RUnlock()
 
-	if len(swa.metrics) == 0 {
-		return 0.0
+	if swa.points.Len() == 0 {
+		return 0, false
+	}
+
+	values := make([]float64, 0, swa.points.Len())
+	for e := swa.points.Front(); e != nil; e = e.Next() {
+		values = append(values, e.Value.(*MetricPoint).Value)
+	}
+
+	sort.Float64s(values)
+	index := int(float64(len(values)-1) * p / 100.0)
+	return values[index], true
+}
+
+func (swa *SlidingWindowAggregator) GetStats() (min, max, avg float64, count int) {
+	swa.mu.RLock()
+	defer swa.mu.RUnlock()
+
+	if swa.points.Len() == 0 {
+		return 0, 0, 0, 0
 	}
 
 	var sum float64
-	for _, metric := range swa.metrics {
-		sum += metric.Value
-	}
-	return sum / float64(len(swa.metrics))
-}
+	min = swa.points.Front().Value.(*MetricPoint).Value
+	max = min
+	count = 0
 
-func (swa *SlidingWindowAggregator) Subscribe() <-chan float64 {
-	swa.mu.Lock()
-	defer swa.mu.Unlock()
-
-	ch := make(chan float64, 10)
-	swa.subscribers = append(swa.subscribers, ch)
-	return ch
-}
-
-func (swa *SlidingWindowAggregator) notifySubscribers() {
-	avg := swa.GetAverage()
-	for _, ch := range swa.subscribers {
-		select {
-		case ch <- avg:
-		default:
+	for e := swa.points.Front(); e != nil; e = e.Next() {
+		value := e.Value.(*MetricPoint).Value
+		sum += value
+		count++
+		if value < min {
+			min = value
+		}
+		if value > max {
+			max = value
 		}
 	}
-}
 
-func (swa *SlidingWindowAggregator) Stop() {
-	swa.mu.Lock()
-	defer swa.mu.Unlock()
-
-	for _, ch := range swa.subscribers {
-		close(ch)
-	}
-	swa.subscribers = nil
+	avg = sum / float64(count)
+	return min, max, avg, count
 }

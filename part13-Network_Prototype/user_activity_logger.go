@@ -7,48 +7,56 @@ import (
 )
 
 type ActivityLogger struct {
-	rateLimiter map[string]time.Time
-	window      time.Duration
+	Format string
+	Logger *log.Logger
 }
 
-func NewActivityLogger(window time.Duration) *ActivityLogger {
-	return &ActivityLogger{
-		rateLimiter: make(map[string]time.Time),
-		window:      window,
+func NewActivityLogger(format string, logger *log.Logger) *ActivityLogger {
+	if format == "" {
+		format = "default"
 	}
+	return &ActivityLogger{Format: format, Logger: logger}
 }
 
 func (al *ActivityLogger) LogActivity(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userIP := r.RemoteAddr
-		now := time.Now()
-
-		if lastSeen, exists := al.rateLimiter[userIP]; exists {
-			if now.Sub(lastSeen) < al.window {
-				log.Printf("Rate limited: %s", userIP)
-				http.Error(w, "Too many requests", http.StatusTooManyRequests)
-				return
-			}
-		}
-
-		al.rateLimiter[userIP] = now
-
-		log.Printf("Activity: %s %s from %s", r.Method, r.URL.Path, userIP)
-
-		next.ServeHTTP(w, r)
+		start := time.Now()
+		recorder := &responseRecorder{ResponseWriter: w, statusCode: http.StatusOK}
+		
+		next.ServeHTTP(recorder, r)
+		
+		duration := time.Since(start)
+		al.logEntry(r, recorder.statusCode, duration)
 	})
 }
 
-func (al *ActivityLogger) Cleanup() {
-	ticker := time.NewTicker(time.Hour)
-	go func() {
-		for range ticker.C {
-			now := time.Now()
-			for ip, lastSeen := range al.rateLimiter {
-				if now.Sub(lastSeen) > 24*time.Hour {
-					delete(al.rateLimiter, ip)
-				}
-			}
-		}
-	}()
+func (al *ActivityLogger) logEntry(r *http.Request, status int, duration time.Duration) {
+	switch al.Format {
+	case "json":
+		al.Logger.Printf(`{"time":"%s","method":"%s","path":"%s","status":%d,"duration_ms":%d}`,
+			time.Now().Format(time.RFC3339),
+			r.Method,
+			r.URL.Path,
+			status,
+			duration.Milliseconds())
+	case "simple":
+		al.Logger.Printf("%s %s %d %v", r.Method, r.URL.Path, status, duration)
+	default:
+		al.Logger.Printf("[%s] %s %s %d %v",
+			time.Now().Format("2006-01-02 15:04:05"),
+			r.Method,
+			r.URL.Path,
+			status,
+			duration)
+	}
+}
+
+type responseRecorder struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rr *responseRecorder) WriteHeader(code int) {
+	rr.statusCode = code
+	rr.ResponseWriter.WriteHeader(code)
 }

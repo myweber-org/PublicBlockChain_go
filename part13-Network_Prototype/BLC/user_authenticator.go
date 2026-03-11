@@ -1,16 +1,21 @@
 package middleware
 
 import (
-	"context"
 	"net/http"
 	"strings"
 )
 
-type contextKey string
+type Authenticator struct {
+	secretKey []byte
+}
 
-const userIDKey contextKey = "userID"
+func NewAuthenticator(secretKey string) *Authenticator {
+	return &Authenticator{
+		secretKey: []byte(secretKey),
+	}
+}
 
-func Authenticate(next http.Handler) http.Handler {
+func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
@@ -18,85 +23,23 @@ func Authenticate(next http.Handler) http.Handler {
 			return
 		}
 
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
+		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		if tokenString == authHeader {
+			http.Error(w, "Bearer token required", http.StatusUnauthorized)
 			return
 		}
 
-		tokenString := parts[1]
-		userID, err := validateToken(tokenString)
-		if err != nil {
+		if !a.validateToken(tokenString) {
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), userIDKey, userID)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		next.ServeHTTP(w, r)
 	})
 }
 
-func GetUserID(ctx context.Context) (string, bool) {
-	userID, ok := ctx.Value(userIDKey).(string)
-	return userID, ok
-}
-
-func validateToken(tokenString string) (string, error) {
-	// Simplified token validation - in production use proper JWT library
-	if tokenString == "" || len(tokenString) < 10 {
-		return "", http.ErrNoCookie
-	}
-	// Mock validation: token is considered valid if it starts with "user_"
-	if strings.HasPrefix(tokenString, "user_") {
-		return strings.TrimPrefix(tokenString, "user_"), nil
-	}
-	return "", http.ErrNoCookie
-}package auth
-
-import (
-    "errors"
-    "time"
-
-    "github.com/golang-jwt/jwt/v5"
-)
-
-type Claims struct {
-    Username string `json:"username"`
-    UserID   int    `json:"user_id"`
-    jwt.RegisteredClaims
-}
-
-var jwtKey = []byte("your_secret_key_here")
-
-func GenerateToken(username string, userID int) (string, error) {
-    expirationTime := time.Now().Add(24 * time.Hour)
-    claims := &Claims{
-        Username: username,
-        UserID:   userID,
-        RegisteredClaims: jwt.RegisteredClaims{
-            ExpiresAt: jwt.NewNumericDate(expirationTime),
-            IssuedAt:  jwt.NewNumericDate(time.Now()),
-            Issuer:    "myapp",
-        },
-    }
-
-    token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-    return token.SignedString(jwtKey)
-}
-
-func ValidateToken(tokenString string) (*Claims, error) {
-    claims := &Claims{}
-    token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-        return jwtKey, nil
-    })
-
-    if err != nil {
-        return nil, err
-    }
-
-    if !token.Valid {
-        return nil, errors.New("invalid token")
-    }
-
-    return claims, nil
+func (a *Authenticator) validateToken(tokenString string) bool {
+	// Simplified token validation logic
+	// In production, use proper JWT library like github.com/golang-jwt/jwt
+	return len(tokenString) > 10 && strings.HasPrefix(tokenString, "valid_")
 }

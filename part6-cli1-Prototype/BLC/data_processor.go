@@ -291,3 +291,49 @@ func main() {
         fmt.Printf("Validation error: %v\n", err)
     }
 }
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+)
+
+// FormatJSON takes a JSON string, validates it, and returns a formatted version.
+// Returns an error if the input is not valid JSON.
+func FormatJSON(input string) (string, error) {
+	var data interface{}
+	err := json.Unmarshal([]byte(input), &data)
+	if err != nil {
+		return "", fmt.Errorf("invalid JSON: %w", err)
+	}
+
+	formatted, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to format JSON: %w", err)
+	}
+
+	return string(formatted), nil
+}
+
+// ValidateJSON checks if the provided string is valid JSON.
+func ValidateJSON(input string) bool {
+	var js interface{}
+	return json.Unmarshal([]byte(input), &js) == nil
+}
+
+func main() {
+	rawJSON := `{"name":"test","value":123,"active":true}`
+	fmt.Println("Valid JSON:", ValidateJSON(rawJSON))
+
+	formatted, err := FormatJSON(rawJSON)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	fmt.Println("Formatted JSON:")
+	fmt.Println(formatted)
+
+	invalidJSON := `{invalid}`
+	fmt.Println("Valid JSON:", ValidateJSON(invalidJSON))
+}

@@ -64,4 +64,58 @@ func main() {
     wrappedMux := metricsMiddleware(mux)
 
     http.ListenAndServe(":8080", wrappedMux)
+}package main
+
+import (
+    "fmt"
+    "log"
+    "runtime"
+    "time"
+)
+
+type SystemMetrics struct {
+    Timestamp     time.Time
+    GoroutineCount int
+    MemoryAlloc   uint64
+    MemoryTotal   uint64
+    CPUCores      int
+}
+
+func collectMetrics() SystemMetrics {
+    var memStats runtime.MemStats
+    runtime.ReadMemStats(&memStats)
+
+    return SystemMetrics{
+        Timestamp:     time.Now(),
+        GoroutineCount: runtime.NumGoroutine(),
+        MemoryAlloc:   memStats.Alloc,
+        MemoryTotal:   memStats.TotalAlloc,
+        CPUCores:      runtime.NumCPU(),
+    }
+}
+
+func logMetrics(metrics SystemMetrics) {
+    log.Printf(
+        "Metrics collected at %s: Goroutines=%d, MemoryAlloc=%d bytes, TotalMemory=%d bytes, CPU Cores=%d",
+        metrics.Timestamp.Format(time.RFC3339),
+        metrics.GoroutineCount,
+        metrics.MemoryAlloc,
+        metrics.MemoryTotal,
+        metrics.CPUCores,
+    )
+}
+
+func main() {
+    ticker := time.NewTicker(30 * time.Second)
+    defer ticker.Stop()
+
+    fmt.Println("Starting system metrics collector...")
+
+    for {
+        select {
+        case <-ticker.C:
+            metrics := collectMetrics()
+            logMetrics(metrics)
+        }
+    }
 }

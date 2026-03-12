@@ -187,4 +187,76 @@ func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.RemoteAddr,
 		duration,
 	)
+}package middleware
+
+import (
+    "net/http"
+    "time"
+    "sync"
+    "log"
+)
+
+type ActivityLogger struct {
+    mu          sync.RWMutex
+    userLimits  map[string]time.Time
+    rateLimit   time.Duration
+    logger      *log.Logger
+}
+
+func NewActivityLogger(rateLimit time.Duration, logger *log.Logger) *ActivityLogger {
+    return &ActivityLogger{
+        userLimits: make(map[string]time.Time),
+        rateLimit:  rateLimit,
+        logger:     logger,
+    }
+}
+
+func (al *ActivityLogger) LogActivity(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        userID := r.Header.Get("X-User-ID")
+        if userID == "" {
+            userID = "anonymous"
+        }
+
+        if !al.checkRateLimit(userID) {
+            http.Error(w, "Too many requests", http.StatusTooManyRequests)
+            return
+        }
+
+        start := time.Now()
+        al.logger.Printf("User %s started %s %s at %s", 
+            userID, r.Method, r.URL.Path, start.Format(time.RFC3339))
+
+        rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+        next.ServeHTTP(rw, r)
+
+        duration := time.Since(start)
+        al.logger.Printf("User %s completed %s %s with status %d in %v", 
+            userID, r.Method, r.URL.Path, rw.statusCode, duration)
+    })
+}
+
+func (al *ActivityLogger) checkRateLimit(userID string) bool {
+    al.mu.Lock()
+    defer al.mu.Unlock()
+
+    lastActivity, exists := al.userLimits[userID]
+    now := time.Now()
+
+    if exists && now.Sub(lastActivity) < al.rateLimit {
+        return false
+    }
+
+    al.userLimits[userID] = now
+    return true
+}
+
+type responseWriter struct {
+    http.ResponseWriter
+    statusCode int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+    rw.statusCode = code
+    rw.ResponseWriter.WriteHeader(code)
 }

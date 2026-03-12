@@ -950,3 +950,25 @@ func main() {
 	fmt.Printf("Average value: %.2f\n", avg)
 	fmt.Printf("Maximum value: %.2f\n", max)
 }
+package main
+
+import (
+	"errors"
+	"strings"
+)
+
+func ValidateEmail(email string) error {
+	if !strings.Contains(email, "@") {
+		return errors.New("invalid email format")
+	}
+	return nil
+}
+
+func TrimAndUpper(input string) string {
+	trimmed := strings.TrimSpace(input)
+	return strings.ToUpper(trimmed)
+}
+
+func SplitByComma(input string) []string {
+	return strings.Split(input, ",")
+}

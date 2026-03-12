@@ -479,3 +479,49 @@ func ValidateToken(tokenString string) (*Claims, error) {
 
     return claims, nil
 }
+package middleware
+
+import (
+	"context"
+	"net/http"
+	"strings"
+)
+
+type contextKey string
+
+const UserIDKey contextKey = "userID"
+
+func Authenticate(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			http.Error(w, "Authorization header required", http.StatusUnauthorized)
+			return
+		}
+
+		tokenParts := strings.Split(authHeader, " ")
+		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
+			http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
+			return
+		}
+
+		token := tokenParts[1]
+		userID, err := validateToken(token)
+		if err != nil {
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), UserIDKey, userID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func validateToken(token string) (string, error) {
+	// Simplified token validation logic
+	// In production, use proper JWT validation library
+	if token == "" || len(token) < 10 {
+		return "", http.ErrNoCookie
+	}
+	return "user_" + token[:8], nil
+}

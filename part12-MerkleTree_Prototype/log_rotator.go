@@ -443,3 +443,180 @@ func main() {
 
     fmt.Println("Log rotation test completed")
 }
+package main
+
+import (
+	"fmt"
+	"io"
+	"log"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+)
+
+const (
+	maxFileSize   = 10 * 1024 * 1024 // 10MB
+	backupCount   = 5
+	checkInterval = 30 * time.Second
+)
+
+type RotatingLogger struct {
+	mu         sync.Mutex
+	file       *os.File
+	size       int64
+	basePath   string
+	currentDay string
+}
+
+func NewRotatingLogger(path string) (*RotatingLogger, error) {
+	rl := &RotatingLogger{
+		basePath: path,
+	}
+	if err := rl.rotateIfNeeded(); err != nil {
+		return nil, err
+	}
+	go rl.monitor()
+	return rl, nil
+}
+
+func (rl *RotatingLogger) Write(p []byte) (n int, err error) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	if err := rl.rotateIfNeeded(); err != nil {
+		return 0, err
+	}
+
+	n, err = rl.file.Write(p)
+	rl.size += int64(n)
+	return n, err
+}
+
+func (rl *RotatingLogger) rotateIfNeeded() error {
+	now := time.Now()
+	currentDay := now.Format("2006-01-02")
+
+	if rl.file == nil || rl.size >= maxFileSize || rl.currentDay != currentDay {
+		if rl.file != nil {
+			rl.file.Close()
+			if err := rl.compressOldLogs(); err != nil {
+				log.Printf("Failed to compress old logs: %v", err)
+			}
+		}
+
+		newPath := rl.generateLogPath(now)
+		if err := os.MkdirAll(filepath.Dir(newPath), 0755); err != nil {
+			return fmt.Errorf("create log directory: %w", err)
+		}
+
+		file, err := os.OpenFile(newPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			return fmt.Errorf("open log file: %w", err)
+		}
+
+		info, err := file.Stat()
+		if err != nil {
+			file.Close()
+			return fmt.Errorf("stat log file: %w", err)
+		}
+
+		rl.file = file
+		rl.size = info.Size()
+		rl.currentDay = currentDay
+	}
+	return nil
+}
+
+func (rl *RotatingLogger) generateLogPath(t time.Time) string {
+	base := strings.TrimSuffix(rl.basePath, filepath.Ext(rl.basePath))
+	ext := filepath.Ext(rl.basePath)
+	if ext == "" {
+		ext = ".log"
+	}
+	return fmt.Sprintf("%s-%s%s", base, t.Format("2006-01-02"), ext)
+}
+
+func (rl *RotatingLogger) compressOldLogs() error {
+	dir := filepath.Dir(rl.basePath)
+	baseName := filepath.Base(rl.basePath)
+	baseName = strings.TrimSuffix(baseName, filepath.Ext(baseName))
+
+	files, err := filepath.Glob(filepath.Join(dir, baseName+"-*.log"))
+	if err != nil {
+		return err
+	}
+
+	if len(files) <= backupCount {
+		return nil
+	}
+
+	for i := 0; i < len(files)-backupCount; i++ {
+		if err := compressFile(files[i]); err != nil {
+			log.Printf("Failed to compress %s: %v", files[i], err)
+		}
+	}
+	return nil
+}
+
+func compressFile(path string) error {
+	src, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	dstPath := path + ".gz"
+	dst, err := os.Create(dstPath)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+
+	// Simple compression simulation
+	// In production, use compress/gzip
+	_, err = io.Copy(dst, src)
+	if err != nil {
+		os.Remove(dstPath)
+		return err
+	}
+
+	return os.Remove(path)
+}
+
+func (rl *RotatingLogger) monitor() {
+	ticker := time.NewTicker(checkInterval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		rl.mu.Lock()
+		rl.rotateIfNeeded()
+		rl.mu.Unlock()
+	}
+}
+
+func (rl *RotatingLogger) Close() error {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	if rl.file != nil {
+		return rl.file.Close()
+	}
+	return nil
+}
+
+func main() {
+	logger, err := NewRotatingLogger("./logs/app.log")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer logger.Close()
+
+	log.SetOutput(logger)
+
+	for i := 0; i < 100; i++ {
+		log.Printf("Log entry %d: %s", i, time.Now().Format(time.RFC3339))
+		time.Sleep(100 * time.Millisecond)
+	}
+}

@@ -3,189 +3,66 @@ package middleware
 import (
 	"log"
 	"net/http"
+	"sync"
 	"time"
 )
 
 type ActivityLogger struct {
-	handler http.Handler
+	mu      sync.RWMutex
+	clients map[string][]time.Time
+	limit   int
+	window  time.Duration
 }
 
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	recorder := &responseRecorder{
-		ResponseWriter: w,
-		statusCode:     http.StatusOK,
+func NewActivityLogger(limit int, window time.Duration) *ActivityLogger {
+	return &ActivityLogger{
+		clients: make(map[string][]time.Time),
+		limit:   limit,
+		window:  window,
 	}
-
-	al.handler.ServeHTTP(recorder, r)
-
-	duration := time.Since(start)
-	log.Printf(
-		"%s %s %d %s %s",
-		r.Method,
-		r.URL.Path,
-		recorder.statusCode,
-		duration,
-		r.RemoteAddr,
-	)
 }
 
-type responseRecorder struct {
-	http.ResponseWriter
-	statusCode int
+func (al *ActivityLogger) LogActivity(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		clientIP := r.RemoteAddr
+		now := time.Now()
+
+		al.mu.Lock()
+		defer al.mu.Unlock()
+
+		al.cleanupOldEntries(clientIP, now)
+
+		if len(al.clients[clientIP]) >= al.limit {
+			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+			log.Printf("Rate limit exceeded for client: %s", clientIP)
+			return
+		}
+
+		al.clients[clientIP] = append(al.clients[clientIP], now)
+		log.Printf("Activity logged: %s - %s %s", clientIP, r.Method, r.URL.Path)
+
+		next.ServeHTTP(w, r)
+	})
 }
 
-func (rr *responseRecorder) WriteHeader(code int) {
-	rr.statusCode = code
-	rr.ResponseWriter.WriteHeader(code)
-}package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLogger struct {
-	handler http.Handler
-}
-
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	recorder := &responseRecorder{
-		ResponseWriter: w,
-		statusCode:     http.StatusOK,
+func (al *ActivityLogger) cleanupOldEntries(clientIP string, now time.Time) {
+	if entries, exists := al.clients[clientIP]; exists {
+		validEntries := []time.Time{}
+		for _, t := range entries {
+			if now.Sub(t) <= al.window {
+				validEntries = append(validEntries, t)
+			}
+		}
+		if len(validEntries) == 0 {
+			delete(al.clients, clientIP)
+		} else {
+			al.clients[clientIP] = validEntries
+		}
 	}
-
-	al.handler.ServeHTTP(recorder, r)
-
-	duration := time.Since(start)
-	log.Printf(
-		"%s %s %d %s %s",
-		r.Method,
-		r.URL.Path,
-		recorder.statusCode,
-		duration,
-		r.RemoteAddr,
-	)
 }
 
-type responseRecorder struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (rr *responseRecorder) WriteHeader(code int) {
-	rr.statusCode = code
-	rr.ResponseWriter.WriteHeader(code)
-}package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLogger struct {
-	handler http.Handler
-}
-
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	startTime := time.Now()
-	
-	al.handler.ServeHTTP(w, r)
-	
-	duration := time.Since(startTime)
-	
-	log.Printf("Activity: %s %s from %s took %v",
-		r.Method,
-		r.URL.Path,
-		r.RemoteAddr,
-		duration,
-	)
-}package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLogger struct {
-	handler http.Handler
-}
-
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	startTime := time.Now()
-	recorder := &responseRecorder{
-		ResponseWriter: w,
-		statusCode:     http.StatusOK,
-	}
-
-	al.handler.ServeHTTP(recorder, r)
-
-	duration := time.Since(startTime)
-	log.Printf(
-		"Method: %s | Path: %s | Status: %d | Duration: %v | RemoteAddr: %s",
-		r.Method,
-		r.URL.Path,
-		recorder.statusCode,
-		duration,
-		r.RemoteAddr,
-	)
-}
-
-type responseRecorder struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (rr *responseRecorder) WriteHeader(code int) {
-	rr.statusCode = code
-	rr.ResponseWriter.WriteHeader(code)
-}package middleware
-
-import (
-	"log"
-	"net/http"
-	"time"
-)
-
-type ActivityLogger struct {
-	handler http.Handler
-}
-
-func NewActivityLogger(handler http.Handler) *ActivityLogger {
-	return &ActivityLogger{handler: handler}
-}
-
-func (al *ActivityLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	startTime := time.Now()
-	
-	al.handler.ServeHTTP(w, r)
-	
-	duration := time.Since(startTime)
-	
-	log.Printf("Activity: %s %s from %s took %v",
-		r.Method,
-		r.URL.Path,
-		r.RemoteAddr,
-		duration,
-	)
+func (al *ActivityLogger) GetActivityCount(clientIP string) int {
+	al.mu.RLock()
+	defer al.mu.RUnlock()
+	return len(al.clients[clientIP])
 }

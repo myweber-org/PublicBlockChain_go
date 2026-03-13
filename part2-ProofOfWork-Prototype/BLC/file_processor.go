@@ -112,4 +112,136 @@ func main() {
 	if err := processor.BatchProcess(".", "*.txt"); err != nil {
 		fmt.Printf("Batch processing failed: %v\n", err)
 	}
+}package main
+
+import (
+	"encoding/csv"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+	"strings"
+	"sync"
+)
+
+type Record struct {
+	ID      int
+	Name    string
+	Value   float64
+	Valid   bool
+}
+
+func processFile(filename string) ([]Record, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	records := make([]Record, 0)
+	var wg sync.WaitGroup
+	recordChan := make(chan Record, 100)
+	errorChan := make(chan error, 10)
+	done := make(chan bool)
+
+	go func() {
+		for {
+			row, err := reader.Read()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				errorChan <- fmt.Errorf("csv read error: %w", err)
+				continue
+			}
+
+			wg.Add(1)
+			go func(data []string) {
+				defer wg.Done()
+				record, err := validateAndTransform(data)
+				if err != nil {
+					errorChan <- err
+					return
+				}
+				recordChan <- record
+			}(row)
+		}
+		wg.Wait()
+		close(recordChan)
+		close(errorChan)
+		done <- true
+	}()
+
+	for {
+		select {
+		case record := <-recordChan:
+			records = append(records, record)
+		case err := <-errorChan:
+			fmt.Printf("Processing error: %v\n", err)
+		case <-done:
+			return records, nil
+		}
+	}
+}
+
+func validateAndTransform(data []string) (Record, error) {
+	if len(data) != 4 {
+		return Record{}, errors.New("invalid data length")
+	}
+
+	id, err := strconv.Atoi(strings.TrimSpace(data[0]))
+	if err != nil {
+		return Record{}, fmt.Errorf("invalid ID format: %w", err)
+	}
+
+	name := strings.TrimSpace(data[1])
+	if name == "" {
+		return Record{}, errors.New("name cannot be empty")
+	}
+
+	value, err := strconv.ParseFloat(strings.TrimSpace(data[2]), 64)
+	if err != nil {
+		return Record{}, fmt.Errorf("invalid value format: %w", err)
+	}
+
+	valid := strings.ToLower(strings.TrimSpace(data[3])) == "true"
+
+	return Record{
+		ID:    id,
+		Name:  name,
+		Value: value,
+		Valid: valid,
+	}, nil
+}
+
+func aggregateResults(records []Record) map[string]float64 {
+	aggregation := make(map[string]float64)
+	for _, record := range records {
+		if record.Valid {
+			aggregation[record.Name] += record.Value
+		}
+	}
+	return aggregation
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: file_processor <filename>")
+		os.Exit(1)
+	}
+
+	records, err := processFile(os.Args[1])
+	if err != nil {
+		fmt.Printf("Error processing file: %v\n", err)
+		os.Exit(1)
+	}
+
+	results := aggregateResults(records)
+	for name, total := range results {
+		fmt.Printf("%s: %.2f\n", name, total)
+	}
+
+	fmt.Printf("Processed %d records successfully\n", len(records))
 }

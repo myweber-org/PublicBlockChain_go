@@ -775,3 +775,40 @@ func main() {
 	fmt.Printf("Average value: %.2f\n", avg)
 	fmt.Printf("Maximum value: %.2f\n", max)
 }
+package data_processor
+
+import (
+	"regexp"
+	"strings"
+)
+
+type Processor struct {
+	whitespaceRegex *regexp.Regexp
+}
+
+func NewProcessor() *Processor {
+	return &Processor{
+		whitespaceRegex: regexp.MustCompile(`\s+`),
+	}
+}
+
+func (p *Processor) CleanInput(input string) string {
+	trimmed := strings.TrimSpace(input)
+	normalized := p.whitespaceRegex.ReplaceAllString(trimmed, " ")
+	return normalized
+}
+
+func (p *Processor) NormalizeCase(input string) string {
+	return strings.ToLower(input)
+}
+
+func (p *Processor) RemoveSpecialChars(input string) string {
+	reg := regexp.MustCompile(`[^a-zA-Z0-9\s]`)
+	return reg.ReplaceAllString(input, "")
+}
+
+func (p *Processor) Process(input string) string {
+	cleaned := p.CleanInput(input)
+	normalized := p.NormalizeCase(cleaned)
+	return p.RemoveSpecialChars(normalized)
+}

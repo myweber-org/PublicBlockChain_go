@@ -129,3 +129,71 @@ func CalculateStatistics(records []DataRecord) (float64, float64, error) {
 
 	return mean, variance, nil
 }
+package main
+
+import (
+	"fmt"
+	"strings"
+	"unicode"
+)
+
+type UserData struct {
+	Username string
+	Email    string
+	Age      int
+}
+
+func NormalizeUsername(username string) string {
+	trimmed := strings.TrimSpace(username)
+	var result strings.Builder
+	for _, r := range trimmed {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '-' {
+			result.WriteRune(unicode.ToLower(r))
+		}
+	}
+	return result.String()
+}
+
+func ValidateEmail(email string) bool {
+	if !strings.Contains(email, "@") || !strings.Contains(email, ".") {
+		return false
+	}
+	localPart, domainPart, found := strings.Cut(email, "@")
+	if !found || localPart == "" || domainPart == "" {
+		return false
+	}
+	if strings.Contains(domainPart, "..") || strings.HasPrefix(domainPart, ".") || strings.HasSuffix(domainPart, ".") {
+		return false
+	}
+	return true
+}
+
+func ProcessUserInput(username, email string, age int) (*UserData, error) {
+	normalizedUsername := NormalizeUsername(username)
+	if normalizedUsername == "" {
+		return nil, fmt.Errorf("invalid username: contains no valid characters")
+	}
+
+	if !ValidateEmail(email) {
+		return nil, fmt.Errorf("invalid email format")
+	}
+
+	if age < 0 || age > 150 {
+		return nil, fmt.Errorf("age must be between 0 and 150")
+	}
+
+	return &UserData{
+		Username: normalizedUsername,
+		Email:    strings.ToLower(strings.TrimSpace(email)),
+		Age:      age,
+	}, nil
+}
+
+func main() {
+	user, err := ProcessUserInput("  John_Doe-123  ", "john@example.com", 30)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	fmt.Printf("Processed user: %+v\n", user)
+}

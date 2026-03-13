@@ -331,3 +331,61 @@ func main() {
 	fmt.Println("Original:", strings)
 	fmt.Println("Cleaned:", uniqueStrings)
 }
+package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+type DataCleaner struct {
+	seen map[string]bool
+}
+
+func NewDataCleaner() *DataCleaner {
+	return &DataCleaner{
+		seen: make(map[string]bool),
+	}
+}
+
+func (dc *DataCleaner) Clean(input string) (string, error) {
+	if input == "" {
+		return "", fmt.Errorf("empty input")
+	}
+
+	trimmed := strings.TrimSpace(input)
+	lower := strings.ToLower(trimmed)
+
+	if dc.seen[lower] {
+		return "", fmt.Errorf("duplicate entry: %s", trimmed)
+	}
+
+	dc.seen[lower] = true
+
+	if len(trimmed) < 3 {
+		return "", fmt.Errorf("input too short: %s", trimmed)
+	}
+
+	return trimmed, nil
+}
+
+func (dc *DataCleaner) ProcessBatch(items []string) []string {
+	var cleaned []string
+	for _, item := range items {
+		clean, err := dc.Clean(item)
+		if err == nil {
+			cleaned = append(cleaned, clean)
+		}
+	}
+	return cleaned
+}
+
+func main() {
+	cleaner := NewDataCleaner()
+	samples := []string{"  Apple  ", "banana", "  Apple  ", "ki", "Orange"}
+
+	results := cleaner.ProcessBatch(samples)
+	for _, r := range results {
+		fmt.Println(r)
+	}
+}

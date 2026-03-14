@@ -3,72 +3,51 @@ package main
 
 import (
 	"errors"
+	"regexp"
 	"strings"
-	"time"
 )
 
-type DataRecord struct {
-	ID        string
-	Value     float64
-	Timestamp time.Time
-	Category  string
+type UserData struct {
+	Email    string
+	Username string
+	Age      int
 }
 
-func ValidateRecord(record DataRecord) error {
-	if record.ID == "" {
-		return errors.New("ID cannot be empty")
+var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+
+func ValidateUserData(data UserData) error {
+	if strings.TrimSpace(data.Email) == "" {
+		return errors.New("email cannot be empty")
 	}
-	if record.Value < 0 {
-		return errors.New("value must be non-negative")
+	if !emailRegex.MatchString(data.Email) {
+		return errors.New("invalid email format")
 	}
-	if record.Timestamp.IsZero() {
-		return errors.New("timestamp must be set")
+	if strings.TrimSpace(data.Username) == "" {
+		return errors.New("username cannot be empty")
 	}
-	if strings.TrimSpace(record.Category) == "" {
-		return errors.New("category cannot be empty")
+	if len(data.Username) < 3 || len(data.Username) > 20 {
+		return errors.New("username must be between 3 and 20 characters")
+	}
+	if data.Age < 0 || data.Age > 150 {
+		return errors.New("age must be between 0 and 150")
 	}
 	return nil
 }
 
-func TransformRecord(record DataRecord, multiplier float64) DataRecord {
-	if multiplier <= 0 {
-		multiplier = 1.0
-	}
-	return DataRecord{
-		ID:        strings.ToUpper(record.ID),
-		Value:     record.Value * multiplier,
-		Timestamp: record.Timestamp.UTC(),
-		Category:  strings.ToLower(strings.TrimSpace(record.Category)),
-	}
+func TransformUsername(username string) string {
+	return strings.ToLower(strings.TrimSpace(username))
 }
 
-func ProcessRecords(records []DataRecord, multiplier float64) ([]DataRecord, error) {
-	var processed []DataRecord
-	for _, record := range records {
-		if err := ValidateRecord(record); err != nil {
-			return nil, err
-		}
-		processed = append(processed, TransformRecord(record, multiplier))
+func ProcessUserInput(email, username string, age int) (UserData, error) {
+	transformedUsername := TransformUsername(username)
+	userData := UserData{
+		Email:    strings.TrimSpace(email),
+		Username: transformedUsername,
+		Age:      age,
 	}
-	return processed, nil
-}
-package main
-
-import "fmt"
-
-func FilterAndDoubleEvenNumbers(numbers []int) []int {
-    var result []int
-    for _, num := range numbers {
-        if num%2 == 0 {
-            result = append(result, num*2)
-        }
-    }
-    return result
-}
-
-func main() {
-    input := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-    output := FilterAndDoubleEvenNumbers(input)
-    fmt.Println("Original:", input)
-    fmt.Println("Filtered and Doubled:", output)
+	err := ValidateUserData(userData)
+	if err != nil {
+		return UserData{}, err
+	}
+	return userData, nil
 }

@@ -370,3 +370,38 @@ func main() {
 	fmt.Printf("Active: %v\n", profile.Active)
 	fmt.Printf("Timestamp: %s\n", profile.Timestamp)
 }
+package main
+
+import (
+	"regexp"
+	"strings"
+)
+
+type DataProcessor struct {
+	whitespaceRegex *regexp.Regexp
+}
+
+func NewDataProcessor() *DataProcessor {
+	return &DataProcessor{
+		whitespaceRegex: regexp.MustCompile(`\s+`),
+	}
+}
+
+func (dp *DataProcessor) CleanString(input string) string {
+	trimmed := strings.TrimSpace(input)
+	normalized := dp.whitespaceRegex.ReplaceAllString(trimmed, " ")
+	return normalized
+}
+
+func (dp *DataProcessor) ExtractAlphanumeric(input string) string {
+	alphanumericRegex := regexp.MustCompile(`[^a-zA-Z0-9]+`)
+	return alphanumericRegex.ReplaceAllString(input, "")
+}
+
+func (dp *DataProcessor) Tokenize(input string) []string {
+	cleaned := dp.CleanString(input)
+	if cleaned == "" {
+		return []string{}
+	}
+	return strings.Split(cleaned, " ")
+}

@@ -61,4 +61,75 @@ func validateConfig(c *Config) error {
 		c.LogLevel = "info"
 	}
 	return nil
+}package config
+
+import (
+	"errors"
+	"os"
+	"strconv"
+	"strings"
+)
+
+type AppConfig struct {
+	ServerPort int
+	DBHost     string
+	DBPort     int
+	DebugMode  bool
+	APIKey     string
+}
+
+func LoadConfig() (*AppConfig, error) {
+	config := &AppConfig{}
+
+	port, err := getEnvInt("SERVER_PORT", 8080)
+	if err != nil {
+		return nil, err
+	}
+	config.ServerPort = port
+
+	config.DBHost = getEnvString("DB_HOST", "localhost")
+
+	dbPort, err := getEnvInt("DB_PORT", 5432)
+	if err != nil {
+		return nil, err
+	}
+	config.DBPort = dbPort
+
+	debug, err := getEnvBool("DEBUG_MODE", false)
+	if err != nil {
+		return nil, err
+	}
+	config.DebugMode = debug
+
+	apiKey := getEnvString("API_KEY", "")
+	if apiKey == "" {
+		return nil, errors.New("API_KEY environment variable is required")
+	}
+	config.APIKey = apiKey
+
+	return config, nil
+}
+
+func getEnvString(key, defaultValue string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	return value
+}
+
+func getEnvInt(key string, defaultValue int) (int, error) {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue, nil
+	}
+	return strconv.Atoi(value)
+}
+
+func getEnvBool(key string, defaultValue bool) (bool, error) {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue, nil
+	}
+	return strconv.ParseBool(strings.ToLower(value))
 }
